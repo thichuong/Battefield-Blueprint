@@ -7,13 +7,19 @@ pub const CELL_H: f32 = MAP_HEIGHT / (FOG_ROWS as f32);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Visibility {
-    Hidden = 0,    // Chưa từng đi qua (Đen/Tối mờ Blueprint)
-    Explored = 1,  // Đã từng nhìn thấy (Thấy đất/nhà tĩnh, không thấy lính địch)
-    Visible = 2,   // Đang trong tầm mắt trực tiếp
+    Hidden = 0,   // Chưa từng đi qua (Đen/Tối mờ Blueprint)
+    Explored = 1, // Đã từng nhìn thấy (Thấy đất/nhà tĩnh, không thấy lính địch)
+    Visible = 2,  // Đang trong tầm mắt trực tiếp
 }
 
 pub struct FogOfWar {
     pub grid: [Visibility; FOG_COLS * FOG_ROWS],
+}
+
+impl Default for FogOfWar {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl FogOfWar {
@@ -53,7 +59,7 @@ impl FogOfWar {
     }
 
     pub fn is_visible(&self, world_x: f32, world_y: f32) -> bool {
-        if world_x < 0.0 || world_x >= MAP_WIDTH || world_y < 0.0 || world_y >= MAP_HEIGHT {
+        if !(0.0..MAP_WIDTH).contains(&world_x) || !(0.0..MAP_HEIGHT).contains(&world_y) {
             return false;
         }
         let c = (world_x / CELL_W) as usize;
@@ -63,4 +69,3 @@ impl FogOfWar {
         self.grid[r * FOG_COLS + c] == Visibility::Visible
     }
 }
-

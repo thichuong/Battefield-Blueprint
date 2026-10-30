@@ -2,18 +2,24 @@ use crate::components::*;
 use crate::GameEngine;
 
 pub fn update_ai(engine: &mut GameEngine) {
-    let enemy_workers: Vec<u32> = engine.units.iter()
+    let enemy_workers: Vec<u32> = engine
+        .units
+        .iter()
         .filter(|u| u.team == Team::Enemy && u.unit_type == UnitType::Engineer)
         .map(|u| u.id)
         .collect();
 
-    let enemy_combat_units: Vec<u32> = engine.units.iter()
+    let enemy_combat_units: Vec<u32> = engine
+        .units
+        .iter()
         .filter(|u| u.team == Team::Enemy && u.unit_type != UnitType::Engineer)
         .map(|u| u.id)
         .collect();
 
     // 1. Quản lý Thợ mỏ AI tự động khai thác khoáng sản gần nhất
-    let enemy_minerals: Vec<u32> = engine.minerals.iter()
+    let enemy_minerals: Vec<u32> = engine
+        .minerals
+        .iter()
         .filter(|m| m.x > 1800.0 && m.y < 800.0)
         .map(|m| m.id)
         .collect();
@@ -38,28 +44,68 @@ pub fn update_ai(engine: &mut GameEngine) {
 
     // Cần thêm Supply Depot khi gần chạm trần
     if enemy_supply + 2 >= enemy_max_supply && enemy_minerals_val >= 100.0 {
-        let count_depots = engine.buildings.iter().filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::SupplyDepot).count();
+        let count_depots = engine
+            .buildings
+            .iter()
+            .filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::SupplyDepot)
+            .count();
         if count_depots < 4 {
-            try_ai_build(engine, BuildingType::SupplyDepot, 2050.0 - (count_depots as f32 * 70.0), 280.0, 100.0, 0.0);
+            try_ai_build(
+                engine,
+                BuildingType::SupplyDepot,
+                2050.0 - (count_depots as f32 * 70.0),
+                280.0,
+                100.0,
+                0.0,
+            );
         }
     }
 
     // Xây Barracks
-    let barracks_count = engine.buildings.iter().filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::Barracks).count();
+    let barracks_count = engine
+        .buildings
+        .iter()
+        .filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::Barracks)
+        .count();
     if barracks_count < 2 && engine.enemy_eco.minerals >= 150.0 {
-        try_ai_build(engine, BuildingType::Barracks, 1950.0, 480.0 + (barracks_count as f32 * 80.0), 150.0, 0.0);
+        try_ai_build(
+            engine,
+            BuildingType::Barracks,
+            1950.0,
+            480.0 + (barracks_count as f32 * 80.0),
+            150.0,
+            0.0,
+        );
     }
 
     // Xây Power Reactor
-    let reactor_count = engine.buildings.iter().filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::PowerReactor).count();
+    let reactor_count = engine
+        .buildings
+        .iter()
+        .filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::PowerReactor)
+        .count();
     if reactor_count < 2 && engine.enemy_eco.minerals >= 120.0 {
-        try_ai_build(engine, BuildingType::PowerReactor, 2220.0, 520.0 + (reactor_count as f32 * 70.0), 120.0, 0.0);
+        try_ai_build(
+            engine,
+            BuildingType::PowerReactor,
+            2220.0,
+            520.0 + (reactor_count as f32 * 70.0),
+            120.0,
+            0.0,
+        );
     }
 
     // 3. AI Huấn luyện lính
     // Nếu thiếu Worker (< 6) xin thêm tại Command Center
-    if enemy_workers.len() < 6 && engine.enemy_eco.minerals >= 50.0 && enemy_supply < enemy_max_supply {
-        if let Some(cc) = engine.buildings.iter_mut().find(|b| b.team == Team::Enemy && b.building_type == BuildingType::CommandCenter && b.build_progress >= 1.0) {
+    if enemy_workers.len() < 6
+        && engine.enemy_eco.minerals >= 50.0
+        && enemy_supply < enemy_max_supply
+    {
+        if let Some(cc) = engine.buildings.iter_mut().find(|b| {
+            b.team == Team::Enemy
+                && b.building_type == BuildingType::CommandCenter
+                && b.build_progress >= 1.0
+        }) {
             if cc.training_queue.len() < 2 {
                 engine.enemy_eco.minerals -= 50.0;
                 cc.training_queue.push(UnitType::Engineer);
@@ -69,16 +115,19 @@ pub fn update_ai(engine: &mut GameEngine) {
 
     // Xin lính chiến đấu tại Barracks
     for b in engine.buildings.iter_mut() {
-        if b.team == Team::Enemy && b.building_type == BuildingType::Barracks && b.build_progress >= 1.0 {
-            if b.training_queue.len() < 2 && engine.enemy_eco.supply < engine.enemy_eco.max_supply {
-                if engine.enemy_eco.minerals >= 100.0 && engine.enemy_eco.energy >= 20.0 {
-                    engine.enemy_eco.minerals -= 100.0;
-                    engine.enemy_eco.energy -= 20.0;
-                    b.training_queue.push(UnitType::Rifleman);
-                } else if engine.enemy_eco.minerals >= 75.0 {
-                    engine.enemy_eco.minerals -= 75.0;
-                    b.training_queue.push(UnitType::ShockTrooper);
-                }
+        if b.team == Team::Enemy
+            && b.building_type == BuildingType::Barracks
+            && b.build_progress >= 1.0
+            && b.training_queue.len() < 2
+            && engine.enemy_eco.supply < engine.enemy_eco.max_supply
+        {
+            if engine.enemy_eco.minerals >= 100.0 && engine.enemy_eco.energy >= 20.0 {
+                engine.enemy_eco.minerals -= 100.0;
+                engine.enemy_eco.energy -= 20.0;
+                b.training_queue.push(UnitType::Rifleman);
+            } else if engine.enemy_eco.minerals >= 75.0 {
+                engine.enemy_eco.minerals -= 75.0;
+                b.training_queue.push(UnitType::ShockTrooper);
             }
         }
     }
@@ -86,7 +135,9 @@ pub fn update_ai(engine: &mut GameEngine) {
     // 4. AI Điều quân Tấn công (Attack Wave) khi gom đủ >= 6 lính chiến đấu
     if enemy_combat_units.len() >= 6 {
         // Tìm vị trí căn cứ hoặc lính Player để càn quét
-        let target_pos = engine.buildings.iter()
+        let target_pos = engine
+            .buildings
+            .iter()
             .find(|b| b.team == Team::Player && b.building_type == BuildingType::CommandCenter)
             .map(|b| (b.x, b.y))
             .unwrap_or((300.0, 2000.0));
@@ -106,7 +157,14 @@ pub fn update_ai(engine: &mut GameEngine) {
     }
 }
 
-fn try_ai_build(engine: &mut GameEngine, b_type: BuildingType, wx: f32, wy: f32, min_cost: f32, en_cost: f32) {
+fn try_ai_build(
+    engine: &mut GameEngine,
+    b_type: BuildingType,
+    wx: f32,
+    wy: f32,
+    min_cost: f32,
+    en_cost: f32,
+) {
     if engine.enemy_eco.minerals >= min_cost && engine.enemy_eco.energy >= en_cost {
         engine.enemy_eco.minerals -= min_cost;
         engine.enemy_eco.energy -= en_cost;
@@ -137,4 +195,3 @@ fn try_ai_build(engine: &mut GameEngine, b_type: BuildingType, wx: f32, wy: f32,
         });
     }
 }
-

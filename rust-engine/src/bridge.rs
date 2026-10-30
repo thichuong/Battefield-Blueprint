@@ -1,13 +1,23 @@
 use serde::{Deserialize, Serialize};
-use crate::components::*;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "type")]
 pub enum ReactToEngineCommand {
-    StartGame { difficulty: String },
-    SetPaused { paused: bool },
-    UpgradeTech { tech_id: String },
-    UpdateSettings { sound_volume: f32, camera_speed: f32, auto_pause: bool, show_grid: bool },
+    StartGame {
+        difficulty: String,
+    },
+    SetPaused {
+        paused: bool,
+    },
+    UpgradeTech {
+        tech_id: String,
+    },
+    UpdateSettings {
+        sound_volume: f32,
+        camera_speed: f32,
+        auto_pause: bool,
+        show_grid: bool,
+    },
     RestartGame,
 }
 
@@ -25,7 +35,11 @@ pub enum EngineToReactEvent {
     },
     OpenTechTreeModal,
     OpenSettingsModal,
-    PlaySound { sound: String },
-    GameOver { player_won: bool, stats_json: String },
+    PlaySound {
+        sound: String,
+    },
+    GameOver {
+        player_won: bool,
+        stats_json: String,
+    },
 }
-

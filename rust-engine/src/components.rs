@@ -1,5 +1,5 @@
-use wasm_bindgen::prelude::*;
 use serde::{Deserialize, Serialize};
+use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -11,11 +11,11 @@ pub enum Team {
 #[wasm_bindgen]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UnitType {
-    Engineer = 0,     // Khai thác, xây dựng, cờ lê/máy hàn
-    ShockTrooper = 1, // Kiếm sĩ xung kích (Plasma Blade)
-    Rifleman = 2,     // Xạ thủ bắn súng trường
-    Vanguard = 3,     // Vệ binh khiên chắn năng lượng
-    LaserMarksman = 4,// Pháo thủ Laser tầm xa
+    Engineer = 0,      // Khai thác, xây dựng, cờ lê/máy hàn
+    ShockTrooper = 1,  // Kiếm sĩ xung kích (Plasma Blade)
+    Rifleman = 2,      // Xạ thủ bắn súng trường
+    Vanguard = 3,      // Vệ binh khiên chắn năng lượng
+    LaserMarksman = 4, // Pháo thủ Laser tầm xa
 }
 
 impl UnitType {
@@ -83,11 +83,25 @@ pub enum BuildingType {
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum UnitOrder {
     Idle,
-    MoveTo { x: f32, y: f32 },
-    AttackMove { x: f32, y: f32 },
-    Harvest { target_mineral_id: u32, phase: HarvestPhase },
-    Build { target_building_id: u32 },
-    AttackTarget { target_id: u32, is_building: bool },
+    MoveTo {
+        x: f32,
+        y: f32,
+    },
+    AttackMove {
+        x: f32,
+        y: f32,
+    },
+    Harvest {
+        target_mineral_id: u32,
+        phase: HarvestPhase,
+    },
+    Build {
+        target_building_id: u32,
+    },
+    AttackTarget {
+        target_id: u32,
+        is_building: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]

@@ -186,8 +186,8 @@ function __wbg_get_imports() {
         __wbg_scale_c1f36b23e39bf061: function() { return handleError(function (arg0, arg1, arg2) {
             arg0.scale(arg1, arg2);
         }, arguments); },
-        __wbg_set_fillStyle_50280bb4932b89d2: function(arg0, arg1) {
-            arg0.fillStyle = arg1;
+        __wbg_set_fillStyle_4360b989b9352bbb: function(arg0, arg1, arg2) {
+            arg0.fillStyle = getStringFromWasm0(arg1, arg2);
         },
         __wbg_set_font_33fee74f2c82cb6f: function(arg0, arg1, arg2) {
             arg0.font = getStringFromWasm0(arg1, arg2);
@@ -198,8 +198,8 @@ function __wbg_get_imports() {
         __wbg_set_lineWidth_beb3d05e36f4cc53: function(arg0, arg1) {
             arg0.lineWidth = arg1;
         },
-        __wbg_set_strokeStyle_8877ef451272f3e2: function(arg0, arg1) {
-            arg0.strokeStyle = arg1;
+        __wbg_set_strokeStyle_b390d5f09a6989a8: function(arg0, arg1, arg2) {
+            arg0.strokeStyle = getStringFromWasm0(arg1, arg2);
         },
         __wbg_set_width_8e30d010cd66830d: function(arg0, arg1) {
             arg0.width = arg1 >>> 0;
@@ -213,11 +213,6 @@ function __wbg_get_imports() {
         __wbg_translate_d2b84d406c25580d: function() { return handleError(function (arg0, arg1, arg2) {
             arg0.translate(arg1, arg2);
         }, arguments); },
-        __wbindgen_cast_0000000000000001: function(arg0, arg1) {
-            // Cast intrinsic for `Ref(String) -> Externref`.
-            const ret = getStringFromWasm0(arg0, arg1);
-            return ret;
-        },
         __wbindgen_init_externref_table: function() {
             const table = wasm.__wbindgen_externrefs;
             const offset = table.grow(4);

@@ -3,22 +3,22 @@ use std::collections::VecDeque;
 use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
-pub mod components;
-pub mod resources;
-pub mod map;
-pub mod fog;
-pub mod bridge;
-pub mod simulation;
 pub mod ai;
+pub mod bridge;
+pub mod components;
+pub mod fog;
+pub mod map;
 pub mod renderer;
+pub mod resources;
+pub mod simulation;
 
-use components::*;
-use resources::*;
-use fog::FogOfWar;
 use bridge::*;
+use components::*;
+use fog::FogOfWar;
+use resources::*;
 
 thread_local! {
-    static ENGINE_STATE: RefCell<Option<GameEngine>> = RefCell::new(None);
+    static ENGINE_STATE: RefCell<Option<GameEngine>> = const { RefCell::new(None) };
 }
 
 pub struct GameEngine {
@@ -27,7 +27,7 @@ pub struct GameEngine {
     pub camera: CameraState,
     pub fog: FogOfWar,
     pub settings: GameSettings,
-    
+
     // Thực thể ECS trong game
     pub units: Vec<Unit>,
     pub buildings: Vec<Building>,
@@ -35,13 +35,13 @@ pub struct GameEngine {
     pub obstacles: Vec<Obstacle>,
     pub projectiles: Vec<Projectile>,
     pub floating_texts: Vec<FloatingText>,
-    
+
     // Trạng thái kinh tế & công nghệ 2 phe
     pub player_eco: PlayerEconomy,
     pub enemy_eco: PlayerEconomy,
     pub player_tech: TechTreeState,
     pub enemy_tech: TechTreeState,
-    
+
     // Đang chọn & Thao tác
     pub selected_unit_ids: Vec<u32>,
     pub selected_building_id: Option<u32>,
@@ -50,7 +50,7 @@ pub struct GameEngine {
     pub is_attack_move_mode: bool,
     pub is_minimap_dragging: bool,
     pub hovered_command_button: Option<usize>,
-    
+
     // Điều khiển & Vòng lặp
     pub next_id: u32,
     pub game_time: f32,
@@ -61,12 +61,12 @@ pub struct GameEngine {
     pub is_mouse_down: bool,
     pub mouse_down_start: (f32, f32),
     pub keys_down: std::collections::HashSet<String>,
-    
+
     // AI timer & Income tracker
     pub ai_think_timer: f32,
     pub minerals_mined_accumulator: f32,
     pub income_calc_timer: f32,
-    
+
     // Kênh thông điệp
     pub pending_commands: VecDeque<ReactToEngineCommand>,
     pub outgoing_events: Vec<EngineToReactEvent>,
@@ -81,19 +81,19 @@ impl GameEngine {
             camera: CameraState::default(),
             fog: FogOfWar::new(),
             settings: GameSettings::default(),
-            
+
             units: Vec::new(),
             buildings: Vec::new(),
             minerals,
             obstacles,
             projectiles: Vec::new(),
             floating_texts: Vec::new(),
-            
+
             player_eco: PlayerEconomy::default(),
             enemy_eco: PlayerEconomy::default(),
             player_tech: TechTreeState::default(),
             enemy_tech: TechTreeState::default(),
-            
+
             selected_unit_ids: Vec::new(),
             selected_building_id: None,
             selection_box: None,
@@ -101,7 +101,7 @@ impl GameEngine {
             is_attack_move_mode: false,
             is_minimap_dragging: false,
             hovered_command_button: None,
-            
+
             next_id: 100,
             game_time: 0.0,
             is_paused: false,
@@ -111,7 +111,7 @@ impl GameEngine {
             is_mouse_down: false,
             mouse_down_start: (0.0, 0.0),
             keys_down: std::collections::HashSet::new(),
-            
+
             ai_think_timer: 0.0,
             minerals_mined_accumulator: 0.0,
             income_calc_timer: 0.0,
