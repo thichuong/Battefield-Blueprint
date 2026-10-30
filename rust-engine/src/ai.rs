@@ -96,7 +96,7 @@ pub fn update_ai(engine: &mut GameEngine) {
                 if u.order == UnitOrder::Idle {
                     let offset_x = ((i % 4) as f32 - 1.5) * 25.0;
                     let offset_y = ((i / 4) as f32) * 25.0;
-                    u.order = UnitOrder::MoveTo {
+                    u.order = UnitOrder::AttackMove {
                         x: target_pos.0 + offset_x,
                         y: target_pos.1 + offset_y,
                     };

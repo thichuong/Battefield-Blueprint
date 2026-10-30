@@ -34,6 +34,7 @@ pub struct GameEngine {
     pub minerals: Vec<MineralNode>,
     pub obstacles: Vec<Obstacle>,
     pub projectiles: Vec<Projectile>,
+    pub floating_texts: Vec<FloatingText>,
     
     // Trạng thái kinh tế & công nghệ 2 phe
     pub player_eco: PlayerEconomy,
@@ -46,6 +47,9 @@ pub struct GameEngine {
     pub selected_building_id: Option<u32>,
     pub selection_box: Option<(f32, f32, f32, f32)>, // x1, y1, x2, y2 (screen)
     pub build_mode: Option<BuildingType>,
+    pub is_attack_move_mode: bool,
+    pub is_minimap_dragging: bool,
+    pub hovered_command_button: Option<usize>,
     
     // Điều khiển & Vòng lặp
     pub next_id: u32,
@@ -58,8 +62,10 @@ pub struct GameEngine {
     pub mouse_down_start: (f32, f32),
     pub keys_down: std::collections::HashSet<String>,
     
-    // AI timer
+    // AI timer & Income tracker
     pub ai_think_timer: f32,
+    pub minerals_mined_accumulator: f32,
+    pub income_calc_timer: f32,
     
     // Kênh thông điệp
     pub pending_commands: VecDeque<ReactToEngineCommand>,
@@ -81,6 +87,7 @@ impl GameEngine {
             minerals,
             obstacles,
             projectiles: Vec::new(),
+            floating_texts: Vec::new(),
             
             player_eco: PlayerEconomy::default(),
             enemy_eco: PlayerEconomy::default(),
@@ -91,6 +98,9 @@ impl GameEngine {
             selected_building_id: None,
             selection_box: None,
             build_mode: None,
+            is_attack_move_mode: false,
+            is_minimap_dragging: false,
+            hovered_command_button: None,
             
             next_id: 100,
             game_time: 0.0,
@@ -103,6 +113,8 @@ impl GameEngine {
             keys_down: std::collections::HashSet::new(),
             
             ai_think_timer: 0.0,
+            minerals_mined_accumulator: 0.0,
+            income_calc_timer: 0.0,
             pending_commands: VecDeque::new(),
             outgoing_events: Vec::new(),
         };

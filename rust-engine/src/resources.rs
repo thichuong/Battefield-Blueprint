@@ -6,6 +6,8 @@ pub struct PlayerEconomy {
     pub energy: f32,
     pub supply: u32,
     pub max_supply: u32,
+    pub minerals_per_sec: f32,
+    pub energy_per_sec: f32,
 }
 
 impl Default for PlayerEconomy {
@@ -15,6 +17,8 @@ impl Default for PlayerEconomy {
             energy: 50.0,
             supply: 4,
             max_supply: 10,
+            minerals_per_sec: 0.0,
+            energy_per_sec: 2.0,
         }
     }
 }

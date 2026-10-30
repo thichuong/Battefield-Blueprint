@@ -32,6 +32,7 @@ pub enum BuildingType {
 pub enum UnitOrder {
     Idle,
     MoveTo { x: f32, y: f32 },
+    AttackMove { x: f32, y: f32 },
     Harvest { target_mineral_id: u32, phase: HarvestPhase },
     Build { target_building_id: u32 },
     AttackTarget { target_id: u32, is_building: bool },
@@ -115,4 +116,15 @@ pub struct Obstacle {
     pub y: f32,
     pub width: f32,
     pub height: f32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FloatingText {
+    pub id: u32,
+    pub text: String,
+    pub x: f32,
+    pub y: f32,
+    pub color: String,
+    pub lifetime: f32,
+    pub max_lifetime: f32,
 }

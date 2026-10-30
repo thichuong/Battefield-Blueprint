@@ -15,38 +15,41 @@ pub fn step(engine: &mut GameEngine, dt: f32) {
     let dt = dt.min(0.05); // Tránh lag giật thời gian lớn
     engine.game_time += dt;
 
-    // 2. Di chuyển Camera bằng phím WASD hoặc Mũi tên
+    // 2. Di chuyển Camera bằng phím WASD / Mũi tên và Edge Scrolling
     update_camera(engine, dt);
 
-    // 3. Cập nhật Kinh tế tự nhiên
+    // 3. Cập nhật Kinh tế tự nhiên & Đo tốc độ thu nhập
     update_economy(engine, dt);
 
     // 4. Cập nhật Tiến trình Nghiên cứu Cây Công Nghệ
     update_tech_research(engine, dt);
 
-    // 5. Cập nhật Đơn vị Lính (Di chuyển, Khai mỏ, Chiến đấu)
+    // 5. Cập nhật Đơn vị Lính (Di chuyển, Khai mỏ, Tấn công mép nhà, Attack-Move)
     update_units(engine, dt);
 
     // 6. Cập nhật Công trình (Xây dựng, Huấn luyện lính, Tháp pháo bắn)
     update_buildings(engine, dt);
 
-    // 7. Cập nhật Đạn & Tia Laser
+    // 7. Cập nhật Đạn & Tia Laser (sát thương đơn vị & công trình)
     update_projectiles(engine, dt);
 
-    // 8. Cập nhật Fog of War
+    // 8. Cập nhật Hiệu ứng Chữ nổi (Floating numbers)
+    update_floating_texts(engine, dt);
+
+    // 9. Cập nhật Fog of War
     update_fog(engine);
 
-    // 9. Cập nhật AI Đối thủ
+    // 10. Cập nhật AI Đối thủ (kinh tế + điều quân càn quét nhà)
     engine.ai_think_timer += dt;
     if engine.ai_think_timer >= 0.5 {
         engine.ai_think_timer = 0.0;
         crate::ai::update_ai(engine);
     }
 
-    // 10. Kiểm tra Điều kiện Thắng / Thua
+    // 11. Kiểm tra Điều kiện Thắng / Thua
     check_game_over(engine);
 
-    // 11. Bắn sự kiện định kỳ đồng bộ về React
+    // 12. Bắn sự kiện định kỳ đồng bộ về React
     send_sync_event(engine);
 }
 
@@ -80,7 +83,7 @@ fn process_commands(engine: &mut GameEngine) {
 
 fn try_start_research(engine: &mut GameEngine, tech_id: &str) {
     if engine.player_tech.current_research.is_some() {
-        return; // Đang nghiên cứu cái khác
+        return;
     }
 
     let (cost_minerals, cost_energy, time) = match tech_id {
@@ -130,26 +133,48 @@ fn update_tech_research(engine: &mut GameEngine, dt: f32) {
 }
 
 fn update_camera(engine: &mut GameEngine, dt: f32) {
-    let speed = 600.0 * engine.settings.camera_speed * dt / engine.camera.zoom;
+    let speed = 650.0 * engine.settings.camera_speed * dt / engine.camera.zoom;
+    
+    // Bàn phím điều khiển
     if engine.keys_down.contains("KeyW") || engine.keys_down.contains("ArrowUp") {
         engine.camera.y -= speed;
     }
     if engine.keys_down.contains("KeyS") || engine.keys_down.contains("ArrowDown") {
         engine.camera.y += speed;
     }
-    if engine.keys_down.contains("KeyA") || engine.keys_down.contains("ArrowLeft") {
+    if engine.keys_down.contains("ArrowLeft") || (engine.keys_down.contains("KeyA") && !engine.is_attack_move_mode) {
         engine.camera.x -= speed;
     }
     if engine.keys_down.contains("KeyD") || engine.keys_down.contains("ArrowRight") {
         engine.camera.x += speed;
     }
 
-    engine.camera.x = engine.camera.x.clamp(200.0, MAP_WIDTH - 200.0);
-    engine.camera.y = engine.camera.y.clamp(200.0, MAP_HEIGHT - 200.0);
+    // Cuộn mép màn hình (Edge-Scrolling) khi không nhấn giữ kéo chuột chọn
+    if !engine.is_mouse_down && engine.camera.viewport_w > 0.0 && engine.camera.viewport_h > 0.0 {
+        let edge_margin = 18.0;
+        let edge_spd = speed * 1.1;
+        if engine.mouse_screen_x >= 0.0 && engine.mouse_screen_x <= edge_margin {
+            engine.camera.x -= edge_spd;
+        } else if engine.mouse_screen_x >= engine.camera.viewport_w - edge_margin && engine.mouse_screen_x <= engine.camera.viewport_w {
+            engine.camera.x += edge_spd;
+        }
+        if engine.mouse_screen_y >= 0.0 && engine.mouse_screen_y <= edge_margin {
+            engine.camera.y -= edge_spd;
+        } else if engine.mouse_screen_y >= engine.camera.viewport_h - edge_margin && engine.mouse_screen_y <= engine.camera.viewport_h {
+            engine.camera.y += edge_spd;
+        }
+    }
+
+    let min_x = (engine.camera.viewport_w * 0.5 / engine.camera.zoom).min(MAP_WIDTH * 0.5);
+    let max_x = (MAP_WIDTH - engine.camera.viewport_w * 0.5 / engine.camera.zoom).max(min_x);
+    let min_y = (engine.camera.viewport_h * 0.5 / engine.camera.zoom).min(MAP_HEIGHT * 0.5);
+    let max_y = (MAP_HEIGHT - engine.camera.viewport_h * 0.5 / engine.camera.zoom).max(min_y);
+
+    engine.camera.x = engine.camera.x.clamp(min_x, max_x);
+    engine.camera.y = engine.camera.y.clamp(min_y, max_y);
 }
 
 fn update_economy(engine: &mut GameEngine, dt: f32) {
-    // Năng lượng tăng cơ bản + tăng theo số lượng PowerReactor
     let mut p_reactors = 0;
     let mut e_reactors = 0;
     let mut p_supply_depots = 0;
@@ -168,25 +193,40 @@ fn update_economy(engine: &mut GameEngine, dt: f32) {
     }
 
     let p_mult = if engine.player_tech.overcharged_reactors { 1.5 } else { 1.0 };
-    engine.player_eco.energy += (2.0 + p_reactors as f32 * 8.0) * p_mult * dt;
-    engine.enemy_eco.energy += (2.0 + e_reactors as f32 * 8.0) * dt;
+    let player_energy_rate = (2.0 + p_reactors as f32 * 8.0) * p_mult;
+    let enemy_energy_rate = 2.0 + e_reactors as f32 * 8.0;
+
+    engine.player_eco.energy += player_energy_rate * dt;
+    engine.enemy_eco.energy += enemy_energy_rate * dt;
+    engine.player_eco.energy_per_sec = player_energy_rate;
 
     engine.player_eco.max_supply = 10 + p_supply_depots * 8;
     engine.enemy_eco.max_supply = 10 + e_supply_depots * 8;
 
-    // Tính dân số hiện tại
     engine.player_eco.supply = engine.units.iter().filter(|u| u.team == Team::Player).count() as u32;
     engine.enemy_eco.supply = engine.units.iter().filter(|u| u.team == Team::Enemy).count() as u32;
+
+    // Tính tốc độ thu nhập khoáng sản
+    engine.income_calc_timer += dt;
+    if engine.income_calc_timer >= 1.0 {
+        engine.player_eco.minerals_per_sec = engine.minerals_mined_accumulator / engine.income_calc_timer;
+        engine.minerals_mined_accumulator = 0.0;
+        engine.income_calc_timer = 0.0;
+    }
 }
 
 fn update_units(engine: &mut GameEngine, dt: f32) {
     let mut new_projectiles = Vec::new();
+    let mut new_floating_texts = Vec::new();
     let has_exo = engine.player_tech.exo_boosters;
     let has_superheated = engine.player_tech.superheated_blades;
     let has_magnetic = engine.player_tech.magnetic_rounds;
 
     // Snapshot vị trí công trình và lính để tra cứu mục tiêu
-    let building_targets: Vec<(u32, Team, f32, f32)> = engine.buildings.iter().map(|b| (b.id, b.team, b.x, b.y)).collect();
+    // (id, team, x, y, radius)
+    let building_targets: Vec<(u32, Team, f32, f32, f32)> = engine.buildings.iter()
+        .map(|b| (b.id, b.team, b.x, b.y, (b.width.max(b.height) * 0.5)))
+        .collect();
     let unit_targets: Vec<(u32, Team, f32, f32)> = engine.units.iter().map(|u| (u.id, u.team, u.x, u.y)).collect();
     let mineral_nodes: Vec<(u32, f32, f32)> = engine.minerals.iter().map(|m| (m.id, m.x, m.y)).collect();
 
@@ -195,7 +235,6 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
             unit.current_cooldown -= dt;
         }
 
-        // Tốc độ di chuyển có tính buff Tech
         let mut cur_speed = unit.speed;
         if unit.team == Team::Player && has_exo {
             cur_speed *= 1.2;
@@ -203,14 +242,56 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
 
         match unit.order {
             UnitOrder::Idle => {
-                // Tự động tìm mục tiêu địch trong tầm ngắm (Aggro scan)
                 if unit.unit_type != UnitType::Engineer {
-                    let scan_range = unit.attack_range * 1.5;
-                    let target = unit_targets.iter().find(|(_, t, x, y)| {
+                    let scan_range = unit.attack_range * 1.6;
+                    // 1. Ưu tiên tìm lính địch gần nhất
+                    let target_unit = unit_targets.iter().find(|(_, t, x, y)| {
                         *t != unit.team && ((*x - unit.x).powi(2) + (*y - unit.y).powi(2)).sqrt() <= scan_range
                     });
-                    if let Some((tid, _, _, _)) = target {
+                    if let Some((tid, _, _, _)) = target_unit {
                         unit.order = UnitOrder::AttackTarget { target_id: *tid, is_building: false };
+                    } else {
+                        // 2. Không có lính địch thì quét công trình địch trong bán kính 300px
+                        let target_building = building_targets.iter().find(|(_, t, x, y, r)| {
+                            if *t == unit.team { return false; }
+                            let dist = ((*x - unit.x).powi(2) + (*y - unit.y).powi(2)).sqrt();
+                            (dist - r).max(0.0) <= 300.0
+                        });
+                        if let Some((bid, _, _, _, _)) = target_building {
+                            unit.order = UnitOrder::AttackTarget { target_id: *bid, is_building: true };
+                        }
+                    }
+                }
+            }
+            UnitOrder::AttackMove { x, y } => {
+                // Tự động tìm mục tiêu lính hoặc nhà trên đường di chuyển
+                let scan_range = unit.attack_range * 1.6;
+                let target_unit = unit_targets.iter().find(|(_, t, ux, uy)| {
+                    *t != unit.team && ((*ux - unit.x).powi(2) + (*uy - unit.y).powi(2)).sqrt() <= scan_range
+                });
+                if let Some((tid, _, _, _)) = target_unit {
+                    unit.order = UnitOrder::AttackTarget { target_id: *tid, is_building: false };
+                } else {
+                    let target_building = building_targets.iter().find(|(_, t, bx, by, r)| {
+                        if *t == unit.team { return false; }
+                        let dist = ((*bx - unit.x).powi(2) + (*by - unit.y).powi(2)).sqrt();
+                        (dist - r).max(0.0) <= 260.0
+                    });
+                    if let Some((bid, _, _, _, _)) = target_building {
+                        unit.order = UnitOrder::AttackTarget { target_id: *bid, is_building: true };
+                    } else {
+                        let dx = x - unit.x;
+                        let dy = y - unit.y;
+                        let dist = (dx * dx + dy * dy).sqrt();
+                        if dist > 4.0 {
+                            let move_dist = (cur_speed * dt).min(dist);
+                            unit.x += (dx / dist) * move_dist;
+                            unit.y += (dy / dist) * move_dist;
+                            unit.walk_cycle += dt * 10.0;
+                            unit.facing_right = dx >= 0.0;
+                        } else {
+                            unit.order = UnitOrder::Idle;
+                        }
                     }
                 }
             }
@@ -248,14 +329,31 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                                 };
                             }
                         } else {
-                            unit.order = UnitOrder::Idle;
+                            // Mỏ không còn -> Tìm mỏ gần nhất kế tiếp
+                            let nearest = mineral_nodes.iter().min_by(|a, b| {
+                                let da = (a.1 - unit.x).powi(2) + (a.2 - unit.y).powi(2);
+                                let db = (b.1 - unit.x).powi(2) + (b.2 - unit.y).powi(2);
+                                da.partial_cmp(&db).unwrap()
+                            });
+                            if let Some((nid, _, _)) = nearest {
+                                unit.order = UnitOrder::Harvest {
+                                    target_mineral_id: *nid,
+                                    phase: HarvestPhase::MovingToNode,
+                                };
+                            } else {
+                                unit.order = UnitOrder::Idle;
+                            }
                         }
                     }
                     HarvestPhase::Mining(mut t) => {
-                        let mining_duration = if unit.team == Team::Player && engine.player_tech.optical_drills { 1.5 } else { 2.2 };
+                        let mining_duration = if unit.team == Team::Player && engine.player_tech.optical_drills { 1.4 } else { 2.0 };
                         t += dt;
                         if t >= mining_duration {
                             unit.carried_minerals = if unit.team == Team::Player && engine.player_tech.optical_drills { 15.0 } else { 10.0 };
+                            // Trừ trữ lượng mỏ quặng
+                            if let Some(m) = engine.minerals.iter_mut().find(|m| m.id == target_mineral_id) {
+                                m.amount -= unit.carried_minerals;
+                            }
                             unit.order = UnitOrder::Harvest {
                                 target_mineral_id,
                                 phase: HarvestPhase::ReturningToBase,
@@ -269,13 +367,13 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                     }
                     HarvestPhase::ReturningToBase => {
                         // Tìm Command Center gần nhất của phe mình
-                        let my_cc = building_targets.iter().filter(|(_, t, _, _)| *t == unit.team).min_by(|a, b| {
+                        let my_cc = building_targets.iter().filter(|(_, t, _, _, _)| *t == unit.team).min_by(|a, b| {
                             let da = (a.2 - unit.x).powi(2) + (a.3 - unit.y).powi(2);
                             let db = (b.2 - unit.x).powi(2) + (b.3 - unit.y).powi(2);
                             da.partial_cmp(&db).unwrap()
                         });
 
-                        if let Some((_, _, cx, cy)) = my_cc {
+                        if let Some((_, _, cx, cy, _)) = my_cc {
                             let dx = cx - unit.x;
                             let dy = cy - unit.y;
                             let dist = (dx * dx + dy * dy).sqrt();
@@ -286,9 +384,19 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                                 unit.walk_cycle += dt * 10.0;
                                 unit.facing_right = dx >= 0.0;
                             } else {
-                                // Giao khoáng sản!
+                                // Giao hàng thành công!
                                 if unit.team == Team::Player {
                                     engine.player_eco.minerals += unit.carried_minerals;
+                                    engine.minerals_mined_accumulator += unit.carried_minerals;
+                                    new_floating_texts.push(FloatingText {
+                                        id: 0,
+                                        text: format!("+{} 💎", unit.carried_minerals as u32),
+                                        x: unit.x,
+                                        y: unit.y - 15.0,
+                                        color: "#00e5ff".to_string(),
+                                        lifetime: 1.0,
+                                        max_lifetime: 1.0,
+                                    });
                                 } else {
                                     engine.enemy_eco.minerals += unit.carried_minerals;
                                 }
@@ -303,7 +411,7 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                 }
             }
             UnitOrder::Build { target_building_id } => {
-                if let Some((_, _, bx, by)) = building_targets.iter().find(|(id, _, _, _)| *id == target_building_id) {
+                if let Some((_, _, bx, by, _)) = building_targets.iter().find(|(id, _, _, _, _)| *id == target_building_id) {
                     let dx = bx - unit.x;
                     let dy = by - unit.y;
                     let dist = (dx * dx + dy * dy).sqrt();
@@ -319,25 +427,29 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                 }
             }
             UnitOrder::AttackTarget { target_id, is_building } => {
-                let target_pos = if is_building {
-                    building_targets.iter().find(|(id, t, _, _)| *id == target_id && *t != unit.team).map(|(_, _, x, y)| (*x, *y))
+                let target_info = if is_building {
+                    building_targets.iter().find(|(id, t, _, _, _)| *id == target_id && *t != unit.team).map(|(_, _, x, y, r)| (*x, *y, *r))
                 } else {
-                    unit_targets.iter().find(|(id, t, _, _)| *id == target_id && *t != unit.team).map(|(_, _, x, y)| (*x, *y))
+                    unit_targets.iter().find(|(id, t, _, _)| *id == target_id && *t != unit.team).map(|(_, _, x, y)| (*x, *y, 10.0))
                 };
 
-                if let Some((tx, ty)) = target_pos {
+                if let Some((tx, ty, target_radius)) = target_info {
                     let dx = tx - unit.x;
                     let dy = ty - unit.y;
                     let dist = (dx * dx + dy * dy).sqrt();
                     unit.facing_right = dx >= 0.0;
 
-                    if dist > unit.attack_range {
-                        let move_dist = (cur_speed * dt).min(dist);
+                    // KHOẢNG CÁCH TÍNH TỚI MÉP MỤC TIÊU
+                    let effective_dist = (dist - target_radius).max(0.0);
+
+                    if effective_dist > unit.attack_range {
+                        // Di chuyển tiếp cận mép mục tiêu
+                        let move_dist = (cur_speed * dt).min(effective_dist - unit.attack_range + 5.0);
                         unit.x += (dx / dist) * move_dist;
                         unit.y += (dy / dist) * move_dist;
                         unit.walk_cycle += dt * 10.0;
                     } else {
-                        // Tấn công!
+                        // TẤN CÔNG ĐÍCH XÁC
                         if unit.current_cooldown <= 0.0 {
                             unit.current_cooldown = unit.attack_cooldown;
                             let mut dmg = unit.attack_damage;
@@ -350,19 +462,24 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                                 }
                             }
 
+                            // Điểm va chạm nằm ở mép mục tiêu
+                            let hit_dist = dist.min(unit.attack_range + target_radius);
+                            let hit_x = if dist > 0.0 { unit.x + (dx / dist) * hit_dist } else { tx };
+                            let hit_y = if dist > 0.0 { unit.y + (dy / dist) * hit_dist } else { ty };
+
                             if unit.unit_type == UnitType::ShockTrooper || unit.unit_type == UnitType::Vanguard || unit.unit_type == UnitType::Engineer {
-                                // Cận chiến: tạo đạn ngắn/vệt chém
+                                // Cận chiến: tạo vệt chém ngay mép mục tiêu
                                 new_projectiles.push(Projectile {
                                     id: 0,
                                     team: unit.team,
                                     x: unit.x,
                                     y: unit.y,
-                                    target_x: tx,
-                                    target_y: ty,
-                                    speed: 500.0,
+                                    target_x: hit_x,
+                                    target_y: hit_y,
+                                    speed: 800.0,
                                     damage: dmg,
                                     is_laser: false,
-                                    lifetime: 0.1,
+                                    lifetime: 0.12,
                                 });
                             } else {
                                 // Tầm xa (Rifle / Laser)
@@ -372,9 +489,9 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                                     team: unit.team,
                                     x: unit.x,
                                     y: unit.y - 12.0,
-                                    target_x: tx,
-                                    target_y: ty,
-                                    speed: if is_laser { 1800.0 } else { 700.0 },
+                                    target_x: hit_x,
+                                    target_y: hit_y,
+                                    speed: if is_laser { 1800.0 } else { 750.0 },
                                     damage: dmg,
                                     is_laser,
                                     lifetime: if is_laser { 0.25 } else { 1.5 },
@@ -394,7 +511,15 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
         engine.projectiles.push(p);
     }
 
-    // Xóa lính chết
+    for mut ft in new_floating_texts {
+        ft.id = engine.alloc_id();
+        engine.floating_texts.push(ft);
+    }
+
+    // Xóa quặng đã khai thác hết
+    engine.minerals.retain(|m| m.amount > 0.0);
+
+    // Xóa lính tử trận
     engine.units.retain(|u| u.hp > 0.0);
 }
 
@@ -402,7 +527,6 @@ fn update_buildings(engine: &mut GameEngine, dt: f32) {
     let mut new_spawned_units = Vec::new();
     let mut new_turret_projectiles = Vec::new();
 
-    // Kiểm tra có thợ mỏ đang đứng cạnh để thi công
     let engineer_pos: Vec<(Team, f32, f32)> = engine.units.iter()
         .filter(|u| u.unit_type == UnitType::Engineer)
         .map(|u| (u.team, u.x, u.y))
@@ -441,7 +565,7 @@ fn update_buildings(engine: &mut GameEngine, dt: f32) {
                 if b.current_cooldown > 0.0 {
                     b.current_cooldown -= dt;
                 } else {
-                    let range = 240.0;
+                    let range = 250.0;
                     if let Some((_, ex, ey)) = enemy_targets.iter().find(|(t, x, y)| *t != b.team && ((*x - b.x).powi(2) + (*y - b.y).powi(2)).sqrt() <= range) {
                         b.current_cooldown = if b.team == Team::Player && engine.player_tech.overload_strike { 0.6 } else { 1.0 };
                         new_turret_projectiles.push(Projectile {
@@ -518,16 +642,21 @@ fn update_projectiles(engine: &mut GameEngine, dt: f32) {
             p.y += (dy / dist) * step;
         }
 
-        if dist <= 15.0 || p.lifetime <= 0.0 {
-            // Gây sát thương mục tiêu địch xung quanh điểm nổ
+        if dist <= 18.0 || p.lifetime <= 0.0 {
+            // Sát thương lính địch xung quanh
             for u in engine.units.iter_mut() {
-                if u.team != p.team && ((u.x - p.target_x).powi(2) + (u.y - p.target_y).powi(2)).sqrt() <= 20.0 {
+                if u.team != p.team && ((u.x - p.target_x).powi(2) + (u.y - p.target_y).powi(2)).sqrt() <= 24.0 {
                     u.hp -= p.damage;
                 }
             }
+            // Sát thương công trình địch xung quanh
             for b in engine.buildings.iter_mut() {
-                if b.team != p.team && ((b.x - p.target_x).powi(2) + (b.y - p.target_y).powi(2)).sqrt() <= b.width * 0.6 {
-                    b.hp -= p.damage;
+                if b.team != p.team {
+                    let b_rad = b.width.max(b.height) * 0.5;
+                    let dist_to_b = ((b.x - p.target_x).powi(2) + (b.y - p.target_y).powi(2)).sqrt();
+                    if dist_to_b <= b_rad + 20.0 {
+                        b.hp -= p.damage;
+                    }
                 }
             }
             p.lifetime = -1.0;
@@ -537,10 +666,18 @@ fn update_projectiles(engine: &mut GameEngine, dt: f32) {
     engine.projectiles.retain(|p| p.lifetime > 0.0);
 }
 
+fn update_floating_texts(engine: &mut GameEngine, dt: f32) {
+    for ft in engine.floating_texts.iter_mut() {
+        ft.lifetime -= dt;
+        ft.y -= 25.0 * dt;
+    }
+    engine.floating_texts.retain(|ft| ft.lifetime > 0.0);
+}
+
 fn update_fog(engine: &mut GameEngine) {
     engine.fog.reset_visibility_to_explored();
 
-    // Mở tầm nhìn quanh các công trình của Player
+    // Tầm nhìn quanh công trình
     for b in &engine.buildings {
         if b.team == Team::Player {
             let r = if b.building_type == BuildingType::TurretTower { 320.0 } else { 240.0 };
@@ -548,7 +685,7 @@ fn update_fog(engine: &mut GameEngine) {
         }
     }
 
-    // Mở tầm nhìn quanh các đơn vị lính của Player
+    // Tầm nhìn quanh lính
     for u in &engine.units {
         if u.team == Team::Player {
             let r = match u.unit_type {
@@ -597,8 +734,35 @@ fn send_sync_event(engine: &mut GameEngine) {
 
 // Xử lý Input từ Chuột và Phím
 pub fn handle_mouse_down(engine: &mut GameEngine, button: i32, cx: f32, cy: f32) {
+    let vh = engine.camera.viewport_h;
+
+    // Kiểm tra bấm vào Minimap để kéo thả camera
+    if cx >= 10.0 && cx <= 170.0 && cy >= vh - 170.0 && cy <= vh - 10.0 {
+        engine.is_minimap_dragging = true;
+        let norm_x = ((cx - 10.0) / 160.0).clamp(0.0, 1.0);
+        let norm_y = ((cy - (vh - 170.0)) / 160.0).clamp(0.0, 1.0);
+        engine.camera.x = norm_x * MAP_WIDTH;
+        engine.camera.y = norm_y * MAP_HEIGHT;
+        return;
+    }
+
     if button == 0 {
         // Chuột trái
+        if engine.is_attack_move_mode {
+            engine.is_attack_move_mode = false;
+            let (wx, wy) = engine.screen_to_world(cx, cy);
+            let count = engine.selected_unit_ids.len();
+            for (i, uid) in engine.selected_unit_ids.iter().enumerate() {
+                if let Some(u) = engine.units.iter_mut().find(|u| u.id == *uid && u.team == Team::Player) {
+                    let offset_x = ((i % 5) as f32 - (count.min(5) as f32 * 0.5)) * 20.0;
+                    let offset_y = ((i / 5) as f32) * 20.0;
+                    u.order = UnitOrder::AttackMove { x: wx + offset_x, y: wy + offset_y };
+                }
+            }
+            engine.outgoing_events.push(EngineToReactEvent::PlaySound { sound: "attack_order".to_string() });
+            return;
+        }
+
         engine.is_mouse_down = true;
         engine.mouse_down_start = (cx, cy);
         engine.selection_box = Some((cx, cy, cx, cy));
@@ -609,20 +773,26 @@ pub fn handle_mouse_down(engine: &mut GameEngine, button: i32, cx: f32, cy: f32)
             engine.is_mouse_down = false;
         }
     } else if button == 2 {
-        // Chuột phải (Lệnh di chuyển / tấn công / khai thác)
+        // Chuột phải: Hủy Attack-Move hoặc ra lệnh di chuyển/tấn công/khai thác
+        engine.is_attack_move_mode = false;
         let (wx, wy) = engine.screen_to_world(cx, cy);
         issue_right_click_order(engine, wx, wy);
     }
 }
 
 pub fn handle_mouse_up(engine: &mut GameEngine, button: i32, cx: f32, cy: f32) {
+    if engine.is_minimap_dragging {
+        engine.is_minimap_dragging = false;
+        return;
+    }
+
     if button == 0 && engine.is_mouse_down {
         engine.is_mouse_down = false;
         let (sx1, sy1) = engine.mouse_down_start;
-        let (sx2, sy2) = (cx, cy);
+        let (sx2, cy) = (cx, cy);
 
         let dx = (sx2 - sx1).abs();
-        let dy = (sy2 - sy1).abs();
+        let dy = (cy - sy1).abs();
 
         if let Some(b_type) = engine.build_mode {
             // Đặt móng xây nhà
@@ -631,8 +801,8 @@ pub fn handle_mouse_up(engine: &mut GameEngine, button: i32, cx: f32, cy: f32) {
             engine.build_mode = None;
         } else if dx > 8.0 || dy > 8.0 {
             // Box selection
-            let (w_min_x, w_min_y) = engine.screen_to_world(sx1.min(sx2), sy1.min(sy2));
-            let (w_max_x, w_max_y) = engine.screen_to_world(sx1.max(sx2), sy1.max(sy2));
+            let (w_min_x, w_min_y) = engine.screen_to_world(sx1.min(sx2), sy1.min(cy));
+            let (w_max_x, w_max_y) = engine.screen_to_world(sx1.max(sx2), sy1.max(cy));
 
             engine.selected_unit_ids = engine.units.iter()
                 .filter(|u| u.team == Team::Player && u.x >= w_min_x && u.x <= w_max_x && u.y >= w_min_y && u.y <= w_max_y)
@@ -652,14 +822,44 @@ pub fn handle_mouse_up(engine: &mut GameEngine, button: i32, cx: f32, cy: f32) {
 pub fn handle_mouse_move(engine: &mut GameEngine, cx: f32, cy: f32) {
     engine.mouse_screen_x = cx;
     engine.mouse_screen_y = cy;
+
+    let vh = engine.camera.viewport_h;
+    let vw = engine.camera.viewport_w;
+
+    if engine.is_minimap_dragging {
+        let norm_x = ((cx - 10.0) / 160.0).clamp(0.0, 1.0);
+        let norm_y = ((cy - (vh - 170.0)) / 160.0).clamp(0.0, 1.0);
+        engine.camera.x = norm_x * MAP_WIDTH;
+        engine.camera.y = norm_y * MAP_HEIGHT;
+        return;
+    }
+
     if engine.is_mouse_down {
         let (sx1, sy1) = engine.mouse_down_start;
         engine.selection_box = Some((sx1, sy1, cx, cy));
+    }
+
+    // Hover trên Command Card
+    if cx >= vw - 220.0 && cx <= vw - 10.0 && cy >= vh - 140.0 && cy <= vh - 10.0 {
+        let rel_x = cx - (vw - 220.0);
+        let rel_y = cy - (vh - 140.0);
+        let col = (rel_x / 68.0) as usize;
+        let row = (rel_y / 60.0) as usize;
+        engine.hovered_command_button = Some(row * 3 + col);
+    } else {
+        engine.hovered_command_button = None;
     }
 }
 
 pub fn handle_hotkeys(engine: &mut GameEngine, key: &str) {
     match key {
+        "KeyA" => {
+            // Bật chế độ Attack-Move
+            if !engine.selected_unit_ids.is_empty() {
+                engine.is_attack_move_mode = true;
+                engine.outgoing_events.push(EngineToReactEvent::PlaySound { sound: "click".to_string() });
+            }
+        }
         "KeyT" => {
             // Mở Modal Cây Công Nghệ trong React
             if engine.settings.auto_pause_on_tech {
@@ -668,7 +868,9 @@ pub fn handle_hotkeys(engine: &mut GameEngine, key: &str) {
             engine.outgoing_events.push(EngineToReactEvent::OpenTechTreeModal);
         }
         "Escape" => {
-            if engine.build_mode.is_some() {
+            if engine.is_attack_move_mode {
+                engine.is_attack_move_mode = false;
+            } else if engine.build_mode.is_some() {
                 engine.build_mode = None;
             } else {
                 engine.outgoing_events.push(EngineToReactEvent::OpenSettingsModal);
@@ -683,9 +885,9 @@ pub fn handle_hotkeys(engine: &mut GameEngine, key: &str) {
 }
 
 fn select_at_point(engine: &mut GameEngine, wx: f32, wy: f32) {
-    // 1. Kiểm tra bấm vào lính Player
+    // 1. Kiểm tra bấm vào lính Player (dung sai 24px)
     let clicked_unit = engine.units.iter().find(|u| {
-        ((u.x - wx).powi(2) + (u.y - wy).powi(2)).sqrt() <= 20.0
+        ((u.x - wx).powi(2) + (u.y - wy).powi(2)).sqrt() <= 24.0
     });
 
     if let Some(u) = clicked_unit {
@@ -694,9 +896,9 @@ fn select_at_point(engine: &mut GameEngine, wx: f32, wy: f32) {
         return;
     }
 
-    // 2. Kiểm tra bấm vào công trình Player
+    // 2. Kiểm tra bấm vào công trình Player (có dung sai)
     let clicked_building = engine.buildings.iter().find(|b| {
-        (wx - b.x).abs() <= b.width * 0.5 && (wy - b.y).abs() <= b.height * 0.5
+        (wx - b.x).abs() <= b.width * 0.5 + 8.0 && (wy - b.y).abs() <= b.height * 0.5 + 8.0
     });
 
     if let Some(b) = clicked_building {
@@ -722,9 +924,9 @@ fn issue_right_click_order(engine: &mut GameEngine, wx: f32, wy: f32) {
         return;
     }
 
-    // Kiểm tra bấm vào mỏ khoáng sản
+    // 1. Kiểm tra bấm vào mỏ khoáng sản
     let clicked_mineral = engine.minerals.iter().find(|m| {
-        ((m.x - wx).powi(2) + (m.y - wy).powi(2)).sqrt() <= 35.0
+        ((m.x - wx).powi(2) + (m.y - wy).powi(2)).sqrt() <= 40.0
     });
 
     if let Some(m) = clicked_mineral {
@@ -740,9 +942,9 @@ fn issue_right_click_order(engine: &mut GameEngine, wx: f32, wy: f32) {
         return;
     }
 
-    // Kiểm tra bấm vào nhà đang xây dở của mình để thợ mỏ đến xây
+    // 2. Kiểm tra bấm vào nhà đang xây dở của mình để thợ mỏ đến xây
     let unfinished_building = engine.buildings.iter().find(|b| {
-        b.team == Team::Player && b.build_progress < 1.0 && (wx - b.x).abs() <= b.width * 0.5 && (wy - b.y).abs() <= b.height * 0.5
+        b.team == Team::Player && b.build_progress < 1.0 && (wx - b.x).abs() <= b.width * 0.5 + 10.0 && (wy - b.y).abs() <= b.height * 0.5 + 10.0
     });
 
     if let Some(b) = unfinished_building {
@@ -758,8 +960,8 @@ fn issue_right_click_order(engine: &mut GameEngine, wx: f32, wy: f32) {
         return;
     }
 
-    // Kiểm tra bấm vào mục tiêu địch (Tấn công)
-    let enemy_unit = engine.units.iter().find(|u| u.team == Team::Enemy && ((u.x - wx).powi(2) + (u.y - wy).powi(2)).sqrt() <= 20.0);
+    // 3. Kiểm tra bấm vào lính địch (Tấn công)
+    let enemy_unit = engine.units.iter().find(|u| u.team == Team::Enemy && ((u.x - wx).powi(2) + (u.y - wy).powi(2)).sqrt() <= 26.0);
     if let Some(eu) = enemy_unit {
         let eid = eu.id;
         for uid in &engine.selected_unit_ids {
@@ -771,7 +973,10 @@ fn issue_right_click_order(engine: &mut GameEngine, wx: f32, wy: f32) {
         return;
     }
 
-    let enemy_b = engine.buildings.iter().find(|b| b.team == Team::Enemy && (wx - b.x).abs() <= b.width * 0.5 && (wy - b.y).abs() <= b.height * 0.5);
+    // 4. Kiểm tra bấm vào CÔNG TRÌNH ĐỊCH (Tấn công nhà địch hoàn chỉnh)
+    let enemy_b = engine.buildings.iter().find(|b| {
+        b.team == Team::Enemy && (wx - b.x).abs() <= b.width * 0.5 + 12.0 && (wy - b.y).abs() <= b.height * 0.5 + 12.0
+    });
     if let Some(eb) = enemy_b {
         let ebid = eb.id;
         for uid in &engine.selected_unit_ids {
@@ -783,12 +988,12 @@ fn issue_right_click_order(engine: &mut GameEngine, wx: f32, wy: f32) {
         return;
     }
 
-    // Di chuyển thông thường tới điểm bấm (dàn đội hình nhẹ)
+    // 5. Di chuyển thông thường tới điểm bấm (dàn đội hình thông minh)
     let count = engine.selected_unit_ids.len();
     for (i, uid) in engine.selected_unit_ids.iter().enumerate() {
         if let Some(u) = engine.units.iter_mut().find(|u| u.id == *uid && u.team == Team::Player) {
-            let offset_x = ((i % 5) as f32 - 2.0) * 20.0;
-            let offset_y = ((i / 5) as f32) * 20.0;
+            let offset_x = ((i % 5) as f32 - (count.min(5) as f32 * 0.5)) * 22.0;
+            let offset_y = ((i / 5) as f32) * 22.0;
             u.order = UnitOrder::MoveTo { x: wx + offset_x, y: wy + offset_y };
         }
     }
@@ -877,7 +1082,7 @@ fn check_bevy_hud_click(engine: &mut GameEngine, sx: f32, sy: f32) -> bool {
 }
 
 fn handle_command_card_click(engine: &mut GameEngine, rel_x: f32, rel_y: f32) {
-    let col = (rel_x / 65.0) as usize;
+    let col = (rel_x / 68.0) as usize;
     let row = (rel_y / 60.0) as usize;
     let btn_idx = row * 3 + col;
 
@@ -947,4 +1152,3 @@ fn try_queue_unit(engine: &mut GameEngine, bid: u32, u_type: UnitType, min_cost:
         }
     }
 }
-
