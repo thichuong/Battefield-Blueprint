@@ -67,6 +67,7 @@ pub struct GameEngine {
 
     // AI timer & Income tracker
     pub ai_think_timer: f32,
+    pub sync_timer: f32,
     pub minerals_mined_accumulator: f32,
     pub income_calc_timer: f32,
     pub difficulty: String,
@@ -118,6 +119,7 @@ impl GameEngine {
             keys_down: std::collections::HashSet::new(),
 
             ai_think_timer: 0.0,
+            sync_timer: 0.0,
             minerals_mined_accumulator: 0.0,
             income_calc_timer: 0.0,
             difficulty: "normal".to_string(),

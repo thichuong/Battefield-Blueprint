@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   X,
   Zap,
@@ -8,6 +8,8 @@ import {
   Atom,
   Sparkles,
   Bug,
+  Pause,
+  Play,
 } from 'lucide-react';
 import { TechState } from '../bridge/wasmBridge';
 
@@ -18,6 +20,8 @@ interface TechTreeModalProps {
   minerals: number;
   energy: number;
   onResearch: (techId: string) => void;
+  autoPause?: boolean;
+  onToggleAutoPause?: (val: boolean) => void;
 }
 
 export type MajorBranch = 'science' | 'magic' | 'monster' | 'logistics';
@@ -260,6 +264,190 @@ export const TECH_NODES: TechNode[] = [
   },
 ];
 
+// =========================================================================
+// SUBCOMPONENT 1: Memoized Resource Badge (Chỉ re-render khi số nguyên thay đổi)
+// =========================================================================
+interface ResourceBadgeProps {
+  minerals: number;
+  energy: number;
+}
+
+const ResourceBadge = React.memo<ResourceBadgeProps>(
+  ({ minerals, energy }) => {
+    return (
+      <div className="flex items-center gap-3 bg-slate-950 px-3.5 py-1.5 rounded-lg border border-cyan-900/70 font-mono text-xs">
+        <span className="text-cyan-400 font-bold">💎 {minerals.toFixed(0)}</span>
+        <span className="text-purple-400 font-bold">⚡ {energy.toFixed(0)}</span>
+      </div>
+    );
+  },
+  (prev, next) => {
+    return (
+      Math.floor(prev.minerals) === Math.floor(next.minerals) &&
+      Math.floor(prev.energy) === Math.floor(next.energy)
+    );
+  }
+);
+
+// =========================================================================
+// SUBCOMPONENT 2: Memoized Tech Card (Tối ưu hóa DOM khi cập nhật liên tục)
+// =========================================================================
+interface TechCardProps {
+  node: TechNode;
+  status: 'unlocked' | 'researching' | 'available' | 'locked';
+  progress: number;
+  isOtherResearching: boolean;
+  canAfford: boolean;
+  prerequisiteName?: string;
+  onResearch: (techId: string) => void;
+}
+
+const TechCard = React.memo<TechCardProps>(
+  ({
+    node,
+    status,
+    progress,
+    isOtherResearching,
+    canAfford,
+    prerequisiteName,
+    onResearch,
+  }) => {
+    const isUnlocked = status === 'unlocked';
+    const isResearching = status === 'researching';
+    const isLocked = status === 'locked';
+    const isAvailable = status === 'available';
+
+    return (
+      <div
+        className={`p-3.5 rounded-lg border transition-all ${
+          isUnlocked
+            ? 'bg-cyan-950/40 border-cyan-500/70 shadow-[0_0_14px_rgba(0,229,255,0.25)]'
+            : isResearching
+            ? 'bg-amber-950/40 border-amber-500/80 ring-1 ring-amber-500/50 shadow-[0_0_14px_rgba(245,158,11,0.25)]'
+            : isLocked
+            ? 'bg-slate-950/60 border-slate-800 opacity-60'
+            : 'bg-slate-800/40 border-slate-700 hover:border-cyan-400/60'
+        }`}
+      >
+        <div className="flex items-start justify-between">
+          <div className="font-semibold text-sm text-slate-100 flex items-center gap-1.5 font-mono">
+            {isUnlocked ? (
+              <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" />
+            ) : isResearching ? (
+              <Loader2 className="w-4 h-4 text-amber-400 animate-spin shrink-0" />
+            ) : isLocked ? (
+              <Lock className="w-4 h-4 text-slate-500 shrink-0" />
+            ) : null}
+            <span>{node.name}</span>
+          </div>
+        </div>
+
+        {/* Badges Phân loại Sát thương & Kháng */}
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {node.damageTypeBadge && (
+            <span
+              className={`text-[9px] font-mono px-2 py-0.5 rounded border ${node.damageTypeBadge.color}`}
+            >
+              {node.damageTypeBadge.label}
+            </span>
+          )}
+          {node.resistanceBadge && (
+            <span
+              className={`text-[9px] font-mono px-2 py-0.5 rounded border ${node.resistanceBadge.color}`}
+            >
+              {node.resistanceBadge.label}
+            </span>
+          )}
+        </div>
+
+        <p className="text-xs text-slate-300 mt-2 leading-relaxed">{node.desc}</p>
+
+        {isLocked && prerequisiteName && (
+          <div className="mt-2 text-[10px] text-amber-400/90 font-mono flex items-center gap-1">
+            <Lock className="w-3 h-3" />
+            <span>Yêu cầu trước: {prerequisiteName}</span>
+          </div>
+        )}
+
+        {/* Thanh tiến trình nghiên cứu thời gian thực */}
+        {isResearching && (
+          <div className="mt-2.5">
+            <div className="flex justify-between items-center text-[10px] font-mono text-amber-400 font-bold mb-1">
+              <span>ĐANG TIẾN HÀNH</span>
+              <span>{(progress * 100).toFixed(0)}%</span>
+            </div>
+            <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-amber-500/40">
+              <div
+                className="bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-300 h-full transition-all duration-150 ease-linear rounded-full"
+                style={{ width: `${Math.min(100, Math.max(0, progress * 100))}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-slate-700/60 text-xs">
+          <div className="flex items-center gap-2.5 font-mono text-xs">
+            <span className={`font-bold ${canAfford ? 'text-cyan-400' : 'text-rose-400'}`}>
+              💎 {node.minerals}
+            </span>
+            <span className={`font-bold ${canAfford ? 'text-purple-400' : 'text-rose-400'}`}>
+              ⚡ {node.energy}
+            </span>
+            <span className="text-slate-400">⏱ {node.time}s</span>
+          </div>
+
+          {isUnlocked ? (
+            <span className="text-xs font-mono text-cyan-400 font-bold tracking-wider flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5" /> ĐÃ MỞ KHÓA
+            </span>
+          ) : isResearching ? (
+            <div className="flex items-center gap-1 text-xs text-amber-400 font-mono font-bold">
+              <span>{(progress * 100).toFixed(0)}%</span>
+            </div>
+          ) : (
+            <button
+              onClick={() => onResearch(node.id)}
+              disabled={!isAvailable}
+              className={`px-3 py-1 rounded text-xs font-mono font-bold transition-all ${
+                isAvailable
+                  ? 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-md cursor-pointer active:scale-95'
+                  : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+              }`}
+            >
+              {isLocked
+                ? 'CHƯA ĐỦ ĐIỀU KIỆN'
+                : isOtherResearching
+                ? 'ĐANG BẬN NGHIÊN CỨU'
+                : !canAfford
+                ? 'THIẾU TÀI NGUYÊN'
+                : 'NGHIÊN CỨU'}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  },
+  (prev, next) => {
+    // 1. Nếu trạng thái thay đổi (ví dụ từ locked -> available hoặc researching -> unlocked) => re-render
+    if (prev.status !== next.status) return false;
+    // 2. Nếu đang nghiên cứu, chỉ re-render khi % tiến trình nguyên (0..100) thay đổi
+    if (next.status === 'researching') {
+      return Math.floor(prev.progress * 100) === Math.floor(next.progress * 100);
+    }
+    // 3. Nếu chưa unlocked, kiểm tra xem khả năng chi trả tài nguyên có đảo chiều hay không
+    if (next.status !== 'unlocked') {
+      if (prev.canAfford !== next.canAfford) return false;
+      if (prev.isOtherResearching !== next.isOtherResearching) return false;
+      if (prev.prerequisiteName !== next.prerequisiteName) return false;
+    }
+    // 4. Các trường hợp còn lại (đặc biệt là 'unlocked'): BỎ QUA RE-RENDER HOÀN TOÀN
+    return true;
+  }
+);
+
+// =========================================================================
+// MAIN COMPONENT: TechTreeModal
+// =========================================================================
 export const TechTreeModal: React.FC<TechTreeModalProps> = ({
   isOpen,
   onClose,
@@ -267,32 +455,38 @@ export const TechTreeModal: React.FC<TechTreeModalProps> = ({
   minerals,
   energy,
   onResearch,
+  autoPause = true,
+  onToggleAutoPause,
 }) => {
   const [activeTab, setActiveTab] = useState<MajorBranch>('science');
 
-  if (!isOpen) return null;
+  const isUnlocked = useCallback(
+    (id: string): boolean => {
+      if (!techState) return false;
+      return !!(techState as any)[id];
+    },
+    [techState]
+  );
 
-  const isUnlocked = (id: string): boolean => {
-    if (!techState) return false;
-    return !!(techState as any)[id];
-  };
+  const isResearching = useCallback(
+    (id: string): boolean => {
+      return techState?.current_research === id;
+    },
+    [techState?.current_research]
+  );
 
-  const isResearching = (id: string): boolean => {
-    return techState?.current_research === id;
-  };
-
-  const canResearch = (node: TechNode): boolean => {
-    if (isUnlocked(node.id)) return false;
-    if (techState?.current_research) return false;
-    if (node.requires && !isUnlocked(node.requires)) return false;
-    if (minerals < node.minerals || energy < node.energy) return false;
-    return true;
-  };
-
-  const currentNodes = TECH_NODES.filter((n) => n.majorBranch === activeTab);
+  const currentNodes = useMemo(
+    () => TECH_NODES.filter((n) => n.majorBranch === activeTab),
+    [activeTab]
+  );
 
   // Nhóm theo tiểu nhánh
-  const subBranches = Array.from(new Set(currentNodes.map((n) => n.subBranch)));
+  const subBranches = useMemo(
+    () => Array.from(new Set(currentNodes.map((n) => n.subBranch))),
+    [currentNodes]
+  );
+
+  if (!isOpen) return null;
 
   const getTabHeader = () => {
     switch (activeTab) {
@@ -324,9 +518,10 @@ export const TechTreeModal: React.FC<TechTreeModalProps> = ({
   };
 
   const headerInfo = getTabHeader();
+  const isAnyResearching = !!techState?.current_research;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 select-none">
       <div className="bg-[#030d1a] border-2 border-cyan-500/80 rounded-xl w-full max-w-5xl shadow-[0_0_50px_rgba(0,229,255,0.3)] flex flex-col max-h-[92vh]">
         {/* Header Modal */}
         <div className="flex items-center justify-between px-6 py-3.5 border-b border-cyan-900/60 bg-slate-900/50">
@@ -340,10 +535,24 @@ export const TechTreeModal: React.FC<TechTreeModalProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3 bg-slate-950 px-3.5 py-1.5 rounded-lg border border-cyan-900/70 font-mono text-xs">
-              <span className="text-cyan-400 font-bold">💎 {minerals.toFixed(0)}</span>
-              <span className="text-purple-400 font-bold">⚡ {energy.toFixed(0)}</span>
-            </div>
+            {/* Tùy chọn Tạm dừng Trận đấu Ngay trong Header */}
+            {onToggleAutoPause && (
+              <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] font-mono text-slate-300 hover:text-cyan-300 transition-colors bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-700/80">
+                <input
+                  type="checkbox"
+                  checked={autoPause}
+                  onChange={(e) => onToggleAutoPause(e.target.checked)}
+                  className="w-3.5 h-3.5 accent-cyan-400 cursor-pointer"
+                />
+                <span className="flex items-center gap-1">
+                  {autoPause ? <Pause className="w-3 h-3 text-cyan-400" /> : <Play className="w-3 h-3 text-emerald-400" />}
+                  {autoPause ? 'Dừng thời gian khi mở' : 'Thời gian tiếp tục chạy'}
+                </span>
+              </label>
+            )}
+
+            <ResourceBadge minerals={minerals} energy={energy} />
+
             <button
               onClick={onClose}
               className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
@@ -446,95 +655,34 @@ export const TechTreeModal: React.FC<TechTreeModalProps> = ({
                   {nodes.map((node) => {
                     const unlocked = isUnlocked(node.id);
                     const researching = isResearching(node.id);
-                    const available = canResearch(node);
-                    const lockedByReq = node.requires && !isUnlocked(node.requires);
+                    const lockedByReq = Boolean(node.requires && !isUnlocked(node.requires));
+                    const canAfford = minerals >= node.minerals && energy >= node.energy;
+
+                    let status: 'unlocked' | 'researching' | 'available' | 'locked' = 'available';
+                    if (unlocked) {
+                      status = 'unlocked';
+                    } else if (researching) {
+                      status = 'researching';
+                    } else if (lockedByReq) {
+                      status = 'locked';
+                    } else if (isAnyResearching || !canAfford) {
+                      status = 'available'; // nút sẽ disabled nếu đang bận hoặc thiếu tiền
+                    }
+
+                    const reqNode = node.requires ? TECH_NODES.find((n) => n.id === node.requires) : undefined;
+                    const prerequisiteName = reqNode ? reqNode.name : node.requires;
 
                     return (
-                      <div
+                      <TechCard
                         key={node.id}
-                        className={`p-3.5 rounded-lg border transition-all ${
-                          unlocked
-                            ? 'bg-cyan-950/40 border-cyan-500/70 shadow-[0_0_14px_rgba(0,229,255,0.25)]'
-                            : researching
-                            ? 'bg-amber-950/40 border-amber-500/80 animate-pulse'
-                            : lockedByReq
-                            ? 'bg-slate-950/60 border-slate-800 opacity-55'
-                            : 'bg-slate-800/40 border-slate-700 hover:border-cyan-400/60'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="font-semibold text-sm text-slate-100 flex items-center gap-1.5 font-mono">
-                            {unlocked ? (
-                              <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" />
-                            ) : researching ? (
-                              <Loader2 className="w-4 h-4 text-amber-400 animate-spin shrink-0" />
-                            ) : lockedByReq ? (
-                              <Lock className="w-4 h-4 text-slate-500 shrink-0" />
-                            ) : null}
-                            <span>{node.name}</span>
-                          </div>
-                        </div>
-
-                        {/* Badges Phân loại Sát thương & Kháng */}
-                        <div className="flex flex-wrap gap-1.5 mt-2">
-                          {node.damageTypeBadge && (
-                            <span
-                              className={`text-[9px] font-mono px-2 py-0.5 rounded border ${node.damageTypeBadge.color}`}
-                            >
-                              {node.damageTypeBadge.label}
-                            </span>
-                          )}
-                          {node.resistanceBadge && (
-                            <span
-                              className={`text-[9px] font-mono px-2 py-0.5 rounded border ${node.resistanceBadge.color}`}
-                            >
-                              {node.resistanceBadge.label}
-                            </span>
-                          )}
-                        </div>
-
-                        <p className="text-xs text-slate-300 mt-2 leading-relaxed">{node.desc}</p>
-
-                        {node.requires && !isUnlocked(node.requires) && (
-                          <div className="mt-2 text-[10px] text-amber-400/90 font-mono flex items-center gap-1">
-                            <Lock className="w-3 h-3" />
-                            <span>
-                              Yêu cầu trước:{' '}
-                              {TECH_NODES.find((n) => n.id === node.requires)?.name || node.requires}
-                            </span>
-                          </div>
-                        )}
-
-                        <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-slate-700/60 text-xs">
-                          <div className="flex items-center gap-2.5 font-mono text-xs">
-                            <span className="text-cyan-400 font-bold">💎 {node.minerals}</span>
-                            <span className="text-purple-400 font-bold">⚡ {node.energy}</span>
-                            <span className="text-slate-400">⏱ {node.time}s</span>
-                          </div>
-
-                          {unlocked ? (
-                            <span className="text-xs font-mono text-cyan-400 font-bold tracking-wider">
-                              ĐÃ MỞ KHÓA
-                            </span>
-                          ) : researching ? (
-                            <div className="flex items-center gap-1.5 text-xs text-amber-400 font-mono font-bold">
-                              <span>{((techState?.research_progress || 0) * 100).toFixed(0)}%</span>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => onResearch(node.id)}
-                              disabled={!available}
-                              className={`px-3 py-1 rounded text-xs font-mono font-bold transition-all ${
-                                available
-                                  ? 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-md cursor-pointer'
-                                  : 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                              }`}
-                            >
-                              NGHIÊN CỨU
-                            </button>
-                          )}
-                        </div>
-                      </div>
+                        node={node}
+                        status={status}
+                        progress={techState?.research_progress || 0}
+                        isOtherResearching={isAnyResearching && !researching}
+                        canAfford={canAfford}
+                        prerequisiteName={prerequisiteName}
+                        onResearch={onResearch}
+                      />
                     );
                   })}
                 </div>
@@ -545,7 +693,20 @@ export const TechTreeModal: React.FC<TechTreeModalProps> = ({
 
         {/* Footer */}
         <div className="px-6 py-3 border-t border-cyan-900/40 bg-slate-950/80 flex justify-between items-center text-xs text-slate-400 font-mono">
-          <span>* Các chỉ số sát thương và kháng cự có hiệu lực tức thời cho toàn bộ chiến trường.</span>
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1.5">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  autoPause ? 'bg-cyan-400 animate-pulse' : 'bg-emerald-400 animate-ping'
+                }`}
+              />
+              <span className={autoPause ? 'text-cyan-300' : 'text-emerald-300 font-semibold'}>
+                {autoPause
+                  ? 'Trận đấu đang tạm dừng (Chiến trường đóng băng)'
+                  : 'Trận đấu đang tiếp tục (Cập nhật thời gian thực)'}
+              </span>
+            </span>
+          </div>
           <button
             onClick={onClose}
             className="px-4 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-bold transition-all"

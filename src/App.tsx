@@ -39,6 +39,31 @@ const initialGameState: EngineSyncState = {
   is_paused: false,
 };
 
+const SETTINGS_STORAGE_KEY = 'battlefield_blueprint_settings';
+
+function loadStoredSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (raw) {
+      return {
+        soundVolume: 0.7,
+        cameraSpeed: 1.0,
+        autoPause: true,
+        showGrid: true,
+        ...JSON.parse(raw),
+      };
+    }
+  } catch (e) {
+    // ignore
+  }
+  return {
+    soundVolume: 0.7,
+    cameraSpeed: 1.0,
+    autoPause: true,
+    showGrid: true,
+  };
+}
+
 export const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isInGame, setIsInGame] = useState<boolean>(false);
@@ -50,13 +75,7 @@ export const App: React.FC = () => {
   }>({ isOpen: false, playerWon: false });
 
   const [gameState, setGameState] = useState<EngineSyncState>(initialGameState);
-
-  const [settings, setSettings] = useState({
-    soundVolume: 0.7,
-    cameraSpeed: 1.0,
-    autoPause: true,
-    showGrid: true,
-  });
+  const [settings, setSettings] = useState(loadStoredSettings);
 
   // Khởi tạo Wasm và Canvas
   useEffect(() => {
@@ -78,6 +97,15 @@ export const App: React.FC = () => {
 
       window.addEventListener('resize', resize);
       resize();
+
+      // Đồng bộ settings ban đầu xuống Wasm
+      wasmBridge.sendCommand({
+        type: 'UpdateSettings',
+        sound_volume: settings.soundVolume,
+        camera_speed: settings.cameraSpeed,
+        auto_pause: settings.autoPause,
+        show_grid: settings.showGrid,
+      });
 
       // Tách 2 vòng lặp:
       // Vòng lặp 1: Fixed Timestep Accumulator cho Logic Mô phỏng (60 Ticks/giây)
@@ -188,15 +216,36 @@ export const App: React.FC = () => {
     e.preventDefault(); // Ngăn menu chuột phải mặc định của trình duyệt
   }, []);
 
+  const handleOpenTechTree = useCallback(() => {
+    setIsTechTreeOpen(true);
+    if (settings.autoPause) {
+      wasmBridge.sendCommand({ type: 'SetPaused', paused: true });
+    }
+  }, [settings.autoPause]);
+
+  const handleCloseTechTree = useCallback(() => {
+    setIsTechTreeOpen(false);
+    if (settings.autoPause) {
+      wasmBridge.sendCommand({ type: 'SetPaused', paused: false });
+    }
+  }, [settings.autoPause]);
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'KeyT') {
-        setIsTechTreeOpen((prev) => !prev);
+        if (isTechTreeOpen) {
+          handleCloseTechTree();
+        } else {
+          handleOpenTechTree();
+        }
+        return;
       } else if (e.code === 'Escape') {
         if (isTechTreeOpen) {
-          setIsTechTreeOpen(false);
+          handleCloseTechTree();
+          return;
         } else {
           setIsSettingsOpen((prev) => !prev);
+          return;
         }
       }
       wasmBridge.onKeyDown(e.code);
@@ -213,7 +262,7 @@ export const App: React.FC = () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [isTechTreeOpen]);
+  }, [isTechTreeOpen, handleCloseTechTree, handleOpenTechTree]);
 
   const handleStartGame = (difficulty: string) => {
     setIsInGame(true);
@@ -235,8 +284,13 @@ export const App: React.FC = () => {
     });
   };
 
-  const handleUpdateSettings = (newSettings: typeof settings) => {
+  const handleUpdateSettings = useCallback((newSettings: typeof settings) => {
     setSettings(newSettings);
+    try {
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(newSettings));
+    } catch (e) {
+      // ignore
+    }
     wasmBridge.sendCommand({
       type: 'UpdateSettings',
       sound_volume: newSettings.soundVolume,
@@ -244,7 +298,7 @@ export const App: React.FC = () => {
       auto_pause: newSettings.autoPause,
       show_grid: newSettings.showGrid,
     });
-  };
+  }, []);
 
   const handleRestartGame = () => {
     setIsInGame(true);
@@ -282,16 +336,19 @@ export const App: React.FC = () => {
 
       <TechTreeModal
         isOpen={isTechTreeOpen}
-        onClose={() => {
-          setIsTechTreeOpen(false);
-          if (settings.autoPause) {
-            wasmBridge.sendCommand({ type: 'SetPaused', paused: false });
-          }
-        }}
+        onClose={handleCloseTechTree}
         techState={gameState.tech_state}
         minerals={gameState.player_minerals}
         energy={gameState.player_energy}
         onResearch={handleResearchTech}
+        autoPause={settings.autoPause}
+        onToggleAutoPause={(val) => {
+          const newSettings = { ...settings, autoPause: val };
+          handleUpdateSettings(newSettings);
+          if (isTechTreeOpen) {
+            wasmBridge.sendCommand({ type: 'SetPaused', paused: val });
+          }
+        }}
       />
 
       <SettingsModal

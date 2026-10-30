@@ -96,7 +96,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {/* Tự động tạm dừng khi xem Tech Tree */}
           <div className="flex items-center justify-between pt-2 border-t border-slate-800">
-            <span className="text-slate-300">Tự động tạm dừng khi mở Cây Công Nghệ:</span>
+            <div>
+              <span className="text-slate-300 block">Tạm dừng trận đấu khi xem Cây Công Nghệ [T]:</span>
+              <span className="text-[11px] text-slate-500">
+                {autoPause
+                  ? 'Đang bật: Trận đấu đóng băng để suy nghĩ chiến thuật.'
+                  : 'Đang tắt: Trận đấu & nghiên cứu cập nhật liên tục thời gian thực.'}
+              </span>
+            </div>
             <input
               type="checkbox"
               checked={autoPause}
@@ -108,7 +115,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   showGrid,
                 });
               }}
-              className="w-4 h-4 accent-cyan-400 cursor-pointer"
+              className="w-4 h-4 accent-cyan-400 cursor-pointer shrink-0 ml-3"
             />
           </div>
 

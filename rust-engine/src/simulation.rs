@@ -48,8 +48,12 @@ pub fn step(engine: &mut GameEngine, dt: f32) {
     // 11. Kiểm tra Điều kiện Thắng / Thua
     check_game_over(engine);
 
-    // 12. Bắn sự kiện định kỳ đồng bộ về React
-    send_sync_event(engine);
+    // 12. Bắn sự kiện định kỳ đồng bộ về React (~10 Hz / 100ms để giảm tải DOM và JSON parsing)
+    engine.sync_timer += dt;
+    if engine.sync_timer >= 0.1 {
+        engine.sync_timer = 0.0;
+        send_sync_event(engine);
+    }
 }
 
 fn process_commands(engine: &mut GameEngine) {
@@ -71,9 +75,11 @@ fn process_commands(engine: &mut GameEngine) {
             }
             ReactToEngineCommand::SetPaused { paused } => {
                 engine.is_paused = paused;
+                send_sync_event(engine);
             }
             ReactToEngineCommand::UpgradeTech { tech_id } => {
                 try_start_research(engine, &tech_id);
+                send_sync_event(engine);
             }
             ReactToEngineCommand::UpdateSettings {
                 sound_volume,
@@ -214,6 +220,7 @@ fn update_tech_research(engine: &mut GameEngine, dt: f32) {
             engine.outgoing_events.push(EngineToReactEvent::PlaySound {
                 sound: "research_complete".to_string(),
             });
+            send_sync_event(engine);
         }
     }
 }
@@ -1377,6 +1384,7 @@ pub fn handle_hotkeys(engine: &mut GameEngine, key: &str) {
             engine
                 .outgoing_events
                 .push(EngineToReactEvent::OpenTechTreeModal);
+            send_sync_event(engine);
         }
         "Escape" => {
             if engine.is_attack_move_mode {
@@ -1721,6 +1729,7 @@ fn check_bevy_hud_click(engine: &mut GameEngine, sx: f32, sy: f32) -> bool {
         engine
             .outgoing_events
             .push(EngineToReactEvent::OpenTechTreeModal);
+        send_sync_event(engine);
         return true;
     }
 
