@@ -70,6 +70,22 @@ export function engine_tick(dt) {
 }
 
 /**
+ * @returns {string}
+ */
+export function get_game_config() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.get_game_config();
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
  * @param {string} key
  */
 export function handle_key_down(key) {
@@ -147,6 +163,22 @@ export function poll_events_from_engine() {
 }
 
 /**
+ * @returns {string}
+ */
+export function reset_game_config() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.reset_game_config();
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
  * @param {number} width
  * @param {number} height
  */
@@ -161,6 +193,17 @@ export function send_command_to_engine(cmd_json) {
     const ptr0 = passStringToWasm0(cmd_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
     wasm.send_command_to_engine(ptr0, len0);
+}
+
+/**
+ * @param {string} config_json
+ * @returns {boolean}
+ */
+export function set_game_config(config_json) {
+    const ptr0 = passStringToWasm0(config_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.set_game_config(ptr0, len0);
+    return ret !== 0;
 }
 function __wbg_get_imports() {
     const import0 = {

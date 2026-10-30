@@ -12,8 +12,82 @@ import init, {
   handle_mouse_wheel,
   handle_key_down,
   handle_key_up,
+  get_game_config,
+  set_game_config,
+  reset_game_config,
 } from '../wasm-pkg/rust_engine.js';
 import { soundEngine } from '../audio/soundEngine';
+
+export interface Resistances {
+  physical: number;
+  energy: number;
+  explosive: number;
+  arcane: number;
+}
+
+export type DamageType = 'Physical' | 'Energy' | 'Explosive' | 'Arcane';
+
+export interface UnitStatsConfig {
+  name: string;
+  hp: number;
+  speed: number;
+  attack_range: number;
+  attack_damage: number;
+  attack_cooldown: number;
+  damage_type: DamageType;
+  aoe_radius: number;
+  resistances: Resistances;
+  cost_minerals: number;
+  cost_energy: number;
+  training_time: number;
+}
+
+export interface BuildingStatsConfig {
+  name: string;
+  hp: number;
+  cost_minerals: number;
+  cost_energy: number;
+  width: number;
+  height: number;
+  build_time: number;
+  resistances: Resistances;
+  supply_bonus: number;
+  energy_per_sec: number;
+  turret_range: number;
+  turret_damage: number;
+  turret_cooldown: number;
+  turret_damage_type: DamageType;
+  turret_projectile_speed: number;
+}
+
+export interface EconomyConfig {
+  starting_minerals: number;
+  starting_energy: number;
+  starting_supply: number;
+  base_max_supply: number;
+  base_energy_per_sec: number;
+  worker_carry_capacity: number;
+  worker_mining_time: number;
+  worker_carry_capacity_upgraded: number;
+  worker_mining_time_upgraded: number;
+  converter_threshold: number;
+  converter_energy_per_sec: number;
+  converter_gold_per_100_energy: number;
+}
+
+export interface TechItemConfig {
+  name: string;
+  cost_minerals: number;
+  cost_energy: number;
+  research_time: number;
+}
+
+export interface GameConfig {
+  units: Record<string, UnitStatsConfig>;
+  buildings: Record<string, BuildingStatsConfig>;
+  economy: EconomyConfig;
+  techs: Record<string, TechItemConfig>;
+}
 
 export interface TechState {
   // Khoa học
@@ -157,6 +231,34 @@ class WasmBridge {
   public onKeyUp(key: string) {
     if (!this.isInitialized) return;
     handle_key_up(key);
+  }
+
+  public getGameConfig(): GameConfig | null {
+    if (!this.isInitialized) return null;
+    try {
+      const json = get_game_config();
+      return JSON.parse(json);
+    } catch (e) {
+      console.error('Failed to get game config:', e);
+      return null;
+    }
+  }
+
+  public setGameConfig(config: GameConfig | string): boolean {
+    if (!this.isInitialized) return false;
+    const jsonStr = typeof config === 'string' ? config : JSON.stringify(config);
+    return set_game_config(jsonStr);
+  }
+
+  public resetGameConfig(): GameConfig | null {
+    if (!this.isInitialized) return null;
+    try {
+      const json = reset_game_config();
+      return JSON.parse(json);
+    } catch (e) {
+      console.error('Failed to reset game config:', e);
+      return null;
+    }
   }
 }
 

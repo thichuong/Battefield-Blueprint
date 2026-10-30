@@ -18,6 +18,10 @@ pub enum ReactToEngineCommand {
         auto_pause: bool,
         show_grid: bool,
     },
+    UpdateGameConfig {
+        config_json: String,
+    },
+    ResetGameConfig,
     RestartGame,
 }
 

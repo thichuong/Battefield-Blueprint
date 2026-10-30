@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Play, Shield, Cpu, Zap, Crosshair } from 'lucide-react';
+import { Play, Shield, Cpu, Zap, Crosshair, Sliders } from 'lucide-react';
 
 interface MainMenuProps {
   onStartGame: (difficulty: string) => void;
+  onOpenConfig?: () => void;
 }
 
-export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
+export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenConfig }) => {
   const [difficulty, setDifficulty] = useState<string>('normal');
 
   return (
@@ -71,13 +72,24 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
           </div>
         </div>
 
-        {/* Start Button */}
-        <button
-          onClick={() => onStartGame(difficulty)}
-          className="flex items-center justify-center gap-2 w-full py-4 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-base tracking-wider uppercase shadow-[0_0_30px_rgba(0,229,255,0.4)] transition-all transform hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
-        >
-          <Play className="w-5 h-5 fill-current" /> XUẤT QUÂN // BẮT ĐẦU TRẬN ĐẤU
-        </button>
+        {/* Actions */}
+        <div className="flex flex-col gap-3 w-full">
+          <button
+            onClick={() => onStartGame(difficulty)}
+            className="flex items-center justify-center gap-2 w-full py-4 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-base tracking-wider uppercase shadow-[0_0_30px_rgba(0,229,255,0.4)] transition-all transform hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+          >
+            <Play className="w-5 h-5 fill-current" /> XUẤT QUÂN // BẮT ĐẦU TRẬN ĐẤU
+          </button>
+
+          {onOpenConfig && (
+            <button
+              onClick={onOpenConfig}
+              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-slate-900/80 hover:bg-slate-800 border border-slate-700 hover:border-cyan-500/50 text-cyan-400 font-bold text-xs tracking-wider uppercase transition-all cursor-pointer"
+            >
+              <Sliders className="w-4 h-4" /> CẤU HÌNH THÔNG SỐ GAME // GAME CONFIG
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

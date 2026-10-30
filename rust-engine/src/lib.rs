@@ -6,6 +6,7 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 pub mod ai;
 pub mod bridge;
 pub mod components;
+pub mod config;
 pub mod fog;
 pub mod map;
 pub mod renderer;
@@ -15,6 +16,7 @@ pub mod spatial_grid;
 
 use bridge::*;
 use components::*;
+use config::GameConfig;
 use fog::FogOfWar;
 use resources::*;
 use spatial_grid::SpatialGrid;
@@ -29,6 +31,7 @@ pub struct GameEngine {
     pub camera: CameraState,
     pub fog: FogOfWar,
     pub settings: GameSettings,
+    pub config: GameConfig,
 
     // Thực thể ECS trong game
     pub units: Vec<Unit>,
@@ -80,12 +83,24 @@ pub struct GameEngine {
 impl GameEngine {
     pub fn new(canvas: HtmlCanvasElement, ctx: CanvasRenderingContext2d) -> Self {
         let (minerals, obstacles) = map::generate_map_elements();
+        let config = GameConfig::default();
+        let player_eco = PlayerEconomy {
+            minerals: config.economy.starting_minerals,
+            energy: config.economy.starting_energy,
+            supply: config.economy.starting_supply,
+            max_supply: config.economy.base_max_supply,
+            minerals_per_sec: 0.0,
+            energy_per_sec: config.economy.base_energy_per_sec,
+        };
+        let enemy_eco = player_eco.clone();
+
         let mut engine = Self {
             context: ctx,
             canvas,
             camera: CameraState::default(),
             fog: FogOfWar::new(),
             settings: GameSettings::default(),
+            config,
 
             units: Vec::new(),
             buildings: Vec::new(),
@@ -95,8 +110,8 @@ impl GameEngine {
             floating_texts: Vec::new(),
             spatial_grid: SpatialGrid::new(),
 
-            player_eco: PlayerEconomy::default(),
-            enemy_eco: PlayerEconomy::default(),
+            player_eco,
+            enemy_eco,
             player_tech: TechTreeState::default(),
             enemy_tech: TechTreeState::default(),
 
@@ -150,8 +165,15 @@ impl GameEngine {
         self.fog = FogOfWar::new();
 
         // 4. Reset tài nguyên kinh tế & cây công nghệ về ban đầu
-        self.player_eco = PlayerEconomy::default();
-        self.enemy_eco = PlayerEconomy::default();
+        self.player_eco = PlayerEconomy {
+            minerals: self.config.economy.starting_minerals,
+            energy: self.config.economy.starting_energy,
+            supply: self.config.economy.starting_supply,
+            max_supply: self.config.economy.base_max_supply,
+            minerals_per_sec: 0.0,
+            energy_per_sec: self.config.economy.base_energy_per_sec,
+        };
+        self.enemy_eco = self.player_eco.clone();
         self.player_tech = TechTreeState::default();
         self.enemy_tech = TechTreeState::default();
 
@@ -198,128 +220,64 @@ impl GameEngine {
     pub fn init_base(&mut self) {
         // Căn cứ Player (Góc Tây-Nam)
         let p_cc_id = self.alloc_id();
-        self.buildings.push(Building {
-            id: p_cc_id,
-            team: Team::Player,
-            building_type: BuildingType::CommandCenter,
-            x: 250.0,
-            y: 2050.0,
-            width: 90.0,
-            height: 90.0,
-            hp: 2000.0,
-            max_hp: 2000.0,
-            damage_type: DamageType::Physical,
-            resistances: Resistances {
-                physical: 0.25,
-                energy: 0.15,
-                explosive: 0.20,
-                arcane: 0.10,
-            },
-            build_progress: 1.0,
-            attack_cooldown: 0.0,
-            current_cooldown: 0.0,
-            rally_x: 360.0,
-            rally_y: 2050.0,
-            training_queue: Vec::new(),
-            training_timer: 0.0,
-        });
+        let mut p_cc = self.config.create_building(
+            p_cc_id,
+            Team::Player,
+            BuildingType::CommandCenter,
+            250.0,
+            2050.0,
+            true,
+        );
+        p_cc.rally_x = 360.0;
+        p_cc.rally_y = 2050.0;
+        self.buildings.push(p_cc);
 
         // 3 Thợ mỏ khởi đầu cho Player (Tự động đi đào mỏ ngay khi vào trận)
         for i in 0..3 {
             let u_id = self.alloc_id();
             let mineral_target_id = (i as u32 % 3) + 1;
-            self.units.push(Unit {
-                id: u_id,
-                team: Team::Player,
-                unit_type: UnitType::Engineer,
-                x: 230.0 + (i as f32 * 35.0),
-                y: 1980.0,
-                target_x: 230.0 + (i as f32 * 35.0),
-                target_y: 1980.0,
-                speed: 120.0,
-                hp: 90.0,
-                max_hp: 90.0,
-                attack_range: 30.0,
-                attack_damage: 5.0,
-                damage_type: DamageType::Physical,
-                aoe_radius: 0.0,
-                resistances: Resistances {
-                    physical: 0.05,
-                    energy: 0.0,
-                    explosive: 0.0,
-                    arcane: 0.0,
-                },
-                attack_cooldown: 1.0,
-                current_cooldown: 0.0,
-                walk_cycle: 0.0,
-                facing_right: true,
-                order: UnitOrder::Harvest {
-                    target_mineral_id: mineral_target_id,
-                    phase: HarvestPhase::MovingToNode,
-                },
-                carried_minerals: 0.0,
-            });
+            let mut u = self.config.create_unit(
+                u_id,
+                Team::Player,
+                UnitType::Engineer,
+                230.0 + (i as f32 * 35.0),
+                1980.0,
+            );
+            u.facing_right = true;
+            u.order = UnitOrder::Harvest {
+                target_mineral_id: mineral_target_id,
+                phase: HarvestPhase::MovingToNode,
+            };
+            self.units.push(u);
         }
 
         // Căn cứ Enemy (Góc Đông-Bắc)
         let e_cc_id = self.alloc_id();
-        self.buildings.push(Building {
-            id: e_cc_id,
-            team: Team::Enemy,
-            building_type: BuildingType::CommandCenter,
-            x: 2150.0,
-            y: 350.0,
-            width: 90.0,
-            height: 90.0,
-            hp: 2000.0,
-            max_hp: 2000.0,
-            damage_type: DamageType::Physical,
-            resistances: Resistances {
-                physical: 0.25,
-                energy: 0.15,
-                explosive: 0.20,
-                arcane: 0.10,
-            },
-            build_progress: 1.0,
-            attack_cooldown: 0.0,
-            current_cooldown: 0.0,
-            rally_x: 2050.0,
-            rally_y: 350.0,
-            training_queue: Vec::new(),
-            training_timer: 0.0,
-        });
+        let mut e_cc = self.config.create_building(
+            e_cc_id,
+            Team::Enemy,
+            BuildingType::CommandCenter,
+            2150.0,
+            350.0,
+            true,
+        );
+        e_cc.rally_x = 2050.0;
+        e_cc.rally_y = 350.0;
+        self.buildings.push(e_cc);
 
         // 3 Thợ mỏ cho Enemy
         for i in 0..3 {
             let u_id = self.alloc_id();
-            self.units.push(Unit {
-                id: u_id,
-                team: Team::Enemy,
-                unit_type: UnitType::Engineer,
-                x: 2120.0 - (i as f32 * 35.0),
-                y: 420.0,
-                target_x: 2120.0 - (i as f32 * 35.0),
-                target_y: 420.0,
-                speed: 120.0,
-                hp: 90.0,
-                max_hp: 90.0,
-                attack_range: 30.0,
-                attack_damage: 5.0,
-                damage_type: DamageType::Physical,
-                aoe_radius: 0.0,
-                resistances: Resistances {
-                    physical: 0.05,
-                    energy: 0.0,
-                    explosive: 0.0,
-                    arcane: 0.0,
-                },
-                attack_cooldown: 1.0,
-                current_cooldown: 0.0,
-                walk_cycle: 0.0,
-                facing_right: false,
-                order: UnitOrder::Idle,
-                carried_minerals: 0.0,
-            });
+            let mut u = self.config.create_unit(
+                u_id,
+                Team::Enemy,
+                UnitType::Engineer,
+                2120.0 - (i as f32 * 35.0),
+                420.0,
+            );
+            u.facing_right = false;
+            u.order = UnitOrder::Idle;
+            self.units.push(u);
         }
     }
 
@@ -480,4 +438,43 @@ pub fn handle_key_up(key: &str) {
             engine.keys_down.remove(key);
         }
     });
+}
+
+#[wasm_bindgen]
+pub fn get_game_config() -> String {
+    ENGINE_STATE.with(|state| {
+        if let Some(ref engine) = *state.borrow() {
+            engine.config.to_json()
+        } else {
+            GameConfig::default().to_json()
+        }
+    })
+}
+
+#[wasm_bindgen]
+pub fn set_game_config(config_json: &str) -> bool {
+    ENGINE_STATE.with(|state| {
+        if let Some(ref mut engine) = *state.borrow_mut() {
+            if let Ok(new_cfg) = GameConfig::from_json(config_json) {
+                engine.config = new_cfg;
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    })
+}
+
+#[wasm_bindgen]
+pub fn reset_game_config() -> String {
+    let default_cfg = GameConfig::default();
+    let json = default_cfg.to_json();
+    ENGINE_STATE.with(|state| {
+        if let Some(ref mut engine) = *state.borrow_mut() {
+            engine.config = default_cfg;
+        }
+    });
+    json
 }

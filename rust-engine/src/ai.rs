@@ -43,7 +43,8 @@ pub fn update_ai(engine: &mut GameEngine) {
     let enemy_minerals_val = engine.enemy_eco.minerals;
 
     // Cần thêm Supply Depot khi gần chạm trần
-    if enemy_supply + 2 >= enemy_max_supply && enemy_minerals_val >= 100.0 {
+    let (depot_min, _) = engine.config.get_building_cost(BuildingType::SupplyDepot);
+    if enemy_supply + 2 >= enemy_max_supply && enemy_minerals_val >= depot_min {
         let count_depots = engine
             .buildings
             .iter()
@@ -55,50 +56,47 @@ pub fn update_ai(engine: &mut GameEngine) {
                 BuildingType::SupplyDepot,
                 2050.0 - (count_depots as f32 * 70.0),
                 280.0,
-                100.0,
-                0.0,
             );
         }
     }
 
     // Xây Barracks
+    let (barracks_min, _) = engine.config.get_building_cost(BuildingType::Barracks);
     let barracks_count = engine
         .buildings
         .iter()
         .filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::Barracks)
         .count();
-    if barracks_count < 2 && engine.enemy_eco.minerals >= 150.0 {
+    if barracks_count < 2 && engine.enemy_eco.minerals >= barracks_min {
         try_ai_build(
             engine,
             BuildingType::Barracks,
             1950.0,
             480.0 + (barracks_count as f32 * 80.0),
-            150.0,
-            0.0,
         );
     }
 
     // Xây Power Reactor
+    let (reactor_min, _) = engine.config.get_building_cost(BuildingType::PowerReactor);
     let reactor_count = engine
         .buildings
         .iter()
         .filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::PowerReactor)
         .count();
-    if reactor_count < 2 && engine.enemy_eco.minerals >= 120.0 {
+    if reactor_count < 2 && engine.enemy_eco.minerals >= reactor_min {
         try_ai_build(
             engine,
             BuildingType::PowerReactor,
             2220.0,
             520.0 + (reactor_count as f32 * 70.0),
-            120.0,
-            0.0,
         );
     }
 
     // 3. AI Huấn luyện lính
     // Nếu thiếu Worker (< 6) xin thêm tại Command Center
+    let (worker_min, _) = engine.config.get_unit_cost(UnitType::Engineer);
     if enemy_workers.len() < 6
-        && engine.enemy_eco.minerals >= 50.0
+        && engine.enemy_eco.minerals >= worker_min
         && enemy_supply < enemy_max_supply
     {
         if let Some(cc) = engine.buildings.iter_mut().find(|b| {
@@ -107,7 +105,7 @@ pub fn update_ai(engine: &mut GameEngine) {
                 && b.build_progress >= 1.0
         }) {
             if cc.training_queue.len() < 2 {
-                engine.enemy_eco.minerals -= 50.0;
+                engine.enemy_eco.minerals -= worker_min;
                 cc.training_queue.push(UnitType::Engineer);
             }
         }
@@ -131,19 +129,25 @@ pub fn update_ai(engine: &mut GameEngine) {
                     3 => UnitType::BehemothTitan,
                     _ => UnitType::AcidBaneling,
                 };
-                let (mc, ec) = evo_unit.cost();
+                let (mc, ec) = engine.config.get_unit_cost(evo_unit);
                 if engine.enemy_eco.minerals >= mc && engine.enemy_eco.energy >= ec {
                     engine.enemy_eco.minerals -= mc;
                     engine.enemy_eco.energy -= ec;
                     b.training_queue.push(evo_unit);
                 }
-            } else if engine.enemy_eco.minerals >= 100.0 && engine.enemy_eco.energy >= 20.0 {
-                engine.enemy_eco.minerals -= 100.0;
-                engine.enemy_eco.energy -= 20.0;
-                b.training_queue.push(UnitType::Rifleman);
-            } else if engine.enemy_eco.minerals >= 75.0 {
-                engine.enemy_eco.minerals -= 75.0;
-                b.training_queue.push(UnitType::ShockTrooper);
+            } else {
+                let (rifle_m, rifle_e) = engine.config.get_unit_cost(UnitType::Rifleman);
+                let (striker_m, striker_e) = engine.config.get_unit_cost(UnitType::ShockTrooper);
+
+                if engine.enemy_eco.minerals >= rifle_m && engine.enemy_eco.energy >= rifle_e {
+                    engine.enemy_eco.minerals -= rifle_m;
+                    engine.enemy_eco.energy -= rifle_e;
+                    b.training_queue.push(UnitType::Rifleman);
+                } else if engine.enemy_eco.minerals >= striker_m && engine.enemy_eco.energy >= striker_e {
+                    engine.enemy_eco.minerals -= striker_m;
+                    engine.enemy_eco.energy -= striker_e;
+                    b.training_queue.push(UnitType::ShockTrooper);
+                }
             }
         }
     }
@@ -178,43 +182,17 @@ fn try_ai_build(
     b_type: BuildingType,
     wx: f32,
     wy: f32,
-    min_cost: f32,
-    en_cost: f32,
 ) {
+    let (min_cost, en_cost) = engine.config.get_building_cost(b_type);
     if engine.enemy_eco.minerals >= min_cost && engine.enemy_eco.energy >= en_cost {
         engine.enemy_eco.minerals -= min_cost;
         engine.enemy_eco.energy -= en_cost;
         let bid = engine.alloc_id();
-        let (w, h, hp) = match b_type {
-            BuildingType::SupplyDepot => (60.0, 60.0, 800.0),
-            BuildingType::PowerReactor => (60.0, 60.0, 700.0),
-            BuildingType::Barracks => (80.0, 70.0, 1200.0),
-            _ => (60.0, 60.0, 800.0),
-        };
-        engine.buildings.push(Building {
-            id: bid,
-            team: Team::Enemy,
-            building_type: b_type,
-            x: wx,
-            y: wy,
-            width: w,
-            height: h,
-            hp: 1.0,
-            max_hp: hp,
-            damage_type: DamageType::Physical,
-            resistances: Resistances {
-                physical: 0.15,
-                energy: 0.10,
-                explosive: 0.15,
-                arcane: 0.0,
-            },
-            build_progress: 0.1,
-            attack_cooldown: 0.0,
-            current_cooldown: 0.0,
-            rally_x: wx - 50.0,
-            rally_y: wy,
-            training_queue: Vec::new(),
-            training_timer: 0.0,
-        });
+        let mut building = engine.config.create_building(bid, Team::Enemy, b_type, wx, wy, false);
+        building.hp = 1.0;
+        building.build_progress = 0.1;
+        building.rally_x = wx - 50.0;
+        building.rally_y = wy;
+        engine.buildings.push(building);
     }
 }

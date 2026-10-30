@@ -50,6 +50,8 @@ export function engine_step(dt: number): void;
  */
 export function engine_tick(dt: number): void;
 
+export function get_game_config(): string;
+
 export function handle_key_down(key: string): void;
 
 export function handle_key_up(key: string): void;
@@ -66,19 +68,26 @@ export function init_engine(canvas: HTMLCanvasElement): void;
 
 export function poll_events_from_engine(): string;
 
+export function reset_game_config(): string;
+
 export function resize_canvas(width: number, height: number): void;
 
 export function send_command_to_engine(cmd_json: string): void;
+
+export function set_game_config(config_json: string): boolean;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
+    readonly get_game_config: () => [number, number];
     readonly handle_key_down: (a: number, b: number) => void;
     readonly handle_key_up: (a: number, b: number) => void;
     readonly init_engine: (a: any) => [number, number];
     readonly poll_events_from_engine: () => [number, number];
+    readonly reset_game_config: () => [number, number];
     readonly send_command_to_engine: (a: number, b: number) => void;
+    readonly set_game_config: (a: number, b: number) => number;
     readonly engine_step: (a: number) => void;
     readonly engine_tick: (a: number) => void;
     readonly handle_mouse_down: (a: number, b: number, c: number) => void;
@@ -90,10 +99,10 @@ export interface InitOutput {
     readonly __wbindgen_exn_store: (a: number) => void;
     readonly __externref_table_alloc: () => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;
+    readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __externref_table_dealloc: (a: number) => void;
-    readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_start: () => void;
 }
 

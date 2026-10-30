@@ -1,0 +1,458 @@
+{
+  "units": {
+    "ShockTrooper": {
+      "name": "STRIKER // SHOCK TROOPER",
+      "hp": 160.0,
+      "speed": 140.0,
+      "attack_range": 40.0,
+      "attack_damage": 22.0,
+      "attack_cooldown": 0.8,
+      "damage_type": "Energy",
+      "aoe_radius": 0.0,
+      "resistances": {
+        "physical": 0.15,
+        "energy": 0.2,
+        "explosive": 0.05,
+        "arcane": 0.1
+      },
+      "cost_minerals": 75.0,
+      "cost_energy": 0.0,
+      "training_time": 7.0
+    },
+    "Rifleman": {
+      "name": "MARKSMAN // RIFLEMAN",
+      "hp": 120.0,
+      "speed": 110.0,
+      "attack_range": 160.0,
+      "attack_damage": 14.0,
+      "attack_cooldown": 1.1,
+      "damage_type": "Physical",
+      "aoe_radius": 0.0,
+      "resistances": {
+        "physical": 0.1,
+        "energy": 0.05,
+        "explosive": 0.05,
+        "arcane": 0.05
+      },
+      "cost_minerals": 100.0,
+      "cost_energy": 20.0,
+      "training_time": 8.0
+    },
+    "BehemothTitan": {
+      "name": "BEHEMOTH // TITAN",
+      "hp": 650.0,
+      "speed": 80.0,
+      "attack_range": 55.0,
+      "attack_damage": 48.0,
+      "attack_cooldown": 1.4,
+      "damage_type": "Physical",
+      "aoe_radius": 45.0,
+      "resistances": {
+        "physical": 0.5,
+        "energy": 0.2,
+        "explosive": 0.45,
+        "arcane": 0.1
+      },
+      "cost_minerals": 250.0,
+      "cost_energy": 100.0,
+      "training_time": 20.0
+    },
+    "Engineer": {
+      "name": "ENGINEER // WORKER",
+      "hp": 90.0,
+      "speed": 120.0,
+      "attack_range": 30.0,
+      "attack_damage": 5.0,
+      "attack_cooldown": 1.0,
+      "damage_type": "Physical",
+      "aoe_radius": 0.0,
+      "resistances": {
+        "physical": 0.05,
+        "energy": 0.0,
+        "explosive": 0.0,
+        "arcane": 0.0
+      },
+      "cost_minerals": 50.0,
+      "cost_energy": 0.0,
+      "training_time": 5.0
+    },
+    "LaserMarksman": {
+      "name": "SIEGE // LASER MARKSMAN",
+      "hp": 110.0,
+      "speed": 95.0,
+      "attack_range": 220.0,
+      "attack_damage": 38.0,
+      "attack_cooldown": 1.6,
+      "damage_type": "Energy",
+      "aoe_radius": 0.0,
+      "resistances": {
+        "physical": 0.05,
+        "energy": 0.3,
+        "explosive": 0.0,
+        "arcane": 0.15
+      },
+      "cost_minerals": 175.0,
+      "cost_energy": 100.0,
+      "training_time": 15.0
+    },
+    "TaoistSwordmaster": {
+      "name": "CELESTIAL // SWORDMASTER",
+      "hp": 170.0,
+      "speed": 130.0,
+      "attack_range": 140.0,
+      "attack_damage": 28.0,
+      "attack_cooldown": 1.0,
+      "damage_type": "Arcane",
+      "aoe_radius": 0.0,
+      "resistances": {
+        "physical": 0.15,
+        "energy": 0.35,
+        "explosive": 0.15,
+        "arcane": 0.45
+      },
+      "cost_minerals": 180.0,
+      "cost_energy": 90.0,
+      "training_time": 15.0
+    },
+    "Vanguard": {
+      "name": "VANGUARD // SHIELDER",
+      "hp": 320.0,
+      "speed": 90.0,
+      "attack_range": 45.0,
+      "attack_damage": 18.0,
+      "attack_cooldown": 1.2,
+      "damage_type": "Physical",
+      "aoe_radius": 0.0,
+      "resistances": {
+        "physical": 0.4,
+        "energy": 0.5,
+        "explosive": 0.25,
+        "arcane": 0.15
+      },
+      "cost_minerals": 150.0,
+      "cost_energy": 50.0,
+      "training_time": 12.0
+    },
+    "DarkRocketeer": {
+      "name": "DARK TECH // ROCKETEER",
+      "hp": 140.0,
+      "speed": 95.0,
+      "attack_range": 200.0,
+      "attack_damage": 32.0,
+      "attack_cooldown": 1.8,
+      "damage_type": "Explosive",
+      "aoe_radius": 40.0,
+      "resistances": {
+        "physical": 0.2,
+        "energy": 0.1,
+        "explosive": 0.35,
+        "arcane": 0.05
+      },
+      "cost_minerals": 160.0,
+      "cost_energy": 80.0,
+      "training_time": 14.0
+    },
+    "VoidWarlock": {
+      "name": "VOID // SHADOW WARLOCK",
+      "hp": 135.0,
+      "speed": 100.0,
+      "attack_range": 175.0,
+      "attack_damage": 30.0,
+      "attack_cooldown": 1.5,
+      "damage_type": "Arcane",
+      "aoe_radius": 35.0,
+      "resistances": {
+        "physical": 0.1,
+        "energy": 0.25,
+        "explosive": 0.2,
+        "arcane": 0.5
+      },
+      "cost_minerals": 200.0,
+      "cost_energy": 120.0,
+      "training_time": 16.0
+    },
+    "AcidBaneling": {
+      "name": "SWARM // ACID BANELING",
+      "hp": 85.0,
+      "speed": 160.0,
+      "attack_range": 25.0,
+      "attack_damage": 75.0,
+      "attack_cooldown": 0.5,
+      "damage_type": "Explosive",
+      "aoe_radius": 65.0,
+      "resistances": {
+        "physical": 0.05,
+        "energy": 0.05,
+        "explosive": 0.2,
+        "arcane": 0.2
+      },
+      "cost_minerals": 60.0,
+      "cost_energy": 30.0,
+      "training_time": 6.0
+    }
+  },
+  "buildings": {
+    "CommandCenter": {
+      "name": "HQ COMMAND CENTER",
+      "hp": 2000.0,
+      "cost_minerals": 400.0,
+      "cost_energy": 0.0,
+      "width": 90.0,
+      "height": 90.0,
+      "build_time": 15.0,
+      "resistances": {
+        "physical": 0.3,
+        "energy": 0.2,
+        "explosive": 0.15,
+        "arcane": 0.1
+      },
+      "supply_bonus": 10,
+      "energy_per_sec": 0.0,
+      "turret_range": 0.0,
+      "turret_damage": 0.0,
+      "turret_cooldown": 0.0,
+      "turret_damage_type": "Physical",
+      "turret_projectile_speed": 0.0
+    },
+    "TurretTower": {
+      "name": "TURRET TOWER",
+      "hp": 900.0,
+      "cost_minerals": 125.0,
+      "cost_energy": 50.0,
+      "width": 50.0,
+      "height": 50.0,
+      "build_time": 10.0,
+      "resistances": {
+        "physical": 0.25,
+        "energy": 0.3,
+        "explosive": 0.15,
+        "arcane": 0.2
+      },
+      "supply_bonus": 0,
+      "energy_per_sec": 0.0,
+      "turret_range": 250.0,
+      "turret_damage": 25.0,
+      "turret_cooldown": 1.0,
+      "turret_damage_type": "Energy",
+      "turret_projectile_speed": 900.0
+    },
+    "EnergyConverter": {
+      "name": "ENERGY CONVERTER",
+      "hp": 850.0,
+      "cost_minerals": 150.0,
+      "cost_energy": 50.0,
+      "width": 65.0,
+      "height": 65.0,
+      "build_time": 12.0,
+      "resistances": {
+        "physical": 0.25,
+        "energy": 0.35,
+        "explosive": 0.1,
+        "arcane": 0.25
+      },
+      "supply_bonus": 0,
+      "energy_per_sec": 0.0,
+      "turret_range": 0.0,
+      "turret_damage": 0.0,
+      "turret_cooldown": 0.0,
+      "turret_damage_type": "Physical",
+      "turret_projectile_speed": 0.0
+    },
+    "Barracks": {
+      "name": "BARRACKS",
+      "hp": 1200.0,
+      "cost_minerals": 150.0,
+      "cost_energy": 0.0,
+      "width": 80.0,
+      "height": 70.0,
+      "build_time": 12.0,
+      "resistances": {
+        "physical": 0.35,
+        "energy": 0.2,
+        "explosive": 0.25,
+        "arcane": 0.15
+      },
+      "supply_bonus": 0,
+      "energy_per_sec": 0.0,
+      "turret_range": 0.0,
+      "turret_damage": 0.0,
+      "turret_cooldown": 0.0,
+      "turret_damage_type": "Physical",
+      "turret_projectile_speed": 0.0
+    },
+    "PowerReactor": {
+      "name": "POWER REACTOR",
+      "hp": 700.0,
+      "cost_minerals": 120.0,
+      "cost_energy": 0.0,
+      "width": 60.0,
+      "height": 60.0,
+      "build_time": 10.0,
+      "resistances": {
+        "physical": 0.15,
+        "energy": 0.25,
+        "explosive": 0.05,
+        "arcane": 0.15
+      },
+      "supply_bonus": 0,
+      "energy_per_sec": 8.0,
+      "turret_range": 0.0,
+      "turret_damage": 0.0,
+      "turret_cooldown": 0.0,
+      "turret_damage_type": "Physical",
+      "turret_projectile_speed": 0.0
+    },
+    "SupplyDepot": {
+      "name": "SUPPLY DEPOT",
+      "hp": 800.0,
+      "cost_minerals": 100.0,
+      "cost_energy": 0.0,
+      "width": 60.0,
+      "height": 60.0,
+      "build_time": 8.0,
+      "resistances": {
+        "physical": 0.2,
+        "energy": 0.15,
+        "explosive": 0.1,
+        "arcane": 0.05
+      },
+      "supply_bonus": 8,
+      "energy_per_sec": 0.0,
+      "turret_range": 0.0,
+      "turret_damage": 0.0,
+      "turret_cooldown": 0.0,
+      "turret_damage_type": "Physical",
+      "turret_projectile_speed": 0.0
+    }
+  },
+  "economy": {
+    "starting_minerals": 200.0,
+    "starting_energy": 50.0,
+    "starting_supply": 4,
+    "base_max_supply": 10,
+    "base_energy_per_sec": 2.0,
+    "worker_carry_capacity": 10.0,
+    "worker_mining_time": 2.0,
+    "worker_carry_capacity_upgraded": 15.0,
+    "worker_mining_time_upgraded": 1.4,
+    "converter_threshold": 1000.0,
+    "converter_energy_per_sec": 100.0,
+    "converter_gold_per_100_energy": 50.0
+  },
+  "techs": {
+    "optical_drills": {
+      "name": "Optical Drills",
+      "cost_minerals": 100.0,
+      "cost_energy": 50.0,
+      "research_time": 10.0
+    },
+    "corrosive_curse": {
+      "name": "Corrosive Curse",
+      "cost_minerals": 180.0,
+      "cost_energy": 160.0,
+      "research_time": 16.0
+    },
+    "behemoth_mutation": {
+      "name": "Behemoth Mutation",
+      "cost_minerals": 320.0,
+      "cost_energy": 180.0,
+      "research_time": 26.0
+    },
+    "exo_boosters": {
+      "name": "Exo Boosters",
+      "cost_minerals": 250.0,
+      "cost_energy": 200.0,
+      "research_time": 20.0
+    },
+    "titan_alloy_plating": {
+      "name": "Titan Alloy Plating",
+      "cost_minerals": 300.0,
+      "cost_energy": 180.0,
+      "research_time": 25.0
+    },
+    "hive_proliferation": {
+      "name": "Hive Proliferation",
+      "cost_minerals": 260.0,
+      "cost_energy": 160.0,
+      "research_time": 20.0
+    },
+    "superheated_blades": {
+      "name": "Superheated Blades",
+      "cost_minerals": 350.0,
+      "cost_energy": 300.0,
+      "research_time": 30.0
+    },
+    "focused_laser": {
+      "name": "Focused Laser",
+      "cost_minerals": 250.0,
+      "cost_energy": 200.0,
+      "research_time": 20.0
+    },
+    "primeval_scales": {
+      "name": "Primeval Scales",
+      "cost_minerals": 220.0,
+      "cost_energy": 120.0,
+      "research_time": 18.0
+    },
+    "fortified_blueprints": {
+      "name": "Fortified Blueprints",
+      "cost_minerals": 200.0,
+      "cost_energy": 150.0,
+      "research_time": 20.0
+    },
+    "overload_strike": {
+      "name": "Overload Strike",
+      "cost_minerals": 400.0,
+      "cost_energy": 350.0,
+      "research_time": 35.0
+    },
+    "void_cataclysm": {
+      "name": "Void Cataclysm",
+      "cost_minerals": 320.0,
+      "cost_energy": 240.0,
+      "research_time": 28.0
+    },
+    "celestial_flying_swords": {
+      "name": "Celestial Flying Swords",
+      "cost_minerals": 260.0,
+      "cost_energy": 160.0,
+      "research_time": 22.0
+    },
+    "dark_matter_rockets": {
+      "name": "Dark Matter Rockets",
+      "cost_minerals": 220.0,
+      "cost_energy": 120.0,
+      "research_time": 18.0
+    },
+    "acid_banelings": {
+      "name": "Acid Banelings",
+      "cost_minerals": 160.0,
+      "cost_energy": 90.0,
+      "research_time": 14.0
+    },
+    "overcharged_reactors": {
+      "name": "Overcharged Reactors",
+      "cost_minerals": 150.0,
+      "cost_energy": 100.0,
+      "research_time": 15.0
+    },
+    "golden_bell_shield": {
+      "name": "Golden Bell Shield",
+      "cost_minerals": 200.0,
+      "cost_energy": 140.0,
+      "research_time": 16.0
+    },
+    "energy_shielding": {
+      "name": "Energy Shielding",
+      "cost_minerals": 180.0,
+      "cost_energy": 150.0,
+      "research_time": 15.0
+    },
+    "magnetic_rounds": {
+      "name": "Magnetic Rounds",
+      "cost_minerals": 200.0,
+      "cost_energy": 150.0,
+      "research_time": 15.0
+    }
+  }
+}

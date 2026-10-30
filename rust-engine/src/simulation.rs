@@ -92,6 +92,14 @@ fn process_commands(engine: &mut GameEngine) {
                 engine.settings.auto_pause_on_tech = auto_pause;
                 engine.settings.show_grid = show_grid;
             }
+            ReactToEngineCommand::UpdateGameConfig { config_json } => {
+                if let Ok(new_cfg) = crate::config::GameConfig::from_json(&config_json) {
+                    engine.config = new_cfg;
+                }
+            }
+            ReactToEngineCommand::ResetGameConfig => {
+                engine.config = crate::config::GameConfig::default();
+            }
             ReactToEngineCommand::RestartGame => {
                 let diff = engine.difficulty.clone();
                 // Dọn sạch toàn bộ thực thể & dữ liệu của màn cũ
@@ -115,34 +123,10 @@ fn try_start_research(engine: &mut GameEngine, tech_id: &str) {
         return;
     }
 
-    let (cost_minerals, cost_energy, time) = match tech_id {
-        // Nhánh Khoa học
-        "focused_laser" => (250.0, 200.0, 20.0),
-        "energy_shielding" => (200.0, 150.0, 16.0),
-        "dark_matter_rockets" => (240.0, 160.0, 18.0),
-        "titan_alloy_plating" => (280.0, 180.0, 22.0),
-
-        // Nhánh Ma thuật
-        "celestial_flying_swords" => (220.0, 160.0, 18.0),
-        "golden_bell_shield" => (260.0, 200.0, 22.0),
-        "corrosive_curse" => (190.0, 150.0, 16.0),
-        "void_cataclysm" => (290.0, 240.0, 25.0),
-
-        // Nhánh Quái vật
-        "primeval_scales" => (220.0, 120.0, 18.0),
-        "behemoth_mutation" => (320.0, 180.0, 26.0),
-        "acid_banelings" => (160.0, 90.0, 14.0),
-        "hive_proliferation" => (260.0, 160.0, 20.0),
-
-        // Kinh tế / Phụ trợ
-        "optical_drills" => (100.0, 50.0, 10.0),
-        "overcharged_reactors" => (150.0, 100.0, 15.0),
-        "fortified_blueprints" => (200.0, 150.0, 20.0),
-        "magnetic_rounds" => (200.0, 150.0, 15.0),
-        "exo_boosters" => (250.0, 200.0, 20.0),
-        "superheated_blades" => (350.0, 300.0, 30.0),
-        "overload_strike" => (400.0, 350.0, 35.0),
-        _ => return,
+    let (cost_minerals, cost_energy, time) = if let Some(t) = engine.config.get_tech(tech_id) {
+        (t.cost_minerals, t.cost_energy, t.research_time)
+    } else {
+        return;
     };
 
     if engine.player_eco.minerals >= cost_minerals && engine.player_eco.energy >= cost_energy {
@@ -324,8 +308,15 @@ fn update_economy(engine: &mut GameEngine, dt: f32) {
     } else {
         1.0
     };
-    let player_energy_rate = (2.0 + p_reactors as f32 * 8.0) * p_mult;
-    let enemy_energy_rate = 2.0 + e_reactors as f32 * 8.0;
+    let base_energy = engine.config.economy.base_energy_per_sec;
+    let reactor_energy = engine
+        .config
+        .get_building(BuildingType::PowerReactor)
+        .map(|b| b.energy_per_sec)
+        .unwrap_or(8.0);
+
+    let player_energy_rate = (base_energy + p_reactors as f32 * reactor_energy) * p_mult;
+    let enemy_energy_rate = base_energy + e_reactors as f32 * reactor_energy;
 
     engine.player_eco.energy += player_energy_rate * dt;
     engine.enemy_eco.energy += enemy_energy_rate * dt;
@@ -354,8 +345,15 @@ fn update_economy(engine: &mut GameEngine, dt: f32) {
         }
     }
 
-    engine.player_eco.max_supply = 10 + p_supply_depots * 8;
-    engine.enemy_eco.max_supply = 10 + e_supply_depots * 8;
+    let base_supply = engine.config.economy.base_max_supply;
+    let depot_supply = engine
+        .config
+        .get_building(BuildingType::SupplyDepot)
+        .map(|b| b.supply_bonus)
+        .unwrap_or(8);
+
+    engine.player_eco.max_supply = base_supply + p_supply_depots * depot_supply;
+    engine.enemy_eco.max_supply = base_supply + e_supply_depots * depot_supply;
 
     engine.player_eco.supply = engine
         .units
@@ -515,17 +513,17 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                     HarvestPhase::Mining(mut t) => {
                         let mining_duration =
                             if unit.team == Team::Player && engine.player_tech.optical_drills {
-                                1.4
+                                engine.config.economy.worker_mining_time_upgraded
                             } else {
-                                2.0
+                                engine.config.economy.worker_mining_time
                             };
                         t += dt;
                         if t >= mining_duration {
                             unit.carried_minerals =
                                 if unit.team == Team::Player && engine.player_tech.optical_drills {
-                                    15.0
+                                    engine.config.economy.worker_carry_capacity_upgraded
                                 } else {
-                                    10.0
+                                    engine.config.economy.worker_carry_capacity
                                 };
                             // Trừ trữ lượng mỏ quặng
                             if let Some(m) = engine
@@ -800,7 +798,7 @@ fn update_buildings(engine: &mut GameEngine, dt: f32) {
             // Huấn luyện lính
             if !b.training_queue.is_empty() {
                 b.training_timer += dt;
-                let mut required_time = b.training_queue[0].training_time();
+                let mut required_time = engine.config.get_unit_training_time(b.training_queue[0]);
                 if b.team == Team::Player && engine.player_tech.hive_proliferation {
                     required_time *= 0.65;
                 }
@@ -823,15 +821,21 @@ fn update_buildings(engine: &mut GameEngine, dt: f32) {
                 if b.current_cooldown > 0.0 {
                     b.current_cooldown -= dt;
                 } else {
-                    let range = 250.0;
+                    let turret_cfg = engine.config.get_building(BuildingType::TurretTower);
+                    let range = turret_cfg.map(|c| c.turret_range).unwrap_or(250.0);
+                    let base_damage = turret_cfg.map(|c| c.turret_damage).unwrap_or(25.0);
+                    let base_cd = turret_cfg.map(|c| c.turret_cooldown).unwrap_or(1.0);
+                    let base_dmg_type = turret_cfg.map(|c| c.turret_damage_type).unwrap_or(DamageType::Energy);
+                    let base_speed = turret_cfg.map(|c| c.turret_projectile_speed).unwrap_or(900.0);
+
                     if let Some((_, ex, ey)) = enemy_targets.iter().find(|(t, x, y)| {
                         *t != b.team && ((*x - b.x).powi(2) + (*y - b.y).powi(2)).sqrt() <= range
                     }) {
                         b.current_cooldown =
                             if b.team == Team::Player && engine.player_tech.overload_strike {
-                                0.6
+                                base_cd * 0.6
                             } else {
-                                1.0
+                                base_cd
                             };
                         let is_dark_rocket = b.team == Team::Player && engine.player_tech.dark_matter_rockets;
                         new_turret_projectiles.push(Projectile {
@@ -841,12 +845,12 @@ fn update_buildings(engine: &mut GameEngine, dt: f32) {
                             y: b.y - 20.0,
                             target_x: *ex,
                             target_y: *ey,
-                            speed: if is_dark_rocket { 750.0 } else { 900.0 },
-                            damage: if is_dark_rocket { 35.0 } else { 25.0 },
+                            speed: if is_dark_rocket { base_speed * (750.0 / 900.0) } else { base_speed },
+                            damage: if is_dark_rocket { base_damage * 1.4 } else { base_damage },
                             damage_type: if is_dark_rocket {
                                 DamageType::Explosive
                             } else {
-                                DamageType::Energy
+                                base_dmg_type
                             },
                             aoe_radius: if is_dark_rocket { 40.0 } else { 0.0 },
                             is_laser: !is_dark_rocket,
@@ -860,177 +864,27 @@ fn update_buildings(engine: &mut GameEngine, dt: f32) {
 
     for (team, u_type, sx, sy, rx, ry) in new_spawned_units {
         let u_id = engine.alloc_id();
-        let (speed, hp, range, dmg, cd, dmg_type, aoe, mut res) = match u_type {
-            UnitType::Engineer => (
-                120.0,
-                90.0,
-                30.0,
-                5.0,
-                1.0,
-                DamageType::Physical,
-                0.0,
-                Resistances {
-                    physical: 0.05,
-                    energy: 0.0,
-                    explosive: 0.0,
-                    arcane: 0.0,
-                },
-            ),
-            UnitType::ShockTrooper => {
-                let hp = if team == Team::Player && engine.player_tech.energy_shielding {
-                    190.0
-                } else {
-                    160.0
-                };
-                (
-                    140.0,
-                    hp,
-                    40.0,
-                    22.0,
-                    0.8,
-                    DamageType::Energy,
-                    0.0,
-                    Resistances {
-                        physical: 0.15,
-                        energy: 0.20,
-                        explosive: 0.05,
-                        arcane: 0.10,
-                    },
-                )
-            }
-            UnitType::Rifleman => (
-                110.0,
-                120.0,
-                160.0,
-                14.0,
-                1.1,
-                DamageType::Physical,
-                0.0,
-                Resistances {
-                    physical: 0.10,
-                    energy: 0.05,
-                    explosive: 0.05,
-                    arcane: 0.05,
-                },
-            ),
-            UnitType::Vanguard => (
-                90.0,
-                320.0,
-                45.0,
-                18.0,
-                1.2,
-                DamageType::Physical,
-                0.0,
-                Resistances {
-                    physical: 0.40,
-                    energy: 0.50,
-                    explosive: 0.25,
-                    arcane: 0.15,
-                },
-            ),
-            UnitType::LaserMarksman => (
-                95.0,
-                110.0,
-                220.0,
-                38.0,
-                1.6,
-                DamageType::Energy,
-                0.0,
-                Resistances {
-                    physical: 0.05,
-                    energy: 0.30,
-                    explosive: 0.0,
-                    arcane: 0.15,
-                },
-            ),
-            UnitType::DarkRocketeer => (
-                95.0,
-                140.0,
-                200.0,
-                32.0,
-                1.8,
-                DamageType::Explosive,
-                40.0,
-                Resistances {
-                    physical: 0.20,
-                    energy: 0.10,
-                    explosive: 0.35,
-                    arcane: 0.05,
-                },
-            ),
-            UnitType::TaoistSwordmaster => (
-                130.0,
-                170.0,
-                140.0,
-                28.0,
-                1.0,
-                DamageType::Arcane,
-                0.0,
-                Resistances {
-                    physical: 0.15,
-                    energy: 0.35,
-                    explosive: 0.15,
-                    arcane: 0.45,
-                },
-            ),
-            UnitType::VoidWarlock => (
-                100.0,
-                135.0,
-                175.0,
-                30.0,
-                1.5,
-                DamageType::Arcane,
-                35.0,
-                Resistances {
-                    physical: 0.10,
-                    energy: 0.25,
-                    explosive: 0.20,
-                    arcane: 0.50,
-                },
-            ),
-            UnitType::BehemothTitan => (
-                80.0,
-                650.0,
-                55.0,
-                48.0,
-                1.4,
-                DamageType::Physical,
-                45.0,
-                Resistances {
-                    physical: 0.50,
-                    energy: 0.20,
-                    explosive: 0.45,
-                    arcane: 0.10,
-                },
-            ),
-            UnitType::AcidBaneling => (
-                160.0,
-                85.0,
-                25.0,
-                75.0,
-                0.5,
-                DamageType::Explosive,
-                65.0,
-                Resistances {
-                    physical: 0.05,
-                    energy: 0.05,
-                    explosive: 0.20,
-                    arcane: 0.20,
-                },
-            ),
-        };
+        let mut unit = engine.config.create_unit(u_id, team, u_type, sx, sy);
+        unit.target_x = rx;
+        unit.target_y = ry;
+        unit.order = UnitOrder::MoveTo { x: rx, y: ry };
+        unit.facing_right = rx >= sx;
 
-        let mut final_speed = speed;
+        // Áp dụng nâng cấp công nghệ (Player tech upgrades)
         if team == Team::Player {
+            if u_type == UnitType::ShockTrooper && engine.player_tech.energy_shielding {
+                unit.hp += 30.0;
+                unit.max_hp += 30.0;
+            }
             if engine.player_tech.exo_boosters || engine.player_tech.hive_proliferation {
-                final_speed *= 1.25;
+                unit.speed *= 1.25;
             }
             if engine.player_tech.titan_alloy_plating {
-                res.physical = (res.physical + 0.25).min(0.80);
+                unit.resistances.physical = (unit.resistances.physical + 0.25).min(0.80);
             }
             if engine.player_tech.golden_bell_shield {
-                res.energy = (res.energy + 0.25).min(0.80);
-                res.arcane = (res.arcane + 0.30).min(0.80);
+                unit.resistances.energy = (unit.resistances.energy + 0.25).min(0.80);
+                unit.resistances.arcane = (unit.resistances.arcane + 0.30).min(0.80);
             }
             if engine.player_tech.primeval_scales
                 && (u_type == UnitType::ShockTrooper
@@ -1038,34 +892,12 @@ fn update_buildings(engine: &mut GameEngine, dt: f32) {
                     || u_type == UnitType::BehemothTitan
                     || u_type == UnitType::AcidBaneling)
             {
-                res.physical = (res.physical + 0.25).min(0.80);
-                res.explosive = (res.explosive + 0.25).min(0.80);
+                unit.resistances.physical = (unit.resistances.physical + 0.25).min(0.80);
+                unit.resistances.explosive = (unit.resistances.explosive + 0.25).min(0.80);
             }
         }
 
-        engine.units.push(Unit {
-            id: u_id,
-            team,
-            unit_type: u_type,
-            x: sx,
-            y: sy,
-            target_x: rx,
-            target_y: ry,
-            speed: final_speed,
-            hp,
-            max_hp: hp,
-            attack_range: range,
-            attack_damage: dmg,
-            damage_type: dmg_type,
-            aoe_radius: aoe,
-            resistances: res,
-            attack_cooldown: cd,
-            current_cooldown: 0.0,
-            walk_cycle: 0.0,
-            facing_right: rx >= sx,
-            order: UnitOrder::MoveTo { x: rx, y: ry },
-            carried_minerals: 0.0,
-        });
+        engine.units.push(unit);
     }
 
     for mut p in new_turret_projectiles {
@@ -1668,53 +1500,21 @@ fn issue_right_click_order(engine: &mut GameEngine, wx: f32, wy: f32) {
 }
 
 fn try_place_building(engine: &mut GameEngine, b_type: BuildingType, wx: f32, wy: f32) {
-    let (cost_min, cost_en, w, h, max_hp) = match b_type {
-        BuildingType::CommandCenter => (400.0, 0.0, 90.0, 90.0, 2000.0),
-        BuildingType::SupplyDepot => (100.0, 0.0, 60.0, 60.0, 800.0),
-        BuildingType::PowerReactor => (120.0, 0.0, 60.0, 60.0, 700.0),
-        BuildingType::Barracks => (150.0, 0.0, 80.0, 70.0, 1200.0),
-        BuildingType::TurretTower => (125.0, 50.0, 50.0, 50.0, 900.0),
-        BuildingType::EnergyConverter => (150.0, 50.0, 65.0, 65.0, 850.0),
-    };
+    let (cost_min, cost_en) = engine.config.get_building_cost(b_type);
 
     if engine.player_eco.minerals >= cost_min && engine.player_eco.energy >= cost_en {
         engine.player_eco.minerals -= cost_min;
         engine.player_eco.energy -= cost_en;
         let bid = engine.alloc_id();
-        let mut b_res = match b_type {
-            BuildingType::CommandCenter => Resistances {
-                physical: 0.25,
-                energy: 0.15,
-                explosive: 0.20,
-                arcane: 0.10,
-            },
-            BuildingType::TurretTower => Resistances {
-                physical: 0.20,
-                energy: 0.20,
-                explosive: 0.30,
-                arcane: 0.10,
-            },
-            BuildingType::Barracks => Resistances {
-                physical: 0.20,
-                energy: 0.10,
-                explosive: 0.20,
-                arcane: 0.0,
-            },
-            BuildingType::EnergyConverter => Resistances {
-                physical: 0.15,
-                energy: 0.25,
-                explosive: 0.15,
-                arcane: 0.10,
-            },
-            _ => Resistances {
-                physical: 0.15,
-                energy: 0.10,
-                explosive: 0.15,
-                arcane: 0.0,
-            },
-        };
+
+        let mut building = engine.config.create_building(bid, Team::Player, b_type, wx, wy, false);
+        building.build_progress = 0.05;
+        building.hp = 1.0;
+        building.rally_x = wx + 40.0;
+        building.rally_y = wy + 40.0;
+
         if engine.player_tech.titan_alloy_plating {
-            b_res.physical = (b_res.physical + 0.20).min(0.80);
+            building.resistances.physical = (building.resistances.physical + 0.20).min(0.80);
         }
 
         let mut hp_mult = 1.0;
@@ -1724,36 +1524,13 @@ fn try_place_building(engine: &mut GameEngine, b_type: BuildingType, wx: f32, wy
         if engine.player_tech.titan_alloy_plating {
             hp_mult += 0.25;
         }
+        building.max_hp *= hp_mult;
 
-        engine.buildings.push(Building {
-            id: bid,
-            team: Team::Player,
-            building_type: b_type,
-            x: wx,
-            y: wy,
-            width: w,
-            height: h,
-            hp: 1.0,
-            max_hp: max_hp * hp_mult,
-            damage_type: match b_type {
-                BuildingType::TurretTower => {
-                    if engine.player_tech.dark_matter_rockets {
-                        DamageType::Explosive
-                    } else {
-                        DamageType::Energy
-                    }
-                }
-                _ => DamageType::Physical,
-            },
-            resistances: b_res,
-            build_progress: 0.05,
-            attack_cooldown: 0.0,
-            current_cooldown: 0.0,
-            rally_x: wx + 40.0,
-            rally_y: wy + 40.0,
-            training_queue: Vec::new(),
-            training_timer: 0.0,
-        });
+        if b_type == BuildingType::TurretTower && engine.player_tech.dark_matter_rockets {
+            building.damage_type = DamageType::Explosive;
+        }
+
+        engine.buildings.push(building);
 
         // Tự động phân công kỹ sư đang chọn đến xây
         for uid in &engine.selected_unit_ids {
@@ -1944,7 +1721,7 @@ fn try_queue_unit(engine: &mut GameEngine, bid: u32, u_type: UnitType) {
         return; // Hết dân số
     }
 
-    let (mut min_cost, mut en_cost) = u_type.cost();
+    let (mut min_cost, mut en_cost) = engine.config.get_unit_cost(u_type);
     if engine.player_tech.hive_proliferation {
         min_cost *= 0.65;
         en_cost *= 0.65;
@@ -1966,7 +1743,7 @@ fn try_queue_unit(engine: &mut GameEngine, bid: u32, u_type: UnitType) {
 fn try_cancel_unit(engine: &mut GameEngine, bid: u32, u_type: UnitType) {
     let mut refunded = false;
     let mut spawn_pos = (0.0, 0.0);
-    let (mut min_cost, mut en_cost) = u_type.cost();
+    let (mut min_cost, mut en_cost) = engine.config.get_unit_cost(u_type);
     if engine.player_tech.hive_proliferation {
         min_cost *= 0.65;
         en_cost *= 0.65;

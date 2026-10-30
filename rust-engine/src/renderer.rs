@@ -956,7 +956,7 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
                 ctx.set_font("11px monospace");
                 ctx.set_fill_style_str("#facc15");
                 let cur_unit = b.training_queue[0].button_label();
-                let req_time = b.training_queue[0].training_time();
+                let req_time = engine.config.get_unit_training_time(b.training_queue[0]);
                 let prog = (b.training_timer / req_time).clamp(0.0, 1.0);
                 let _ = ctx.fill_text(
                     &format!("TRAINING: {} ({:.0}%)", cur_unit, prog * 100.0),
@@ -1147,7 +1147,7 @@ fn draw_barracks_slot(
 ) -> (usize, bool, f32) {
     let count = b.training_queue.iter().filter(|&&t| t == u_type).count();
     let is_training = b.training_queue.first() == Some(&u_type);
-    let mut req_time = u_type.training_time();
+    let mut req_time = engine.config.get_unit_training_time(u_type);
     if b.team == Team::Player && engine.player_tech.hive_proliferation {
         req_time *= 0.65;
     }
@@ -1156,12 +1156,13 @@ fn draw_barracks_slot(
     } else {
         0.0
     };
-    let (mut min_cost, mut en_cost) = u_type.cost();
+    let (mut min_cost, mut en_cost) = engine.config.get_unit_cost(u_type);
     if engine.player_tech.hive_proliferation {
         min_cost *= 0.65;
         en_cost *= 0.65;
     }
     let can_afford = engine.player_eco.minerals >= min_cost && engine.player_eco.energy >= en_cost;
+    let cost_lbl = engine.config.get_unit_cost_label(u_type);
 
     draw_unit_purchase_button(
         ctx,
@@ -1170,7 +1171,7 @@ fn draw_barracks_slot(
         62.0,
         40.0,
         u_type.button_label(),
-        u_type.cost_label(),
+        &cost_lbl,
         count,
         is_training,
         prog,
@@ -1199,38 +1200,64 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
     let mut tooltip: Option<(String, String)> = None;
 
     if has_worker {
-        draw_hud_button(ctx, x + 5.0, y + 6.0, 62.0, 40.0, "SUPPLY", "100M");
-        draw_hud_button(ctx, x + 72.0, y + 6.0, 62.0, 40.0, "REACTOR", "120M");
-        draw_hud_button(ctx, x + 139.0, y + 6.0, 62.0, 40.0, "BARRACKS", "150M");
-        draw_hud_button(ctx, x + 5.0, y + 50.0, 62.0, 40.0, "TURRET", "125M 50E");
-        draw_hud_button(ctx, x + 72.0, y + 50.0, 62.0, 40.0, "HQ CC", "400M");
-        draw_hud_button(ctx, x + 139.0, y + 50.0, 62.0, 40.0, "CONVERT", "150M 50E");
+        let supply_cost = engine.config.get_building_cost_label(BuildingType::SupplyDepot);
+        let reactor_cost = engine.config.get_building_cost_label(BuildingType::PowerReactor);
+        let barracks_cost = engine.config.get_building_cost_label(BuildingType::Barracks);
+        let turret_cost = engine.config.get_building_cost_label(BuildingType::TurretTower);
+        let cc_cost = engine.config.get_building_cost_label(BuildingType::CommandCenter);
+        let conv_cost = engine.config.get_building_cost_label(BuildingType::EnergyConverter);
+
+        draw_hud_button(ctx, x + 5.0, y + 6.0, 62.0, 40.0, "SUPPLY", &supply_cost);
+        draw_hud_button(ctx, x + 72.0, y + 6.0, 62.0, 40.0, "REACTOR", &reactor_cost);
+        draw_hud_button(ctx, x + 139.0, y + 6.0, 62.0, 40.0, "BARRACKS", &barracks_cost);
+        draw_hud_button(ctx, x + 5.0, y + 50.0, 62.0, 40.0, "TURRET", &turret_cost);
+        draw_hud_button(ctx, x + 72.0, y + 50.0, 62.0, 40.0, "HQ CC", &cc_cost);
+        draw_hud_button(ctx, x + 139.0, y + 50.0, 62.0, 40.0, "CONVERT", &conv_cost);
 
         if let Some(hover_idx) = engine.hovered_command_button {
             tooltip = match hover_idx {
                 0 => Some((
                     "SUPPLY DEPOT".into(),
-                    "Giá: 100M. Tăng +8 Giới hạn dân số (Supply).".into(),
+                    format!(
+                        "Giá: {}. Tăng +{} Giới hạn dân số (Supply).",
+                        supply_cost,
+                        engine
+                            .config
+                            .get_building(BuildingType::SupplyDepot)
+                            .map(|b| b.supply_bonus)
+                            .unwrap_or(8)
+                    ),
                 )),
                 1 => Some((
                     "POWER REACTOR".into(),
-                    "Giá: 120M. Tăng tốc độ sản sinh Năng lượng +8/s.".into(),
+                    format!(
+                        "Giá: {}. Tăng tốc độ sản sinh Năng lượng +{:.0}/s.",
+                        reactor_cost,
+                        engine
+                            .config
+                            .get_building(BuildingType::PowerReactor)
+                            .map(|b| b.energy_per_sec)
+                            .unwrap_or(8.0)
+                    ),
                 )),
                 2 => Some((
                     "BARRACKS".into(),
-                    "Giá: 150M. Trại huấn luyện lính chiến đấu.".into(),
+                    format!("Giá: {}. Trại huấn luyện lính chiến đấu.", barracks_cost),
                 )),
                 3 => Some((
                     "TURRET TOWER".into(),
-                    "Giá: 125M 50E. Tháp phòng thủ tự động bắn tỉa.".into(),
+                    format!("Giá: {}. Tháp phòng thủ tự động bắn tỉa.", turret_cost),
                 )),
                 4 => Some((
                     "HQ COMMAND CENTER".into(),
-                    "Giá: 400M. Trung tâm chỉ huy mở rộng.".into(),
+                    format!("Giá: {}. Trung tâm chỉ huy mở rộng.", cc_cost),
                 )),
                 5 => Some((
                     "ENERGY CONVERTER".into(),
-                    "Giá: 150M 50E. Tự động chuyển Năng lượng thành Vàng khi Năng lượng >= 1000.".into(),
+                    format!(
+                        "Giá: {}. Tự động chuyển Năng lượng thành Vàng khi Năng lượng >= {:.0}.",
+                        conv_cost, engine.config.economy.converter_threshold
+                    ),
                 )),
                 _ => None,
             };
@@ -1246,14 +1273,16 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
                     let u_type = UnitType::Engineer;
                     let count = b.training_queue.iter().filter(|&&t| t == u_type).count();
                     let is_training = b.training_queue.first() == Some(&u_type);
+                    let req_time = engine.config.get_unit_training_time(u_type);
                     let prog = if is_training {
-                        (b.training_timer / u_type.training_time()).clamp(0.0, 1.0)
+                        (b.training_timer / req_time).clamp(0.0, 1.0)
                     } else {
                         0.0
                     };
-                    let (min_cost, en_cost) = u_type.cost();
+                    let (min_cost, en_cost) = engine.config.get_unit_cost(u_type);
                     let can_afford = engine.player_eco.minerals >= min_cost
                         && engine.player_eco.energy >= en_cost;
+                    let cost_lbl = engine.config.get_unit_cost_label(u_type);
 
                     draw_unit_purchase_button(
                         ctx,
@@ -1262,7 +1291,7 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
                         62.0,
                         40.0,
                         u_type.button_label(),
-                        u_type.cost_label(),
+                        &cost_lbl,
                         count,
                         is_training,
                         prog,
@@ -1273,7 +1302,7 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
                     if engine.hovered_command_button == Some(0) {
                         let mut desc = format!(
                             "Giá: {}. Huấn luyện thợ mỏ / kỹ sư xây dựng.",
-                            u_type.cost_label()
+                            cost_lbl
                         );
                         if count > 0 {
                             if is_training {
