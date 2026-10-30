@@ -95,16 +95,22 @@ fn render_blueprint_grid(engine: &GameEngine) {
     ctx.begin_path();
 
     let grid_size = 80.0;
-    let mut x = 0.0;
-    while x <= MAP_WIDTH {
-        ctx.move_to(x as f64, 0.0);
-        ctx.line_to(x as f64, MAP_HEIGHT as f64);
+    let (min_x, min_y, max_x, max_y) = engine.camera.viewport_bounds(grid_size);
+    let start_x = ((min_x / grid_size).floor() * grid_size).max(0.0);
+    let end_x = ((max_x / grid_size).ceil() * grid_size).min(MAP_WIDTH);
+    let start_y = ((min_y / grid_size).floor() * grid_size).max(0.0);
+    let end_y = ((max_y / grid_size).ceil() * grid_size).min(MAP_HEIGHT);
+
+    let mut x = start_x;
+    while x <= end_x {
+        ctx.move_to(x as f64, start_y as f64);
+        ctx.line_to(x as f64, end_y as f64);
         x += grid_size;
     }
-    let mut y = 0.0;
-    while y <= MAP_HEIGHT {
-        ctx.move_to(0.0, y as f64);
-        ctx.line_to(MAP_WIDTH as f64, y as f64);
+    let mut y = start_y;
+    while y <= end_y {
+        ctx.move_to(start_x as f64, y as f64);
+        ctx.line_to(end_x as f64, y as f64);
         y += grid_size;
     }
     ctx.stroke();
@@ -113,6 +119,10 @@ fn render_blueprint_grid(engine: &GameEngine) {
 fn render_obstacles(engine: &GameEngine) {
     let ctx = &engine.context;
     for obs in &engine.obstacles {
+        if !engine.camera.is_rect_visible(obs.x, obs.y, obs.width, obs.height, 50.0) {
+            continue;
+        }
+
         ctx.set_fill_style_str("#071a2e");
         ctx.fill_rect(
             obs.x as f64,
@@ -135,6 +145,10 @@ fn render_obstacles(engine: &GameEngine) {
 fn render_minerals(engine: &GameEngine) {
     let ctx = &engine.context;
     for m in &engine.minerals {
+        if !engine.camera.is_point_visible(m.x, m.y, 60.0) {
+            continue;
+        }
+
         // Tinh thể phát sáng Neon Cyan
         ctx.set_stroke_style_str("#38bdf8");
         ctx.set_fill_style_str("rgba(56, 189, 248, 0.28)");
@@ -164,6 +178,14 @@ fn render_minerals(engine: &GameEngine) {
 fn render_buildings(engine: &GameEngine) {
     let ctx = &engine.context;
     for b in &engine.buildings {
+        let bw = b.width;
+        let bh = b.height;
+        let bx_f32 = b.x - bw * 0.5;
+        let by_f32 = b.y - bh * 0.5;
+        if !engine.camera.is_rect_visible(bx_f32, by_f32, bw, bh, 50.0) {
+            continue;
+        }
+
         let is_visible = b.team == Team::Player || engine.fog.is_visible(b.x, b.y);
         if !is_visible {
             continue;
@@ -287,6 +309,10 @@ fn draw_blueprint_brackets(
 fn render_units(engine: &GameEngine) {
     let ctx = &engine.context;
     for u in &engine.units {
+        if !engine.camera.is_point_visible(u.x, u.y, 40.0) {
+            continue;
+        }
+
         let is_visible = u.team == Team::Player || engine.fog.is_visible(u.x, u.y);
         if !is_visible {
             continue;
@@ -495,6 +521,12 @@ fn draw_procedural_stickman(ctx: &CanvasRenderingContext2d, u: &Unit, color: &st
 fn render_projectiles(engine: &GameEngine) {
     let ctx = &engine.context;
     for p in &engine.projectiles {
+        if !engine.camera.is_point_visible(p.x, p.y, 40.0)
+            && !engine.camera.is_point_visible(p.target_x, p.target_y, 40.0)
+        {
+            continue;
+        }
+
         if p.is_laser {
             ctx.set_stroke_style_str(if p.team == Team::Player {
                 "#38bdf8"
@@ -554,25 +586,51 @@ fn render_fog_of_war(engine: &GameEngine) {
     let ctx = &engine.context;
     use crate::fog::{CELL_H, CELL_W, FOG_COLS, FOG_ROWS};
 
-    for r in 0..FOG_ROWS {
-        for c in 0..FOG_COLS {
-            let vis = engine.fog.grid[r * FOG_COLS + c];
-            let rx = (c as f32 * CELL_W) as f64;
-            let ry = (r as f32 * CELL_H) as f64;
-            let rw = (CELL_W + 1.0) as f64;
-            let rh = (CELL_H + 1.0) as f64;
+    let (min_x, min_y, max_x, max_y) = engine.camera.viewport_bounds(CELL_W.max(CELL_H));
+    let min_c = ((min_x / CELL_W).max(0.0) as usize).min(FOG_COLS - 1);
+    let max_c = (((max_x / CELL_W).max(0.0) as usize) + 1).min(FOG_COLS);
+    let min_r = ((min_y / CELL_H).max(0.0) as usize).min(FOG_ROWS - 1);
+    let max_r = (((max_y / CELL_H).max(0.0) as usize) + 1).min(FOG_ROWS);
 
-            match vis {
-                Visibility::Hidden => {
-                    ctx.set_fill_style_str("rgba(2, 6, 13, 0.96)");
+    // Gom các ô liên tiếp cùng trạng thái để vẽ 1 lần (Horizontal Run-Length Merging)
+    for r in min_r..max_r {
+        let ry = (r as f32 * CELL_H) as f64;
+        let rh = (CELL_H + 0.5) as f64;
+
+        let mut current_vis = Visibility::Visible;
+        let mut start_c = min_c;
+        let mut count = 0;
+
+        for c in min_c..max_c {
+            let vis = engine.fog.grid[r * FOG_COLS + c];
+            if vis == current_vis {
+                count += 1;
+            } else {
+                if current_vis != Visibility::Visible && count > 0 {
+                    let rx = (start_c as f32 * CELL_W) as f64;
+                    let rw = (count as f32 * CELL_W + 0.5) as f64;
+                    if current_vis == Visibility::Hidden {
+                        ctx.set_fill_style_str("rgba(2, 6, 13, 0.96)");
+                    } else {
+                        ctx.set_fill_style_str("rgba(3, 13, 26, 0.6)");
+                    }
                     ctx.fill_rect(rx, ry, rw, rh);
                 }
-                Visibility::Explored => {
-                    ctx.set_fill_style_str("rgba(3, 13, 26, 0.6)");
-                    ctx.fill_rect(rx, ry, rw, rh);
-                }
-                Visibility::Visible => {}
+                current_vis = vis;
+                start_c = c;
+                count = 1;
             }
+        }
+
+        if current_vis != Visibility::Visible && count > 0 {
+            let rx = (start_c as f32 * CELL_W) as f64;
+            let rw = (count as f32 * CELL_W + 0.5) as f64;
+            if current_vis == Visibility::Hidden {
+                ctx.set_fill_style_str("rgba(2, 6, 13, 0.96)");
+            } else {
+                ctx.set_fill_style_str("rgba(3, 13, 26, 0.6)");
+            }
+            ctx.fill_rect(rx, ry, rw, rh);
         }
     }
 }

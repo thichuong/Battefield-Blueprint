@@ -79,12 +79,35 @@ export const App: React.FC = () => {
       window.addEventListener('resize', resize);
       resize();
 
-      // Main Game Loop chạy Wasm Step & Render
+      // Tách 2 vòng lặp:
+      // Vòng lặp 1: Fixed Timestep Accumulator cho Logic Mô phỏng (60 Ticks/giây)
+      // Vòng lặp 2: Render theo tần số quét màn hình (requestAnimationFrame / VSync)
+      const FIXED_TIMESTEP = 1 / 60;
+      const MAX_SUB_STEPS = 5;
+      let accumulator = 0;
+
       const loop = (time: number) => {
-        const dt = (time - lastTime) / 1000;
+        let frameTime = (time - lastTime) / 1000;
         lastTime = time;
 
-        wasmBridge.step(dt);
+        // Giới hạn delta time tối đa 0.25s khi tab bị ẩn hoặc lag đột ngột (tránh Spiral of Death)
+        if (frameTime > 0.25) {
+          frameTime = 0.25;
+        }
+
+        accumulator += frameTime;
+
+        // VÒNG LẶP 1: LOGIC / SIMULATION (Fixed 60 Hz)
+        let subSteps = 0;
+        while (accumulator >= FIXED_TIMESTEP && subSteps < MAX_SUB_STEPS) {
+          wasmBridge.tick(FIXED_TIMESTEP);
+          accumulator -= FIXED_TIMESTEP;
+          subSteps++;
+        }
+
+        // VÒNG LẶP 2: RENDER (Chạy theo tần số màn hình)
+        wasmBridge.render();
+
         animationFrameId = requestAnimationFrame(loop);
       };
       animationFrameId = requestAnimationFrame(loop);

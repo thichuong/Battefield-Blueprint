@@ -34,7 +34,20 @@ export enum UnitType {
     AcidBaneling = 9,
 }
 
+/**
+ * Vòng lặp 2: Vẽ khung hình lên Canvas (chạy theo requestAnimationFrame / VSync)
+ */
+export function engine_render(): void;
+
+/**
+ * Giữ lại hàm cũ để đảm bảo tính tương thích ngược
+ */
 export function engine_step(dt: number): void;
+
+/**
+ * Vòng lặp 1: Cập nhật mô phỏng logic (AI, kinh tế, di chuyển, va chạm, đạn)
+ */
+export function engine_tick(dt: number): void;
 
 export function handle_key_down(key: string): void;
 
@@ -66,11 +79,13 @@ export interface InitOutput {
     readonly poll_events_from_engine: () => [number, number];
     readonly send_command_to_engine: (a: number, b: number) => void;
     readonly engine_step: (a: number) => void;
+    readonly engine_tick: (a: number) => void;
     readonly handle_mouse_down: (a: number, b: number, c: number) => void;
     readonly handle_mouse_up: (a: number, b: number, c: number) => void;
     readonly resize_canvas: (a: number, b: number) => void;
     readonly handle_mouse_wheel: (a: number) => void;
     readonly handle_mouse_move: (a: number, b: number) => void;
+    readonly engine_render: () => void;
     readonly __wbindgen_exn_store: (a: number) => void;
     readonly __externref_table_alloc: () => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;

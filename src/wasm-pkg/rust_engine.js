@@ -46,10 +46,26 @@ export const UnitType = Object.freeze({
 });
 
 /**
+ * Vòng lặp 2: Vẽ khung hình lên Canvas (chạy theo requestAnimationFrame / VSync)
+ */
+export function engine_render() {
+    wasm.engine_render();
+}
+
+/**
+ * Giữ lại hàm cũ để đảm bảo tính tương thích ngược
  * @param {number} dt
  */
 export function engine_step(dt) {
     wasm.engine_step(dt);
+}
+
+/**
+ * Vòng lặp 1: Cập nhật mô phỏng logic (AI, kinh tế, di chuyển, va chạm, đạn)
+ * @param {number} dt
+ */
+export function engine_tick(dt) {
+    wasm.engine_tick(dt);
 }
 
 /**

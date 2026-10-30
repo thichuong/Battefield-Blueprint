@@ -1,6 +1,8 @@
 import init, {
   init_engine,
   engine_step,
+  engine_tick,
+  engine_render,
   send_command_to_engine,
   poll_events_from_engine,
   resize_canvas,
@@ -72,11 +74,18 @@ class WasmBridge {
     this.isInitialized = true;
   }
 
-  public step(dt: number) {
+  public tick(dt: number) {
     if (!this.isInitialized) return;
-    engine_step(dt);
+    engine_tick(dt);
+    this.pollEvents();
+  }
 
-    // Poll events from Rust
+  public render() {
+    if (!this.isInitialized) return;
+    engine_render();
+  }
+
+  public pollEvents() {
     const rawEvents = poll_events_from_engine();
     if (rawEvents && rawEvents !== '[]') {
       try {
@@ -91,6 +100,12 @@ class WasmBridge {
         console.error('Failed to parse events from Wasm:', err);
       }
     }
+  }
+
+  public step(dt: number) {
+    if (!this.isInitialized) return;
+    engine_step(dt);
+    this.pollEvents();
   }
 
   public sendCommand(cmd: any) {

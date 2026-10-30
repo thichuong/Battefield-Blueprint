@@ -327,6 +327,9 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
     let has_superheated = engine.player_tech.superheated_blades;
     let has_magnetic = engine.player_tech.magnetic_rounds;
 
+    engine.spatial_grid.rebuild(&engine.units, &engine.buildings);
+    let spatial_grid = &engine.spatial_grid;
+
     // Snapshot vị trí công trình và lính để tra cứu mục tiêu
     // (id, team, x, y, radius)
     let building_targets: Vec<(u32, Team, f32, f32, f32)> = engine
@@ -355,64 +358,35 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
         match unit.order {
             UnitOrder::Idle => {
                 if unit.unit_type != UnitType::Engineer {
-                    let scan_range = unit.attack_range * 1.6;
-                    // 1. Ưu tiên tìm lính địch gần nhất
-                    let target_unit = unit_targets.iter().find(|(_, t, x, y)| {
-                        *t != unit.team
-                            && ((*x - unit.x).powi(2) + (*y - unit.y).powi(2)).sqrt() <= scan_range
-                    });
-                    if let Some((tid, _, _, _)) = target_unit {
+                    let scan_range = (unit.attack_range * 1.6).max(300.0);
+                    if let Some((target_id, is_building, _)) = spatial_grid.find_nearest_enemy(
+                        glam::Vec2::new(unit.x, unit.y),
+                        scan_range,
+                        unit.team,
+                    ) {
                         unit.order = UnitOrder::AttackTarget {
-                            target_id: *tid,
-                            is_building: false,
+                            target_id,
+                            is_building,
                         };
-                    } else {
-                        // 2. Không có lính địch thì quét công trình địch trong bán kính 300px
-                        let target_building = building_targets.iter().find(|(_, t, x, y, r)| {
-                            if *t == unit.team {
-                                return false;
-                            }
-                            let dist = ((*x - unit.x).powi(2) + (*y - unit.y).powi(2)).sqrt();
-                            (dist - r).max(0.0) <= 300.0
-                        });
-                        if let Some((bid, _, _, _, _)) = target_building {
-                            unit.order = UnitOrder::AttackTarget {
-                                target_id: *bid,
-                                is_building: true,
-                            };
-                        }
                     }
                 }
             }
             UnitOrder::AttackMove { x, y } => {
-                // Tự động tìm mục tiêu lính hoặc nhà trên đường di chuyển
-                let scan_range = unit.attack_range * 1.6;
-                let target_unit = unit_targets.iter().find(|(_, t, ux, uy)| {
-                    *t != unit.team
-                        && ((*ux - unit.x).powi(2) + (*uy - unit.y).powi(2)).sqrt() <= scan_range
-                });
-                if let Some((tid, _, _, _)) = target_unit {
+                // Tự động tìm mục tiêu lính hoặc nhà trên đường di chuyển qua Spatial Grid
+                let scan_range = (unit.attack_range * 1.6).max(260.0);
+                if let Some((target_id, is_building, _)) = spatial_grid.find_nearest_enemy(
+                    glam::Vec2::new(unit.x, unit.y),
+                    scan_range,
+                    unit.team,
+                ) {
                     unit.order = UnitOrder::AttackTarget {
-                        target_id: *tid,
-                        is_building: false,
+                        target_id,
+                        is_building,
                     };
                 } else {
-                    let target_building = building_targets.iter().find(|(_, t, bx, by, r)| {
-                        if *t == unit.team {
-                            return false;
-                        }
-                        let dist = ((*bx - unit.x).powi(2) + (*by - unit.y).powi(2)).sqrt();
-                        (dist - r).max(0.0) <= 260.0
-                    });
-                    if let Some((bid, _, _, _, _)) = target_building {
-                        unit.order = UnitOrder::AttackTarget {
-                            target_id: *bid,
-                            is_building: true,
-                        };
-                    } else {
-                        let dx = x - unit.x;
-                        let dy = y - unit.y;
-                        let dist = (dx * dx + dy * dy).sqrt();
+                    let dx = x - unit.x;
+                    let dy = y - unit.y;
+                    let dist = (dx * dx + dy * dy).sqrt();
                         if dist > 4.0 {
                             let move_dist = (cur_speed * dt).min(dist);
                             unit.x += (dx / dist) * move_dist;
@@ -424,7 +398,6 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                         }
                     }
                 }
-            }
             UnitOrder::MoveTo { x, y } => {
                 let dx = x - unit.x;
                 let dy = y - unit.y;

@@ -11,11 +11,13 @@ pub mod map;
 pub mod renderer;
 pub mod resources;
 pub mod simulation;
+pub mod spatial_grid;
 
 use bridge::*;
 use components::*;
 use fog::FogOfWar;
 use resources::*;
+use spatial_grid::SpatialGrid;
 
 thread_local! {
     static ENGINE_STATE: RefCell<Option<GameEngine>> = const { RefCell::new(None) };
@@ -35,6 +37,7 @@ pub struct GameEngine {
     pub obstacles: Vec<Obstacle>,
     pub projectiles: Vec<Projectile>,
     pub floating_texts: Vec<FloatingText>,
+    pub spatial_grid: SpatialGrid,
 
     // Trạng thái kinh tế & công nghệ 2 phe
     pub player_eco: PlayerEconomy,
@@ -89,6 +92,7 @@ impl GameEngine {
             obstacles,
             projectiles: Vec::new(),
             floating_texts: Vec::new(),
+            spatial_grid: SpatialGrid::new(),
 
             player_eco: PlayerEconomy::default(),
             enemy_eco: PlayerEconomy::default(),
@@ -138,6 +142,7 @@ impl GameEngine {
         self.buildings.clear();
         self.projectiles.clear();
         self.floating_texts.clear();
+        self.spatial_grid.clear();
 
         // 3. Reset toàn bộ sương mù chiến trận (Fog of War)
         self.fog = FogOfWar::new();
@@ -349,6 +354,27 @@ pub fn init_engine(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     Ok(())
 }
 
+/// Vòng lặp 1: Cập nhật mô phỏng logic (AI, kinh tế, di chuyển, va chạm, đạn)
+#[wasm_bindgen]
+pub fn engine_tick(dt: f32) {
+    ENGINE_STATE.with(|state| {
+        if let Some(ref mut engine) = *state.borrow_mut() {
+            simulation::step(engine, dt);
+        }
+    });
+}
+
+/// Vòng lặp 2: Vẽ khung hình lên Canvas (chạy theo requestAnimationFrame / VSync)
+#[wasm_bindgen]
+pub fn engine_render() {
+    ENGINE_STATE.with(|state| {
+        if let Some(ref mut engine) = *state.borrow_mut() {
+            renderer::render(engine);
+        }
+    });
+}
+
+/// Giữ lại hàm cũ để đảm bảo tính tương thích ngược
 #[wasm_bindgen]
 pub fn engine_step(dt: f32) {
     ENGINE_STATE.with(|state| {

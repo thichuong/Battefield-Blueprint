@@ -102,3 +102,32 @@ impl Default for CameraState {
         }
     }
 }
+
+impl CameraState {
+    /// Trả về (min_x, min_y, max_x, max_y) trong tọa độ thế giới (world space)
+    #[inline]
+    pub fn viewport_bounds(&self, margin: f32) -> (f32, f32, f32, f32) {
+        let half_w = (self.viewport_w * 0.5) / self.zoom + margin;
+        let half_h = (self.viewport_h * 0.5) / self.zoom + margin;
+        (
+            self.x - half_w,
+            self.y - half_h,
+            self.x + half_w,
+            self.y + half_h,
+        )
+    }
+
+    /// Kiểm tra điểm (wx, wy) có nằm trong viewport hay không
+    #[inline]
+    pub fn is_point_visible(&self, wx: f32, wy: f32, margin: f32) -> bool {
+        let (min_x, min_y, max_x, max_y) = self.viewport_bounds(margin);
+        wx >= min_x && wx <= max_x && wy >= min_y && wy <= max_y
+    }
+
+    /// Kiểm tra hình chữ nhật AABB có giao với viewport hay không
+    #[inline]
+    pub fn is_rect_visible(&self, rx: f32, ry: f32, rw: f32, rh: f32, margin: f32) -> bool {
+        let (min_x, min_y, max_x, max_y) = self.viewport_bounds(margin);
+        rx + rw >= min_x && rx <= max_x && ry + rh >= min_y && ry <= max_y
+    }
+}
