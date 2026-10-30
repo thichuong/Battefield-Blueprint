@@ -1,11 +1,12 @@
 import React from 'react';
-import { Trophy, Skull, RotateCcw } from 'lucide-react';
+import { Trophy, Skull, RotateCcw, Home } from 'lucide-react';
 
 interface GameOverModalProps {
   isOpen: boolean;
   playerWon: boolean;
   gameTime: number;
   onRestart: () => void;
+  onBackToMenu?: () => void;
 }
 
 export const GameOverModal: React.FC<GameOverModalProps> = ({
@@ -13,6 +14,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   playerWon,
   gameTime,
   onRestart,
+  onBackToMenu,
 }) => {
   if (!isOpen) return null;
 
@@ -65,16 +67,27 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
           </div>
         </div>
 
-        <button
-          onClick={onRestart}
-          className={`flex items-center justify-center gap-2 w-full py-3 rounded-lg font-bold text-sm transition-all cursor-pointer ${
-            playerWon
-              ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-500/30'
-              : 'bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/30'
-          }`}
-        >
-          <RotateCcw className="w-4 h-4" /> CHƠI TRẬN MỚI
-        </button>
+        <div className="flex flex-col gap-2.5 w-full">
+          <button
+            onClick={onRestart}
+            className={`flex items-center justify-center gap-2 w-full py-3 rounded-lg font-bold text-sm transition-all cursor-pointer ${
+              playerWon
+                ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-500/30'
+                : 'bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/30'
+            }`}
+          >
+            <RotateCcw className="w-4 h-4" /> CHƠI TRẬN MỚI
+          </button>
+
+          {onBackToMenu && (
+            <button
+              onClick={onBackToMenu}
+              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg font-bold text-xs bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 transition-colors cursor-pointer"
+            >
+              <Home className="w-4 h-4" /> VỀ MENU CHÍNH
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

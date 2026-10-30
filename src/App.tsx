@@ -6,6 +6,39 @@ import { SettingsModal } from './components/SettingsModal';
 import { GameOverModal } from './components/GameOverModal';
 import { soundEngine } from './audio/soundEngine';
 
+const initialGameState: EngineSyncState = {
+  player_minerals: 200,
+  player_energy: 50,
+  player_supply: 4,
+  player_max_supply: 10,
+  tech_state: {
+    focused_laser: false,
+    energy_shielding: false,
+    dark_matter_rockets: false,
+    titan_alloy_plating: false,
+    celestial_flying_swords: false,
+    golden_bell_shield: false,
+    corrosive_curse: false,
+    void_cataclysm: false,
+    primeval_scales: false,
+    behemoth_mutation: false,
+    acid_banelings: false,
+    hive_proliferation: false,
+    optical_drills: false,
+    overcharged_reactors: false,
+    fortified_blueprints: false,
+    magnetic_rounds: false,
+    exo_boosters: false,
+    superheated_blades: false,
+    overload_strike: false,
+    current_research: null,
+    research_progress: 0,
+    research_total_time: 0,
+  },
+  game_time: 0,
+  is_paused: false,
+};
+
 export const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isInGame, setIsInGame] = useState<boolean>(false);
@@ -16,38 +49,7 @@ export const App: React.FC = () => {
     playerWon: boolean;
   }>({ isOpen: false, playerWon: false });
 
-  const [gameState, setGameState] = useState<EngineSyncState>({
-    player_minerals: 200,
-    player_energy: 50,
-    player_supply: 4,
-    player_max_supply: 10,
-    tech_state: {
-      focused_laser: false,
-      energy_shielding: false,
-      dark_matter_rockets: false,
-      titan_alloy_plating: false,
-      celestial_flying_swords: false,
-      golden_bell_shield: false,
-      corrosive_curse: false,
-      void_cataclysm: false,
-      primeval_scales: false,
-      behemoth_mutation: false,
-      acid_banelings: false,
-      hive_proliferation: false,
-      optical_drills: false,
-      overcharged_reactors: false,
-      fortified_blueprints: false,
-      magnetic_rounds: false,
-      exo_boosters: false,
-      superheated_blades: false,
-      overload_strike: false,
-      current_research: null,
-      research_progress: 0,
-      research_total_time: 0,
-    },
-    game_time: 0,
-    is_paused: false,
-  });
+  const [gameState, setGameState] = useState<EngineSyncState>(initialGameState);
 
   const [settings, setSettings] = useState({
     soundVolume: 0.7,
@@ -192,6 +194,10 @@ export const App: React.FC = () => {
 
   const handleStartGame = (difficulty: string) => {
     setIsInGame(true);
+    setGameOverState({ isOpen: false, playerWon: false });
+    setIsTechTreeOpen(false);
+    setIsSettingsOpen(false);
+    setGameState(initialGameState);
     wasmBridge.sendCommand({
       type: 'StartGame',
       difficulty,
@@ -218,11 +224,21 @@ export const App: React.FC = () => {
   };
 
   const handleRestartGame = () => {
+    setIsInGame(true);
     setGameOverState({ isOpen: false, playerWon: false });
     setIsTechTreeOpen(false);
     setIsSettingsOpen(false);
+    setGameState(initialGameState);
     wasmBridge.sendCommand({ type: 'RestartGame' });
-    wasmBridge.sendCommand({ type: 'StartGame', difficulty: 'normal' });
+    soundEngine.playSound('order');
+  };
+
+  const handleBackToMenu = () => {
+    setIsInGame(false);
+    setGameOverState({ isOpen: false, playerWon: false });
+    setIsTechTreeOpen(false);
+    setIsSettingsOpen(false);
+    wasmBridge.sendCommand({ type: 'SetPaused', paused: true });
   };
 
   return (
@@ -264,6 +280,7 @@ export const App: React.FC = () => {
         showGrid={settings.showGrid}
         onUpdateSettings={handleUpdateSettings}
         onRestartGame={handleRestartGame}
+        onBackToMenu={handleBackToMenu}
       />
 
       <GameOverModal
@@ -271,6 +288,7 @@ export const App: React.FC = () => {
         playerWon={gameOverState.playerWon}
         gameTime={gameState.game_time}
         onRestart={handleRestartGame}
+        onBackToMenu={handleBackToMenu}
       />
     </div>
   );

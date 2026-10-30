@@ -66,6 +66,7 @@ pub struct GameEngine {
     pub ai_think_timer: f32,
     pub minerals_mined_accumulator: f32,
     pub income_calc_timer: f32,
+    pub difficulty: String,
 
     // Kênh thông điệp
     pub pending_commands: VecDeque<ReactToEngineCommand>,
@@ -104,7 +105,7 @@ impl GameEngine {
 
             next_id: 100,
             game_time: 0.0,
-            is_paused: false,
+            is_paused: true,
             game_over: false,
             mouse_screen_x: 0.0,
             mouse_screen_y: 0.0,
@@ -115,12 +116,76 @@ impl GameEngine {
             ai_think_timer: 0.0,
             minerals_mined_accumulator: 0.0,
             income_calc_timer: 0.0,
+            difficulty: "normal".to_string(),
             pending_commands: VecDeque::new(),
             outgoing_events: Vec::new(),
         };
 
         engine.init_base();
+        simulation::update_fog(&mut engine);
         engine
+    }
+
+    /// Dọn sạch toàn bộ thực thể và tài nguyên của màn chơi cũ, chuẩn bị cho màn chơi mới
+    pub fn reset_game(&mut self) {
+        // 1. Khởi tạo lại tài nguyên khoáng sản & chướng ngại vật mới tinh
+        let (minerals, obstacles) = map::generate_map_elements();
+        self.minerals = minerals;
+        self.obstacles = obstacles;
+
+        // 2. Dọn sạch toàn bộ đơn vị, công trình, đạn và hiệu ứng chữ nổi
+        self.units.clear();
+        self.buildings.clear();
+        self.projectiles.clear();
+        self.floating_texts.clear();
+
+        // 3. Reset toàn bộ sương mù chiến trận (Fog of War)
+        self.fog = FogOfWar::new();
+
+        // 4. Reset tài nguyên kinh tế & cây công nghệ về ban đầu
+        self.player_eco = PlayerEconomy::default();
+        self.enemy_eco = PlayerEconomy::default();
+        self.player_tech = TechTreeState::default();
+        self.enemy_tech = TechTreeState::default();
+
+        // 5. Reset camera về góc căn cứ Player nhưng giữ nguyên kích thước viewport màn hình hiện tại
+        let current_viewport_w = self.camera.viewport_w;
+        let current_viewport_h = self.camera.viewport_h;
+        self.camera = CameraState::default();
+        self.camera.viewport_w = current_viewport_w;
+        self.camera.viewport_h = current_viewport_h;
+
+        // 6. Xóa toàn bộ trạng thái chọn đơn vị, thao tác chuột & phím
+        self.selected_unit_ids.clear();
+        self.selected_building_id = None;
+        self.selection_box = None;
+        self.build_mode = None;
+        self.is_attack_move_mode = false;
+        self.is_minimap_dragging = false;
+        self.hovered_command_button = None;
+        self.mouse_screen_x = 0.0;
+        self.mouse_screen_y = 0.0;
+        self.is_mouse_down = false;
+        self.mouse_down_start = (0.0, 0.0);
+        self.keys_down.clear();
+
+        // 7. Reset bộ đếm thời gian và ID
+        self.next_id = 100;
+        self.game_time = 0.0;
+        self.is_paused = false;
+        self.game_over = false;
+        self.ai_think_timer = 0.0;
+        self.minerals_mined_accumulator = 0.0;
+        self.income_calc_timer = 0.0;
+
+        // 8. Dọn dẹp sự kiện cũ còn sót lại trong hàng đợi
+        self.outgoing_events.clear();
+
+        // 9. Sinh lại Căn cứ chính và 3 Thợ mỏ khởi đầu cho Player & AI
+        self.init_base();
+
+        // 10. Cập nhật lại sương mù cho căn cứ ban đầu ngay tức thì
+        simulation::update_fog(self);
     }
 
     pub fn init_base(&mut self) {

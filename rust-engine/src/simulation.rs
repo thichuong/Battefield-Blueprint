@@ -55,9 +55,19 @@ pub fn step(engine: &mut GameEngine, dt: f32) {
 fn process_commands(engine: &mut GameEngine) {
     while let Some(cmd) = engine.pending_commands.pop_front() {
         match cmd {
-            ReactToEngineCommand::StartGame { .. } => {
+            ReactToEngineCommand::StartGame { difficulty } => {
+                engine.difficulty = difficulty.clone();
+                // Dọn sạch toàn bộ thực thể & dữ liệu của màn cũ trước khi khởi động màn mới
+                engine.reset_game();
+                if difficulty == "hard" {
+                    engine.enemy_eco.minerals = 400.0;
+                    engine.enemy_eco.energy = 150.0;
+                } else if difficulty == "easy" {
+                    engine.enemy_eco.minerals = 100.0;
+                    engine.enemy_eco.energy = 0.0;
+                }
                 engine.is_paused = false;
-                engine.game_over = false;
+                send_sync_event(engine);
             }
             ReactToEngineCommand::SetPaused { paused } => {
                 engine.is_paused = paused;
@@ -77,9 +87,18 @@ fn process_commands(engine: &mut GameEngine) {
                 engine.settings.show_grid = show_grid;
             }
             ReactToEngineCommand::RestartGame => {
-                let ctx = engine.context.clone();
-                let canvas = engine.canvas.clone();
-                *engine = GameEngine::new(canvas, ctx);
+                let diff = engine.difficulty.clone();
+                // Dọn sạch toàn bộ thực thể & dữ liệu của màn cũ
+                engine.reset_game();
+                if diff == "hard" {
+                    engine.enemy_eco.minerals = 400.0;
+                    engine.enemy_eco.energy = 150.0;
+                } else if diff == "easy" {
+                    engine.enemy_eco.minerals = 100.0;
+                    engine.enemy_eco.energy = 0.0;
+                }
+                engine.is_paused = false;
+                send_sync_event(engine);
             }
         }
     }
@@ -1149,7 +1168,7 @@ fn update_floating_texts(engine: &mut GameEngine, dt: f32) {
     engine.floating_texts.retain(|ft| ft.lifetime > 0.0);
 }
 
-fn update_fog(engine: &mut GameEngine) {
+pub fn update_fog(engine: &mut GameEngine) {
     engine.fog.reset_visibility_to_explored();
 
     // Tầm nhìn quanh công trình
@@ -1208,7 +1227,7 @@ fn check_game_over(engine: &mut GameEngine) {
     }
 }
 
-fn send_sync_event(engine: &mut GameEngine) {
+pub fn send_sync_event(engine: &mut GameEngine) {
     let tech_json = serde_json::to_string(&engine.player_tech).unwrap_or_default();
     engine.outgoing_events.push(EngineToReactEvent::SyncState {
         player_minerals: engine.player_eco.minerals,

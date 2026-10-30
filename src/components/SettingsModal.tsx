@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Volume2, Compass, Play, RotateCcw, Grid } from 'lucide-react';
+import { X, Volume2, Compass, Play, RotateCcw, Grid, Home } from 'lucide-react';
 import { soundEngine } from '../audio/soundEngine';
 
 interface SettingsModalProps {
@@ -16,6 +16,7 @@ interface SettingsModalProps {
     showGrid: boolean;
   }) => void;
   onRestartGame: () => void;
+  onBackToMenu?: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -27,6 +28,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   showGrid,
   onUpdateSettings,
   onRestartGame,
+  onBackToMenu,
 }) => {
   if (!isOpen) return null;
 
@@ -143,18 +145,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-slate-800 bg-slate-950 flex justify-between gap-3">
-          <button
-            onClick={() => {
-              if (confirm('Bạn có chắc muốn chơi lại từ đầu trận này?')) {
-                onRestartGame();
-                onClose();
-              }
-            }}
-            className="flex items-center gap-1.5 px-3 py-2 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded text-xs font-bold transition-colors cursor-pointer"
-          >
-            <RotateCcw className="w-4 h-4" /> CHƠI LẠI TRẬN
-          </button>
+        <div className="px-6 py-4 border-t border-slate-800 bg-slate-950 flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                if (confirm('Bạn có chắc muốn chơi lại từ đầu trận này?')) {
+                  onRestartGame();
+                  onClose();
+                }
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded text-xs font-bold transition-colors cursor-pointer"
+            >
+              <RotateCcw className="w-4 h-4" /> CHƠI LẠI TRẬN
+            </button>
+            {onBackToMenu && (
+              <button
+                onClick={() => {
+                  if (confirm('Bạn có muốn thoát về Menu chính không?')) {
+                    onBackToMenu();
+                    onClose();
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 rounded text-xs font-bold transition-colors cursor-pointer"
+              >
+                <Home className="w-4 h-4" /> VỀ MENU
+              </button>
+            )}
+          </div>
           <button
             onClick={onClose}
             className="flex items-center gap-1.5 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded text-xs font-bold transition-colors cursor-pointer"
