@@ -273,11 +273,37 @@ fn update_camera(engine: &mut GameEngine, dt: f32) {
     engine.camera.y = engine.camera.y.clamp(min_y, max_y);
 }
 
+pub const ENERGY_CONVERSION_THRESHOLD: f32 = 1000.0;
+pub const CONVERT_ENERGY_PER_SEC: f32 = 30.0;
+pub const CONVERT_GOLD_PER_SEC: f32 = 25.0;
+
+/// Tính toán năng lượng tiêu thụ và vàng nhận được từ quá trình chuyển đổi.
+/// - Ngưỡng an toàn tối thiểu là 1000 Năng lượng. Dưới 1000 tự động dừng.
+/// - Trả về (actual_energy_consumed, gold_gained).
+pub fn calculate_energy_conversion(energy: f32, num_converters: usize, dt: f32) -> (f32, f32) {
+    if num_converters == 0 || energy <= ENERGY_CONVERSION_THRESHOLD {
+        return (0.0, 0.0);
+    }
+
+    let surplus = energy - ENERGY_CONVERSION_THRESHOLD;
+    let desired_energy = (num_converters as f32) * CONVERT_ENERGY_PER_SEC * dt;
+    let actual_energy = desired_energy.min(surplus);
+
+    if actual_energy > 0.0 {
+        let gold_gained = actual_energy * (CONVERT_GOLD_PER_SEC / CONVERT_ENERGY_PER_SEC);
+        (actual_energy, gold_gained)
+    } else {
+        (0.0, 0.0)
+    }
+}
+
 fn update_economy(engine: &mut GameEngine, dt: f32) {
     let mut p_reactors = 0;
     let mut e_reactors = 0;
     let mut p_supply_depots = 0;
     let mut e_supply_depots = 0;
+    let mut p_converters = 0;
+    let mut e_converters = 0;
 
     for b in &engine.buildings {
         if b.build_progress >= 1.0 {
@@ -286,6 +312,8 @@ fn update_economy(engine: &mut GameEngine, dt: f32) {
                 (Team::Enemy, BuildingType::PowerReactor) => e_reactors += 1,
                 (Team::Player, BuildingType::SupplyDepot) => p_supply_depots += 1,
                 (Team::Enemy, BuildingType::SupplyDepot) => e_supply_depots += 1,
+                (Team::Player, BuildingType::EnergyConverter) => p_converters += 1,
+                (Team::Enemy, BuildingType::EnergyConverter) => e_converters += 1,
                 _ => {}
             }
         }
@@ -302,6 +330,29 @@ fn update_economy(engine: &mut GameEngine, dt: f32) {
     engine.player_eco.energy += player_energy_rate * dt;
     engine.enemy_eco.energy += enemy_energy_rate * dt;
     engine.player_eco.energy_per_sec = player_energy_rate;
+
+    // Chuyển hóa Năng lượng thành Vàng (Energy Converter)
+    if p_converters > 0 {
+        let (used_energy, gained_gold) =
+            calculate_energy_conversion(engine.player_eco.energy, p_converters, dt);
+        if used_energy > 0.0 {
+            engine.player_eco.energy -= used_energy;
+            engine.player_eco.minerals += gained_gold;
+            engine.minerals_mined_accumulator += gained_gold;
+            let consumed_per_sec =
+                (used_energy / dt).min((p_converters as f32) * CONVERT_ENERGY_PER_SEC);
+            engine.player_eco.energy_per_sec -= consumed_per_sec;
+        }
+    }
+
+    if e_converters > 0 {
+        let (used_energy, gained_gold) =
+            calculate_energy_conversion(engine.enemy_eco.energy, e_converters, dt);
+        if used_energy > 0.0 {
+            engine.enemy_eco.energy -= used_energy;
+            engine.enemy_eco.minerals += gained_gold;
+        }
+    }
 
     engine.player_eco.max_supply = 10 + p_supply_depots * 8;
     engine.enemy_eco.max_supply = 10 + e_supply_depots * 8;
@@ -1623,6 +1674,7 @@ fn try_place_building(engine: &mut GameEngine, b_type: BuildingType, wx: f32, wy
         BuildingType::PowerReactor => (120.0, 0.0, 60.0, 60.0, 700.0),
         BuildingType::Barracks => (150.0, 0.0, 80.0, 70.0, 1200.0),
         BuildingType::TurretTower => (125.0, 50.0, 50.0, 50.0, 900.0),
+        BuildingType::EnergyConverter => (150.0, 50.0, 65.0, 65.0, 850.0),
     };
 
     if engine.player_eco.minerals >= cost_min && engine.player_eco.energy >= cost_en {
@@ -1647,6 +1699,12 @@ fn try_place_building(engine: &mut GameEngine, b_type: BuildingType, wx: f32, wy
                 energy: 0.10,
                 explosive: 0.20,
                 arcane: 0.0,
+            },
+            BuildingType::EnergyConverter => Resistances {
+                physical: 0.15,
+                energy: 0.25,
+                explosive: 0.15,
+                arcane: 0.10,
             },
             _ => Resistances {
                 physical: 0.15,
@@ -1779,6 +1837,7 @@ fn handle_command_card_click(engine: &mut GameEngine, rel_x: f32, rel_y: f32) {
             2 => engine.build_mode = Some(BuildingType::Barracks),
             3 => engine.build_mode = Some(BuildingType::TurretTower),
             4 => engine.build_mode = Some(BuildingType::CommandCenter),
+            5 => engine.build_mode = Some(BuildingType::EnergyConverter),
             _ => {}
         }
         return;
@@ -1951,5 +2010,57 @@ fn try_cancel_unit(engine: &mut GameEngine, bid: u32, u_type: UnitType) {
         engine.outgoing_events.push(EngineToReactEvent::PlaySound {
             sound: "click".to_string(),
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_energy_conversion_normal() {
+        // Có 1 nhà chuyển đổi, năng lượng 1200 (> 1000), dt = 1.0
+        let (used_en, gained_gold) = calculate_energy_conversion(1200.0, 1, 1.0);
+        assert_eq!(used_en, 30.0);
+        assert_eq!(gained_gold, 25.0);
+    }
+
+    #[test]
+    fn test_energy_conversion_at_threshold_stops() {
+        // Năng lượng đúng 1000 -> Không chuyển đổi
+        let (used_en, gained_gold) = calculate_energy_conversion(1000.0, 1, 1.0);
+        assert_eq!(used_en, 0.0);
+        assert_eq!(gained_gold, 0.0);
+
+        // Năng lượng thấp hơn 1000 -> Hoàn toàn dừng chuyển đổi
+        let (used_en2, gained_gold2) = calculate_energy_conversion(999.0, 1, 1.0);
+        assert_eq!(used_en2, 0.0);
+        assert_eq!(gained_gold2, 0.0);
+    }
+
+    #[test]
+    fn test_energy_conversion_partial_surplus_does_not_drop_below_1000() {
+        // Năng lượng là 1010, thặng dư chỉ là 10.
+        // Nhu cầu chuyển đổi là 30, nhưng chỉ được phép tiêu thụ tối đa 10 để bảo toàn ngưỡng 1000.
+        let (used_en, gained_gold) = calculate_energy_conversion(1010.0, 1, 1.0);
+        assert_eq!(used_en, 10.0);
+        // Tỷ lệ 25 / 30 = 5 / 6. 10 * 25 / 30 = 8.333333
+        assert!((gained_gold - (10.0 * 25.0 / 30.0)).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_energy_conversion_multiple_converters() {
+        // 2 nhà chuyển đổi, năng lượng 1200, dt = 1.0 -> Tiêu thụ 60 năng lượng, nhận 50 vàng
+        let (used_en, gained_gold) = calculate_energy_conversion(1200.0, 2, 1.0);
+        assert_eq!(used_en, 60.0);
+        assert_eq!(gained_gold, 50.0);
+    }
+
+    #[test]
+    fn test_energy_conversion_no_converters() {
+        // Không có nhà nào -> 0
+        let (used_en, gained_gold) = calculate_energy_conversion(5000.0, 0, 1.0);
+        assert_eq!(used_en, 0.0);
+        assert_eq!(gained_gold, 0.0);
     }
 }

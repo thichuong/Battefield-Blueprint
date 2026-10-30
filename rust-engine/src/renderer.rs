@@ -239,8 +239,61 @@ fn render_buildings(engine: &GameEngine) {
             BuildingType::PowerReactor => "REACTOR",
             BuildingType::Barracks => "BARRACKS",
             BuildingType::TurretTower => "TURRET",
+            BuildingType::EnergyConverter => "CONVERTER",
         };
         let _ = ctx.fill_text(title, bx + 6.0, by + 18.0);
+
+        // Hiệu ứng lõi cho Trạm Chuyển Hóa Năng Lượng
+        if b.building_type == BuildingType::EnergyConverter && b.build_progress >= 1.0 {
+            let cx = b.x as f64;
+            let cy = (b.y + 3.0) as f64;
+            let is_active = if b.team == Team::Player {
+                engine.player_eco.energy >= 1000.0
+            } else {
+                engine.enemy_eco.energy >= 1000.0
+            };
+
+            if is_active {
+                // Vòng xoay năng lượng đang chuyển hóa (Màu hổ phách / vàng kim)
+                let pulse = ((engine.game_time * 5.0).sin() * 2.5) as f64;
+                ctx.set_stroke_style_str("#fbbf24");
+                ctx.set_line_width(1.8);
+                ctx.begin_path();
+                let _ = ctx.arc(cx, cy, 14.0 + pulse * 0.5, 0.0, std::f64::consts::PI * 2.0);
+                ctx.stroke();
+
+                ctx.set_fill_style_str("rgba(251, 191, 36, 0.35)");
+                ctx.begin_path();
+                let _ = ctx.arc(cx, cy, (8.0 + pulse).max(4.0), 0.0, std::f64::consts::PI * 2.0);
+                ctx.fill();
+
+                // Tia chuyển đổi xoay
+                let angle = (engine.game_time * 3.0) as f64;
+                ctx.set_stroke_style_str("#fef08a");
+                ctx.set_line_width(1.5);
+                ctx.begin_path();
+                ctx.move_to(cx + angle.cos() * 14.0, cy + angle.sin() * 14.0);
+                ctx.line_to(cx - angle.cos() * 14.0, cy - angle.sin() * 14.0);
+                ctx.move_to(cx + (angle + 1.57).cos() * 14.0, cy + (angle + 1.57).sin() * 14.0);
+                ctx.line_to(cx - (angle + 1.57).cos() * 14.0, cy - (angle + 1.57).sin() * 14.0);
+                ctx.stroke();
+
+                ctx.set_font("bold 9px monospace");
+                ctx.set_fill_style_str("#fbbf24");
+                let _ = ctx.fill_text("⚡➔💎", cx - 13.0, cy + 22.0);
+            } else {
+                // Trạng thái STANDBY khi Năng lượng < 1000
+                ctx.set_stroke_style_str("#64748b");
+                ctx.set_line_width(1.2);
+                ctx.begin_path();
+                let _ = ctx.arc(cx, cy, 12.0, 0.0, std::f64::consts::PI * 2.0);
+                ctx.stroke();
+
+                ctx.set_font("bold 8px monospace");
+                ctx.set_fill_style_str("#94a3b8");
+                let _ = ctx.fill_text("STANDBY", cx - 18.0, cy + 22.0);
+            }
+        }
 
         // Thanh tiến độ xây dựng hoặc Thanh máu
         if b.build_progress < 1.0 {
@@ -569,6 +622,7 @@ fn render_build_ghost(engine: &GameEngine, b_type: BuildingType) {
         BuildingType::PowerReactor => (60.0, 60.0),
         BuildingType::Barracks => (80.0, 70.0),
         BuildingType::TurretTower => (50.0, 50.0),
+        BuildingType::EnergyConverter => (65.0, 65.0),
     };
 
     let bx = (wx - w * 0.5) as f64;
@@ -838,6 +892,7 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
                 BuildingType::PowerReactor => "POWER REACTOR",
                 BuildingType::Barracks => "INFANTRY BARRACKS",
                 BuildingType::TurretTower => "DEFENSE TURRET",
+                BuildingType::EnergyConverter => "ENERGY CONVERTER",
             };
             let _ = ctx.fill_text(title, x + 15.0, y + 22.0);
 
@@ -871,8 +926,33 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
                 y + 58.0,
             );
 
-            // Hàng đợi huấn luyện (Training queue)
-            if !b.training_queue.is_empty() {
+            // Trạng thái công trình đặc thù cho Trạm Chuyển Hóa
+            if b.building_type == BuildingType::EnergyConverter {
+                ctx.set_font("bold 11px monospace");
+                let cur_energy = if b.team == Team::Player {
+                    engine.player_eco.energy
+                } else {
+                    engine.enemy_eco.energy
+                };
+
+                if cur_energy >= 1000.0 {
+                    ctx.set_fill_style_str("#fbbf24");
+                    let _ = ctx.fill_text("STATUS: CONVERTING (30⚡ ➔ 25💎/s)", x + 15.0, y + 85.0);
+                    ctx.set_font("10px monospace");
+                    ctx.set_fill_style_str("#38bdf8");
+                    let _ = ctx.fill_text("Tự động chuyển Năng lượng dư thừa (>1000⚡) thành Vàng.", x + 15.0, y + 105.0);
+                } else {
+                    ctx.set_fill_style_str("#f97316");
+                    let _ = ctx.fill_text("STATUS: STANDBY (Năng lượng < 1000⚡)", x + 15.0, y + 85.0);
+                    ctx.set_font("10px monospace");
+                    ctx.set_fill_style_str("#94a3b8");
+                    let _ = ctx.fill_text(
+                        &format!("Cần thêm {:.0}⚡ để tự động kích hoạt.", (1000.0 - cur_energy).max(0.0)),
+                        x + 15.0,
+                        y + 105.0,
+                    );
+                }
+            } else if !b.training_queue.is_empty() {
                 ctx.set_font("11px monospace");
                 ctx.set_fill_style_str("#facc15");
                 let cur_unit = b.training_queue[0].button_label();
@@ -1124,6 +1204,7 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
         draw_hud_button(ctx, x + 139.0, y + 6.0, 62.0, 40.0, "BARRACKS", "150M");
         draw_hud_button(ctx, x + 5.0, y + 50.0, 62.0, 40.0, "TURRET", "125M 50E");
         draw_hud_button(ctx, x + 72.0, y + 50.0, 62.0, 40.0, "HQ CC", "400M");
+        draw_hud_button(ctx, x + 139.0, y + 50.0, 62.0, 40.0, "CONVERT", "150M 50E");
 
         if let Some(hover_idx) = engine.hovered_command_button {
             tooltip = match hover_idx {
@@ -1146,6 +1227,10 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
                 4 => Some((
                     "HQ COMMAND CENTER".into(),
                     "Giá: 400M. Trung tâm chỉ huy mở rộng.".into(),
+                )),
+                5 => Some((
+                    "ENERGY CONVERTER".into(),
+                    "Giá: 150M 50E. Tự động chuyển Năng lượng thành Vàng khi Năng lượng >= 1000.".into(),
                 )),
                 _ => None,
             };

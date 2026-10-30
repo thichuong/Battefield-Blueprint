@@ -7,6 +7,7 @@ export enum BuildingType {
     PowerReactor = 2,
     Barracks = 3,
     TurretTower = 4,
+    EnergyConverter = 5,
 }
 
 export enum DamageType {

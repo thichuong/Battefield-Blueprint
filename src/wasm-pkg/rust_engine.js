@@ -1,7 +1,7 @@
 /* @ts-self-types="./rust_engine.d.ts" */
 
 /**
- * @enum {0 | 1 | 2 | 3 | 4}
+ * @enum {0 | 1 | 2 | 3 | 4 | 5}
  */
 export const BuildingType = Object.freeze({
     CommandCenter: 0, "0": "CommandCenter",
@@ -9,6 +9,7 @@ export const BuildingType = Object.freeze({
     PowerReactor: 2, "2": "PowerReactor",
     Barracks: 3, "3": "Barracks",
     TurretTower: 4, "4": "TurretTower",
+    EnergyConverter: 5, "5": "EnergyConverter",
 });
 
 /**

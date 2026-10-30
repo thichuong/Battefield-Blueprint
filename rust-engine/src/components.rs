@@ -156,6 +156,7 @@ pub enum BuildingType {
     PowerReactor = 2,  // Lò phản ứng (+Energy/s)
     Barracks = 3,      // Trại huấn luyện lính
     TurretTower = 4,   // Tháp pháo phòng thủ tự động
+    EnergyConverter = 5, // Trạm chuyển hóa năng lượng thành vàng
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
