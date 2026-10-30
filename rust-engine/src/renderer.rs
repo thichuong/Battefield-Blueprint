@@ -216,6 +216,19 @@ fn render_buildings(engine: &GameEngine) {
         ctx.set_line_width(if is_selected { 2.5 } else { 1.5 });
         ctx.stroke_rect(bx, by, bw, bh);
 
+        // Hiển thị vòng tròn tầm bắn của công trình khi được chọn
+        if is_selected {
+            let b_cfg = engine.config.get_building(b.building_type);
+            let range = b_cfg.map(|c| c.turret_range).unwrap_or(0.0);
+            if range > 0.0 {
+                ctx.set_stroke_style_str("rgba(0, 229, 255, 0.45)");
+                ctx.set_line_width(1.5);
+                ctx.begin_path();
+                let _ = ctx.arc(b.x as f64, b.y as f64, range as f64, 0.0, std::f64::consts::PI * 2.0);
+                ctx.stroke();
+            }
+        }
+
         // Ký hiệu góc kỹ thuật
         draw_blueprint_brackets(ctx, bx, by, bw, bh, color_neon);
 
@@ -634,6 +647,20 @@ fn render_build_ghost(engine: &GameEngine, b_type: BuildingType) {
     ctx.set_stroke_style_str("#00e5ff");
     ctx.set_line_width(2.0);
     ctx.stroke_rect(bx, by, w as f64, h as f64);
+
+    // Hiển thị vòng tròn tầm bắn của công trình khi đang đặt móng
+    let range = engine
+        .config
+        .get_building(b_type)
+        .map(|c| c.turret_range)
+        .unwrap_or(0.0);
+    if range > 0.0 {
+        ctx.set_stroke_style_str("rgba(0, 229, 255, 0.4)");
+        ctx.set_line_width(1.5);
+        ctx.begin_path();
+        let _ = ctx.arc(wx as f64, wy as f64, range as f64, 0.0, std::f64::consts::PI * 2.0);
+        ctx.stroke();
+    }
 }
 
 fn render_fog_of_war(engine: &GameEngine) {
@@ -926,6 +953,11 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
                 y + 58.0,
             );
 
+            let b_cfg = engine.config.get_building(b.building_type);
+            let b_range = b_cfg.map(|c| c.turret_range).unwrap_or(0.0);
+            let b_damage = b_cfg.map(|c| c.turret_damage).unwrap_or(0.0);
+            let is_armed = b_range > 0.0 && b_damage > 0.0;
+
             // Trạng thái công trình đặc thù cho Trạm Chuyển Hóa
             if b.building_type == BuildingType::EnergyConverter {
                 ctx.set_font("bold 11px monospace");
@@ -961,15 +993,23 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
                 let _ = ctx.fill_text(
                     &format!("TRAINING: {} ({:.0}%)", cur_unit, prog * 100.0),
                     x + 15.0,
-                    y + 80.0,
+                    y + 78.0,
                 );
 
                 ctx.set_fill_style_str("#334155");
-                ctx.fill_rect(x + 15.0, y + 86.0, w - 30.0, 6.0);
+                ctx.fill_rect(x + 15.0, y + 84.0, w - 30.0, 6.0);
                 ctx.set_fill_style_str("#facc15");
-                ctx.fill_rect(x + 15.0, y + 86.0, (w - 30.0) * (prog as f64), 6.0);
+                ctx.fill_rect(x + 15.0, y + 84.0, (w - 30.0) * (prog as f64), 6.0);
 
-                if b.training_queue.len() > 1 {
+                if is_armed {
+                    ctx.set_font("10px monospace");
+                    ctx.set_fill_style_str("#38bdf8");
+                    let _ = ctx.fill_text(
+                        &format!("⚔️ ATK: {:.0} [{}] | RNG: {:.0}", b_damage, b.damage_type.display_name(), b_range),
+                        x + 15.0,
+                        y + 106.0,
+                    );
+                } else if b.training_queue.len() > 1 {
                     ctx.set_font("10px monospace");
                     ctx.set_fill_style_str("#94a3b8");
                     let mut q_str = String::from("Queue: ");
@@ -979,8 +1019,48 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
                         }
                         q_str.push_str(u.button_label());
                     }
-                    let _ = ctx.fill_text(&q_str, x + 15.0, y + 108.0);
+                    let _ = ctx.fill_text(&q_str, x + 15.0, y + 106.0);
                 }
+            } else if is_armed {
+                let b_cd = b_cfg.map(|c| c.turret_cooldown).unwrap_or(1.0).max(0.1);
+                let has_dark_rockets = b.team == Team::Player && engine.player_tech.dark_matter_rockets;
+                let has_overload = b.team == Team::Player && engine.player_tech.overload_strike;
+
+                let eff_damage = if has_dark_rockets { b_damage * 1.4 } else { b_damage };
+                let eff_cd = if has_overload { b_cd * 0.6 } else { b_cd };
+
+                ctx.set_font("11px monospace");
+                ctx.set_fill_style_str("#e2e8f0");
+                let _ = ctx.fill_text(
+                    &format!(
+                        "⚔️ ATK: {:.0} [{}]   🎯 RNG: {:.0}   ⚡ CD: {:.1}s",
+                        eff_damage,
+                        b.damage_type.display_name(),
+                        b_range,
+                        eff_cd
+                    ),
+                    x + 15.0,
+                    y + 78.0,
+                );
+
+                ctx.set_font("10px monospace");
+                if has_dark_rockets || has_overload {
+                    ctx.set_fill_style_str("#f59e0b");
+                    let mut upgrades_str = String::from("UPGRADES: ");
+                    if has_dark_rockets {
+                        upgrades_str.push_str("[DARK ROCKETS: AOE] ");
+                    }
+                    if has_overload {
+                        upgrades_str.push_str("[OVERLOAD: +66% SPD]");
+                    }
+                    let _ = ctx.fill_text(&upgrades_str, x + 15.0, y + 96.0);
+                } else {
+                    ctx.set_fill_style_str("#94a3b8");
+                    let _ = ctx.fill_text("STATUS: DEFENSIVE // ARMED", x + 15.0, y + 96.0);
+                }
+                ctx.set_font("10px monospace");
+                ctx.set_fill_style_str("#64748b");
+                let _ = ctx.fill_text("Targeting: Automatic hostile engagement", x + 15.0, y + 112.0);
             } else {
                 ctx.set_font("11px monospace");
                 ctx.set_fill_style_str("#94a3b8");

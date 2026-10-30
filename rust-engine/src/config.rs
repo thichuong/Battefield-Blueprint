@@ -290,11 +290,11 @@ impl Default for GameConfig {
                 resistances: Resistances { physical: 0.80, energy: 0.60, explosive: 0.25, arcane: 0.20 },
                 supply_bonus: 10,
                 energy_per_sec: 0.0,
-                turret_range: 0.0,
-                turret_damage: 50.0,
-                turret_cooldown: 0.0,
+                turret_range: 250.0,
+                turret_damage: 100.0,
+                turret_cooldown: 1.0,
                 turret_damage_type: DamageType::Physical,
-                turret_projectile_speed: 0.0,
+                turret_projectile_speed: 900.0,
             },
         );
 
@@ -315,7 +315,7 @@ impl Default for GameConfig {
                 turret_damage: 0.0,
                 turret_cooldown: 0.0,
                 turret_damage_type: DamageType::Physical,
-                turret_projectile_speed: 0.0,
+                turret_projectile_speed: 900.0,
             },
         );
 
@@ -336,7 +336,7 @@ impl Default for GameConfig {
                 turret_damage: 0.0,
                 turret_cooldown: 0.0,
                 turret_damage_type: DamageType::Physical,
-                turret_projectile_speed: 0.0,
+                turret_projectile_speed: 900.0,
             },
         );
 
@@ -357,7 +357,7 @@ impl Default for GameConfig {
                 turret_damage: 0.0,
                 turret_cooldown: 0.0,
                 turret_damage_type: DamageType::Physical,
-                turret_projectile_speed: 0.0,
+                turret_projectile_speed: 900.0,
             },
         );
 
@@ -399,7 +399,7 @@ impl Default for GameConfig {
                 turret_damage: 0.0,
                 turret_cooldown: 0.0,
                 turret_damage_type: DamageType::Physical,
-                turret_projectile_speed: 0.0,
+                turret_projectile_speed: 900.0,
             },
         );
 
@@ -699,5 +699,22 @@ mod tests {
         let building = cfg.create_building(1, Team::Player, BuildingType::CommandCenter, 200.0, 200.0, true);
         assert_eq!(building.hp, 5000.0);
         assert_eq!(building.build_progress, 1.0);
+    }
+
+    #[test]
+    fn test_custom_config_modifies_building_weapon_stats() {
+        let mut cfg = GameConfig::default();
+        if let Some(b) = cfg.buildings.get_mut("Barracks") {
+            b.turret_range = 220.0;
+            b.turret_damage = 35.0;
+            b.turret_cooldown = 0.8;
+            b.turret_damage_type = DamageType::Arcane;
+        }
+
+        let b_cfg = cfg.get_building(BuildingType::Barracks).unwrap();
+        assert_eq!(b_cfg.turret_range, 220.0);
+        assert_eq!(b_cfg.turret_damage, 35.0);
+        assert_eq!(b_cfg.turret_cooldown, 0.8);
+        assert_eq!(b_cfg.turret_damage_type, DamageType::Arcane);
     }
 }

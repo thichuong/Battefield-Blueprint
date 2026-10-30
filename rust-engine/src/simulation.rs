@@ -1,6 +1,8 @@
 use crate::bridge::*;
 use crate::components::*;
+use crate::config::BuildingStatsConfig;
 use crate::map::{MAP_HEIGHT, MAP_WIDTH};
+use crate::resources::TechTreeState;
 use crate::GameEngine;
 
 pub fn step(engine: &mut GameEngine, dt: f32) {
@@ -141,7 +143,19 @@ fn update_tech_research(engine: &mut GameEngine, dt: f32) {
                 // Khoa học
                 "focused_laser" => engine.player_tech.focused_laser = true,
                 "energy_shielding" => engine.player_tech.energy_shielding = true,
-                "dark_matter_rockets" => engine.player_tech.dark_matter_rockets = true,
+                "dark_matter_rockets" => {
+                    engine.player_tech.dark_matter_rockets = true;
+                    for b in engine.buildings.iter_mut().filter(|b| b.team == Team::Player) {
+                        let is_armed = engine
+                            .config
+                            .get_building(b.building_type)
+                            .map(|c| c.turret_damage > 0.0)
+                            .unwrap_or(false);
+                        if is_armed {
+                            b.damage_type = DamageType::Explosive;
+                        }
+                    }
+                }
                 "titan_alloy_plating" => {
                     engine.player_tech.titan_alloy_plating = true;
                     // Tăng thêm máu cho các công trình hiện hữu
@@ -775,8 +789,10 @@ fn update_buildings(engine: &mut GameEngine, dt: f32) {
         .map(|u| (u.team, u.x, u.y))
         .collect();
 
-    let enemy_targets: Vec<(Team, f32, f32)> =
+    let enemy_unit_targets: Vec<(Team, f32, f32)> =
         engine.units.iter().map(|u| (u.team, u.x, u.y)).collect();
+    let enemy_building_targets: Vec<(Team, f32, f32)> =
+        engine.buildings.iter().map(|b| (b.team, b.x, b.y)).collect();
 
     for b in engine.buildings.iter_mut() {
         if b.build_progress < 1.0 {
@@ -808,48 +824,17 @@ fn update_buildings(engine: &mut GameEngine, dt: f32) {
                 }
             }
 
-            // Tháp pháo phòng thủ tự động
-            if b.building_type == BuildingType::TurretTower {
-                if b.current_cooldown > 0.0 {
-                    b.current_cooldown -= dt;
-                } else {
-                    let turret_cfg = engine.config.get_building(BuildingType::TurretTower);
-                    let range = turret_cfg.map(|c| c.turret_range).unwrap_or(250.0);
-                    let base_damage = turret_cfg.map(|c| c.turret_damage).unwrap_or(25.0);
-                    let base_cd = turret_cfg.map(|c| c.turret_cooldown).unwrap_or(1.0);
-                    let base_dmg_type = turret_cfg.map(|c| c.turret_damage_type).unwrap_or(DamageType::Energy);
-                    let base_speed = turret_cfg.map(|c| c.turret_projectile_speed).unwrap_or(900.0);
-
-                    if let Some((_, ex, ey)) = enemy_targets.iter().find(|(t, x, y)| {
-                        *t != b.team && ((*x - b.x).powi(2) + (*y - b.y).powi(2)).sqrt() <= range
-                    }) {
-                        b.current_cooldown =
-                            if b.team == Team::Player && engine.player_tech.overload_strike {
-                                base_cd * 0.6
-                            } else {
-                                base_cd
-                            };
-                        let is_dark_rocket = b.team == Team::Player && engine.player_tech.dark_matter_rockets;
-                        new_turret_projectiles.push(Projectile {
-                            id: 0,
-                            team: b.team,
-                            x: b.x,
-                            y: b.y - 20.0,
-                            target_x: *ex,
-                            target_y: *ey,
-                            speed: if is_dark_rocket { base_speed * (750.0 / 900.0) } else { base_speed },
-                            damage: if is_dark_rocket { base_damage * 1.4 } else { base_damage },
-                            damage_type: if is_dark_rocket {
-                                DamageType::Explosive
-                            } else {
-                                base_dmg_type
-                            },
-                            aoe_radius: if is_dark_rocket { 40.0 } else { 0.0 },
-                            is_laser: !is_dark_rocket,
-                            lifetime: if is_dark_rocket { 1.2 } else { 0.3 },
-                        });
-                    }
-                }
+            // Công trình phòng thủ / tấn công tự động
+            if let Some(p) = process_building_combat(
+                b,
+                engine.config.get_building(b.building_type),
+                &engine.player_tech,
+                &engine.enemy_tech,
+                &enemy_unit_targets,
+                &enemy_building_targets,
+                dt,
+            ) {
+                new_turret_projectiles.push(p);
             }
         }
     }
@@ -899,6 +884,91 @@ fn update_buildings(engine: &mut GameEngine, dt: f32) {
 
     // Xóa nhà sập
     engine.buildings.retain(|b| b.hp > 0.0);
+}
+
+pub fn process_building_combat(
+    b: &mut Building,
+    b_cfg: Option<&BuildingStatsConfig>,
+    player_tech: &TechTreeState,
+    enemy_tech: &TechTreeState,
+    enemy_unit_targets: &[(Team, f32, f32)],
+    enemy_building_targets: &[(Team, f32, f32)],
+    dt: f32,
+) -> Option<Projectile> {
+    let range = b_cfg.map(|c| c.turret_range).unwrap_or(0.0);
+    let base_damage = b_cfg.map(|c| c.turret_damage).unwrap_or(0.0);
+
+    if range <= 0.0 || base_damage <= 0.0 {
+        return None;
+    }
+
+    if b.current_cooldown > 0.0 {
+        b.current_cooldown -= dt;
+        return None;
+    }
+
+    let base_cd = b_cfg.map(|c| c.turret_cooldown).unwrap_or(1.0).max(0.1);
+    let base_dmg_type = b_cfg.map(|c| c.turret_damage_type).unwrap_or(b.damage_type);
+    let base_speed = b_cfg.map(|c| c.turret_projectile_speed).unwrap_or(900.0).max(100.0);
+
+    // Ưu tiên ngắm lính đối phương gần nhất, nếu không có mới ngắm công trình đối phương
+    let target_pos = enemy_unit_targets
+        .iter()
+        .find(|(t, x, y)| *t != b.team && ((*x - b.x).powi(2) + (*y - b.y).powi(2)).sqrt() <= range)
+        .or_else(|| {
+            enemy_building_targets
+                .iter()
+                .find(|(t, x, y)| *t != b.team && ((*x - b.x).powi(2) + (*y - b.y).powi(2)).sqrt() <= range)
+        });
+
+    if let Some((_, ex, ey)) = target_pos {
+        let has_overload = if b.team == Team::Player {
+            player_tech.overload_strike
+        } else {
+            enemy_tech.overload_strike
+        };
+        b.current_cooldown = if has_overload {
+            base_cd * 0.6
+        } else {
+            base_cd
+        };
+
+        let has_dark_rockets = if b.team == Team::Player {
+            player_tech.dark_matter_rockets
+        } else {
+            enemy_tech.dark_matter_rockets
+        };
+
+        let spawn_y = b.y - (b.height * 0.25).min(20.0);
+        let is_laser = !has_dark_rockets && base_dmg_type == DamageType::Energy;
+
+        Some(Projectile {
+            id: 0,
+            team: b.team,
+            x: b.x,
+            y: spawn_y,
+            target_x: *ex,
+            target_y: *ey,
+            speed: if has_dark_rockets { base_speed * (750.0 / 900.0) } else { base_speed },
+            damage: if has_dark_rockets { base_damage * 1.4 } else { base_damage },
+            damage_type: if has_dark_rockets {
+                DamageType::Explosive
+            } else {
+                base_dmg_type
+            },
+            aoe_radius: if has_dark_rockets { 40.0 } else { 0.0 },
+            is_laser,
+            lifetime: if has_dark_rockets {
+                1.2
+            } else if is_laser {
+                0.3
+            } else {
+                1.0
+            },
+        })
+    } else {
+        None
+    }
 }
 
 pub fn calculate_effective_damage(raw_dmg: f32, dmg_type: DamageType, res: &Resistances) -> f32 {
@@ -1029,8 +1099,13 @@ pub fn update_fog(engine: &mut GameEngine) {
     // Tầm nhìn quanh công trình
     for b in &engine.buildings {
         if b.team == Team::Player {
-            let r = if b.building_type == BuildingType::TurretTower {
-                320.0
+            let range = engine
+                .config
+                .get_building(b.building_type)
+                .map(|c| c.turret_range)
+                .unwrap_or(0.0);
+            let r = if range > 0.0 {
+                (range + 50.0).max(320.0)
             } else {
                 240.0
             };
@@ -1518,7 +1593,12 @@ fn try_place_building(engine: &mut GameEngine, b_type: BuildingType, wx: f32, wy
         }
         building.max_hp *= hp_mult;
 
-        if b_type == BuildingType::TurretTower && engine.player_tech.dark_matter_rockets {
+        let is_armed = engine
+            .config
+            .get_building(b_type)
+            .map(|c| c.turret_damage > 0.0)
+            .unwrap_or(false);
+        if is_armed && engine.player_tech.dark_matter_rockets {
             building.damage_type = DamageType::Explosive;
         }
 
@@ -1831,5 +1911,129 @@ mod tests {
         let (used_en, gained_gold) = calculate_energy_conversion(5000.0, 0, 1.0);
         assert_eq!(used_en, 0.0);
         assert_eq!(gained_gold, 0.0);
+    }
+
+    #[test]
+    fn test_building_combat_command_center_fires_at_enemy_unit() {
+        let cfg = crate::config::GameConfig::default();
+        let cc_cfg = cfg.get_building(BuildingType::CommandCenter).unwrap();
+        let mut cc = cfg.create_building(1, Team::Player, BuildingType::CommandCenter, 100.0, 100.0, true);
+
+        let p_tech = TechTreeState::default();
+        let e_tech = TechTreeState::default();
+        let enemy_units = vec![(Team::Enemy, 200.0, 100.0)];
+        let enemy_buildings = vec![];
+
+        let proj = process_building_combat(
+            &mut cc,
+            Some(cc_cfg),
+            &p_tech,
+            &e_tech,
+            &enemy_units,
+            &enemy_buildings,
+            0.05,
+        );
+
+        assert!(proj.is_some(), "Command Center should fire at nearby enemy");
+        let p = proj.unwrap();
+        assert_eq!(p.team, Team::Player);
+        assert_eq!(p.target_x, 200.0);
+        assert_eq!(p.target_y, 100.0);
+        assert_eq!(p.damage, 100.0);
+        assert_eq!(p.damage_type, DamageType::Physical);
+        assert_eq!(p.speed, 900.0);
+        assert!(!p.is_laser);
+        assert_eq!(cc.current_cooldown, 1.0);
+    }
+
+    #[test]
+    fn test_custom_barracks_fires_when_configured() {
+        let mut cfg = crate::config::GameConfig::default();
+        if let Some(b) = cfg.buildings.get_mut("Barracks") {
+            b.turret_range = 220.0;
+            b.turret_damage = 35.0;
+            b.turret_cooldown = 0.8;
+            b.turret_damage_type = DamageType::Arcane;
+        }
+
+        let b_cfg = cfg.get_building(BuildingType::Barracks).unwrap();
+        let mut barracks = cfg.create_building(2, Team::Player, BuildingType::Barracks, 100.0, 100.0, true);
+
+        let p_tech = TechTreeState::default();
+        let e_tech = TechTreeState::default();
+        let enemy_units = vec![(Team::Enemy, 180.0, 100.0)];
+        let enemy_buildings = vec![];
+
+        let proj = process_building_combat(
+            &mut barracks,
+            Some(b_cfg),
+            &p_tech,
+            &e_tech,
+            &enemy_units,
+            &enemy_buildings,
+            0.05,
+        );
+
+        assert!(proj.is_some(), "Custom configured Barracks should fire");
+        let p = proj.unwrap();
+        assert_eq!(p.damage, 35.0);
+        assert_eq!(p.damage_type, DamageType::Arcane);
+        assert_eq!(barracks.current_cooldown, 0.8);
+    }
+
+    #[test]
+    fn test_building_combat_receives_tech_upgrades() {
+        let cfg = crate::config::GameConfig::default();
+        let cc_cfg = cfg.get_building(BuildingType::CommandCenter).unwrap();
+        let mut cc = cfg.create_building(1, Team::Player, BuildingType::CommandCenter, 100.0, 100.0, true);
+
+        let mut p_tech = TechTreeState::default();
+        p_tech.overload_strike = true;
+        p_tech.dark_matter_rockets = true;
+
+        let e_tech = TechTreeState::default();
+        let enemy_units = vec![(Team::Enemy, 200.0, 100.0)];
+        let enemy_buildings = vec![];
+
+        let proj = process_building_combat(
+            &mut cc,
+            Some(cc_cfg),
+            &p_tech,
+            &e_tech,
+            &enemy_units,
+            &enemy_buildings,
+            0.05,
+        );
+
+        assert!(proj.is_some());
+        let p = proj.unwrap();
+        assert_eq!(p.damage, 140.0); // 100 * 1.4
+        assert_eq!(p.damage_type, DamageType::Explosive);
+        assert_eq!(p.aoe_radius, 40.0);
+        assert_eq!(cc.current_cooldown, 0.6); // 1.0 * 0.6
+    }
+
+    #[test]
+    fn test_unarmed_building_does_not_fire() {
+        let cfg = crate::config::GameConfig::default();
+        let depot_cfg = cfg.get_building(BuildingType::SupplyDepot).unwrap();
+        let mut depot = cfg.create_building(3, Team::Player, BuildingType::SupplyDepot, 100.0, 100.0, true);
+
+        let p_tech = TechTreeState::default();
+        let e_tech = TechTreeState::default();
+        let enemy_units = vec![(Team::Enemy, 120.0, 100.0)];
+        let enemy_buildings = vec![];
+
+        let proj = process_building_combat(
+            &mut depot,
+            Some(depot_cfg),
+            &p_tech,
+            &e_tech,
+            &enemy_units,
+            &enemy_buildings,
+            0.05,
+        );
+
+        assert!(proj.is_none(), "Unarmed building should not fire");
     }
 }
