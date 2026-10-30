@@ -92,14 +92,6 @@ fn process_commands(engine: &mut GameEngine) {
                 engine.settings.auto_pause_on_tech = auto_pause;
                 engine.settings.show_grid = show_grid;
             }
-            ReactToEngineCommand::UpdateGameConfig { config_json } => {
-                if let Ok(new_cfg) = crate::config::GameConfig::from_json(&config_json) {
-                    engine.config = new_cfg;
-                }
-            }
-            ReactToEngineCommand::ResetGameConfig => {
-                engine.config = crate::config::GameConfig::default();
-            }
             ReactToEngineCommand::RestartGame => {
                 let diff = engine.difficulty.clone();
                 // Dọn sạch toàn bộ thực thể & dữ liệu của màn cũ

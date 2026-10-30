@@ -4,7 +4,6 @@ import { MainMenu } from './components/MainMenu';
 import { TechTreeModal } from './components/TechTreeModal';
 import { SettingsModal } from './components/SettingsModal';
 import { GameOverModal } from './components/GameOverModal';
-import { GameConfigModal, loadSavedGameConfig } from './components/GameConfigModal';
 import { soundEngine } from './audio/soundEngine';
 
 const initialGameState: EngineSyncState = {
@@ -70,7 +69,6 @@ export const App: React.FC = () => {
   const [isInGame, setIsInGame] = useState<boolean>(false);
   const [isTechTreeOpen, setIsTechTreeOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
-  const [isConfigOpen, setIsConfigOpen] = useState<boolean>(false);
   const [gameOverState, setGameOverState] = useState<{
     isOpen: boolean;
     playerWon: boolean;
@@ -99,12 +97,6 @@ export const App: React.FC = () => {
 
       window.addEventListener('resize', resize);
       resize();
-
-      // Nạp cấu hình game tùy chỉnh nếu đã lưu trước đó
-      const savedConfig = loadSavedGameConfig();
-      if (savedConfig) {
-        wasmBridge.setGameConfig(savedConfig);
-      }
 
       // Đồng bộ settings ban đầu xuống Wasm
       wasmBridge.sendCommand({
@@ -340,12 +332,7 @@ export const App: React.FC = () => {
       />
 
       {/* UI Ngoài vòng lặp do React quản lý */}
-      {!isInGame && (
-        <MainMenu
-          onStartGame={handleStartGame}
-          onOpenConfig={() => setIsConfigOpen(true)}
-        />
-      )}
+      {!isInGame && <MainMenu onStartGame={handleStartGame} />}
 
       <TechTreeModal
         isOpen={isTechTreeOpen}
@@ -374,12 +361,6 @@ export const App: React.FC = () => {
         onUpdateSettings={handleUpdateSettings}
         onRestartGame={handleRestartGame}
         onBackToMenu={handleBackToMenu}
-        onOpenConfig={() => setIsConfigOpen(true)}
-      />
-
-      <GameConfigModal
-        isOpen={isConfigOpen}
-        onClose={() => setIsConfigOpen(false)}
       />
 
       <GameOverModal

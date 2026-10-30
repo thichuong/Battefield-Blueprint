@@ -674,8 +674,6 @@ mod tests {
         let json = cfg.to_json();
         let parsed = GameConfig::from_json(&json).expect("Should parse json cleanly");
         assert_eq!(cfg, parsed);
-        let _ = std::fs::create_dir_all("../src/config");
-        let _ = std::fs::write("../src/config/defaultGameConfig.json", json);
     }
 
     #[test]

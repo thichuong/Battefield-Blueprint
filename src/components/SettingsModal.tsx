@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Volume2, Compass, Play, RotateCcw, Grid, Home, Sliders } from 'lucide-react';
+import { X, Volume2, Compass, Play, RotateCcw, Grid, Home } from 'lucide-react';
 import { soundEngine } from '../audio/soundEngine';
 
 interface SettingsModalProps {
@@ -17,7 +17,6 @@ interface SettingsModalProps {
   }) => void;
   onRestartGame: () => void;
   onBackToMenu?: () => void;
-  onOpenConfig?: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -30,7 +29,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onUpdateSettings,
   onRestartGame,
   onBackToMenu,
-  onOpenConfig,
 }) => {
   if (!isOpen) return null;
 
@@ -140,21 +138,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               className="w-4 h-4 accent-cyan-400 cursor-pointer"
             />
           </div>
-
-          {/* Tùy biến thông số Game Config */}
-          {onOpenConfig && (
-            <div className="pt-2 border-t border-slate-800">
-              <button
-                onClick={() => {
-                  onClose();
-                  onOpenConfig();
-                }}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded bg-cyan-950/60 hover:bg-cyan-900/60 border border-cyan-500/50 text-cyan-300 font-bold text-xs tracking-wider uppercase transition-all cursor-pointer"
-              >
-                <Sliders className="w-4 h-4" /> TÙY CHỈNH THÔNG SỐ GAME // GAME CONFIG
-              </button>
-            </div>
-          )}
 
           {/* Hướng dẫn phím tắt */}
           <div className="bg-slate-900/60 p-3 rounded border border-slate-800 text-xs text-slate-400 leading-relaxed">
