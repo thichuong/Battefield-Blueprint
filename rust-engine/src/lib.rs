@@ -145,9 +145,10 @@ impl GameEngine {
             training_timer: 0.0,
         });
 
-        // 3 Thợ mỏ khởi đầu cho Player
+        // 3 Thợ mỏ khởi đầu cho Player (Tự động đi đào mỏ ngay khi vào trận)
         for i in 0..3 {
             let u_id = self.alloc_id();
+            let mineral_target_id = (i as u32 % 3) + 1;
             self.units.push(Unit {
                 id: u_id,
                 team: Team::Player,
@@ -165,7 +166,10 @@ impl GameEngine {
                 current_cooldown: 0.0,
                 walk_cycle: 0.0,
                 facing_right: true,
-                order: UnitOrder::Idle,
+                order: UnitOrder::Harvest {
+                    target_mineral_id: mineral_target_id,
+                    phase: HarvestPhase::MovingToNode,
+                },
                 carried_minerals: 0.0,
             });
         }

@@ -885,6 +885,29 @@ pub fn handle_hotkeys(engine: &mut GameEngine, key: &str) {
 }
 
 fn select_at_point(engine: &mut GameEngine, wx: f32, wy: f32) {
+    // Nếu đang chọn Worker và click chuột trái vào mỏ khoáng sản -> Hỗ trợ ra lệnh khai mỏ luôn
+    let has_worker_selected = engine.selected_unit_ids.iter().any(|uid| {
+        engine.units.iter().any(|u| u.id == *uid && u.unit_type == UnitType::Engineer && u.team == Team::Player)
+    });
+
+    if has_worker_selected {
+        let clicked_mineral = engine.minerals.iter().find(|m| {
+            ((m.x - wx).powi(2) + (m.y - wy).powi(2)).sqrt() <= 50.0
+        });
+        if let Some(m) = clicked_mineral {
+            let m_id = m.id;
+            for uid in &engine.selected_unit_ids {
+                if let Some(u) = engine.units.iter_mut().find(|u| u.id == *uid && u.team == Team::Player) {
+                    if u.unit_type == UnitType::Engineer {
+                        u.order = UnitOrder::Harvest { target_mineral_id: m_id, phase: HarvestPhase::MovingToNode };
+                    }
+                }
+            }
+            engine.outgoing_events.push(EngineToReactEvent::PlaySound { sound: "order".to_string() });
+            return;
+        }
+    }
+
     // 1. Kiểm tra bấm vào lính Player (dung sai 24px)
     let clicked_unit = engine.units.iter().find(|u| {
         ((u.x - wx).powi(2) + (u.y - wy).powi(2)).sqrt() <= 24.0
@@ -924,9 +947,9 @@ fn issue_right_click_order(engine: &mut GameEngine, wx: f32, wy: f32) {
         return;
     }
 
-    // 1. Kiểm tra bấm vào mỏ khoáng sản
+    // 1. Kiểm tra bấm vào mỏ khoáng sản (dung sai 55px)
     let clicked_mineral = engine.minerals.iter().find(|m| {
-        ((m.x - wx).powi(2) + (m.y - wy).powi(2)).sqrt() <= 40.0
+        ((m.x - wx).powi(2) + (m.y - wy).powi(2)).sqrt() <= 55.0
     });
 
     if let Some(m) = clicked_mineral {
