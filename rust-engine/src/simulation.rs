@@ -91,13 +91,30 @@ fn try_start_research(engine: &mut GameEngine, tech_id: &str) {
     }
 
     let (cost_minerals, cost_energy, time) = match tech_id {
+        // Nhánh Khoa học
+        "focused_laser" => (250.0, 200.0, 20.0),
+        "energy_shielding" => (200.0, 150.0, 16.0),
+        "dark_matter_rockets" => (240.0, 160.0, 18.0),
+        "titan_alloy_plating" => (280.0, 180.0, 22.0),
+
+        // Nhánh Ma thuật
+        "celestial_flying_swords" => (220.0, 160.0, 18.0),
+        "golden_bell_shield" => (260.0, 200.0, 22.0),
+        "corrosive_curse" => (190.0, 150.0, 16.0),
+        "void_cataclysm" => (290.0, 240.0, 25.0),
+
+        // Nhánh Quái vật
+        "primeval_scales" => (220.0, 120.0, 18.0),
+        "behemoth_mutation" => (320.0, 180.0, 26.0),
+        "acid_banelings" => (160.0, 90.0, 14.0),
+        "hive_proliferation" => (260.0, 160.0, 20.0),
+
+        // Kinh tế / Phụ trợ
         "optical_drills" => (100.0, 50.0, 10.0),
         "overcharged_reactors" => (150.0, 100.0, 15.0),
         "fortified_blueprints" => (200.0, 150.0, 20.0),
-        "energy_shielding" => (150.0, 100.0, 12.0),
         "magnetic_rounds" => (200.0, 150.0, 15.0),
         "exo_boosters" => (250.0, 200.0, 20.0),
-        "focused_laser" => (300.0, 250.0, 25.0),
         "superheated_blades" => (350.0, 300.0, 30.0),
         "overload_strike" => (400.0, 350.0, 35.0),
         _ => return,
@@ -120,13 +137,55 @@ fn update_tech_research(engine: &mut GameEngine, dt: f32) {
         engine.player_tech.research_progress += dt / engine.player_tech.research_total_time;
         if engine.player_tech.research_progress >= 1.0 {
             match tech_id.as_str() {
+                // Khoa học
+                "focused_laser" => engine.player_tech.focused_laser = true,
+                "energy_shielding" => engine.player_tech.energy_shielding = true,
+                "dark_matter_rockets" => engine.player_tech.dark_matter_rockets = true,
+                "titan_alloy_plating" => {
+                    engine.player_tech.titan_alloy_plating = true;
+                    // Tăng thêm máu cho các công trình hiện hữu
+                    for b in engine.buildings.iter_mut().filter(|b| b.team == Team::Player) {
+                        b.max_hp *= 1.25;
+                        b.hp *= 1.25;
+                        b.resistances.physical = (b.resistances.physical + 0.20).min(0.80);
+                    }
+                }
+
+                // Ma thuật
+                "celestial_flying_swords" => engine.player_tech.celestial_flying_swords = true,
+                "golden_bell_shield" => {
+                    engine.player_tech.golden_bell_shield = true;
+                    for u in engine.units.iter_mut().filter(|u| u.team == Team::Player) {
+                        u.resistances.energy = (u.resistances.energy + 0.25).min(0.80);
+                        u.resistances.arcane = (u.resistances.arcane + 0.30).min(0.80);
+                    }
+                }
+                "corrosive_curse" => engine.player_tech.corrosive_curse = true,
+                "void_cataclysm" => engine.player_tech.void_cataclysm = true,
+
+                // Quái vật
+                "primeval_scales" => {
+                    engine.player_tech.primeval_scales = true;
+                    for u in engine.units.iter_mut().filter(|u| u.team == Team::Player) {
+                        u.resistances.physical = (u.resistances.physical + 0.25).min(0.80);
+                        u.resistances.explosive = (u.resistances.explosive + 0.25).min(0.80);
+                    }
+                }
+                "behemoth_mutation" => engine.player_tech.behemoth_mutation = true,
+                "acid_banelings" => engine.player_tech.acid_banelings = true,
+                "hive_proliferation" => {
+                    engine.player_tech.hive_proliferation = true;
+                    for u in engine.units.iter_mut().filter(|u| u.team == Team::Player) {
+                        u.speed *= 1.25;
+                    }
+                }
+
+                // Kinh tế / Phụ trợ
                 "optical_drills" => engine.player_tech.optical_drills = true,
                 "overcharged_reactors" => engine.player_tech.overcharged_reactors = true,
                 "fortified_blueprints" => engine.player_tech.fortified_blueprints = true,
-                "energy_shielding" => engine.player_tech.energy_shielding = true,
                 "magnetic_rounds" => engine.player_tech.magnetic_rounds = true,
                 "exo_boosters" => engine.player_tech.exo_boosters = true,
-                "focused_laser" => engine.player_tech.focused_laser = true,
                 "superheated_blades" => engine.player_tech.superheated_blades = true,
                 "overload_strike" => engine.player_tech.overload_strike = true,
                 _ => {}
@@ -563,11 +622,9 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                                 ty
                             };
 
-                            if unit.unit_type == UnitType::ShockTrooper
-                                || unit.unit_type == UnitType::Vanguard
-                                || unit.unit_type == UnitType::Engineer
-                            {
-                                // Cận chiến: tạo vệt chém ngay mép mục tiêu
+                            if unit.unit_type == UnitType::AcidBaneling {
+                                // Bọ nổ cảm tử: nổ tung ngay lập tức
+                                unit.hp = 0.0;
                                 new_projectiles.push(Projectile {
                                     id: 0,
                                     team: unit.team,
@@ -575,14 +632,45 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                                     y: unit.y,
                                     target_x: hit_x,
                                     target_y: hit_y,
-                                    speed: 800.0,
+                                    speed: 1500.0,
                                     damage: dmg,
+                                    damage_type: DamageType::Explosive,
+                                    aoe_radius: unit.aoe_radius,
                                     is_laser: false,
-                                    lifetime: 0.12,
+                                    lifetime: 0.1,
+                                });
+                            } else if unit.unit_type == UnitType::ShockTrooper
+                                || unit.unit_type == UnitType::Vanguard
+                                || unit.unit_type == UnitType::Engineer
+                                || unit.unit_type == UnitType::BehemothTitan
+                            {
+                                // Cận chiến: tạo vệt chém hoặc dậm chấn động
+                                new_projectiles.push(Projectile {
+                                    id: 0,
+                                    team: unit.team,
+                                    x: unit.x,
+                                    y: unit.y,
+                                    target_x: hit_x,
+                                    target_y: hit_y,
+                                    speed: 900.0,
+                                    damage: dmg,
+                                    damage_type: unit.damage_type,
+                                    aoe_radius: unit.aoe_radius,
+                                    is_laser: false,
+                                    lifetime: 0.15,
                                 });
                             } else {
-                                // Tầm xa (Rifle / Laser)
+                                // Tầm xa
                                 let is_laser = unit.unit_type == UnitType::LaserMarksman;
+                                let speed = if is_laser {
+                                    1800.0
+                                } else if unit.unit_type == UnitType::TaoistSwordmaster {
+                                    1100.0
+                                } else if unit.unit_type == UnitType::DarkRocketeer {
+                                    650.0
+                                } else {
+                                    750.0
+                                };
                                 new_projectiles.push(Projectile {
                                     id: 0,
                                     team: unit.team,
@@ -590,8 +678,10 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                                     y: unit.y - 12.0,
                                     target_x: hit_x,
                                     target_y: hit_y,
-                                    speed: if is_laser { 1800.0 } else { 750.0 },
+                                    speed,
                                     damage: dmg,
+                                    damage_type: unit.damage_type,
+                                    aoe_radius: unit.aoe_radius,
                                     is_laser,
                                     lifetime: if is_laser { 0.25 } else { 1.5 },
                                 });
@@ -601,6 +691,18 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                 } else {
                     unit.order = UnitOrder::Idle;
                 }
+            }
+        }
+    }
+
+    // Xóa lính chết do tự nổ
+    engine.units.retain(|u| u.hp > 0.0);
+
+    // Hồi máu linh quang từ Kim cang hộ thể (3 HP/s)
+    if engine.player_tech.golden_bell_shield {
+        for u in engine.units.iter_mut() {
+            if u.team == Team::Player && u.hp > 0.0 && u.hp < u.max_hp {
+                u.hp = (u.hp + 3.0 * dt).min(u.max_hp);
             }
         }
     }
@@ -648,7 +750,10 @@ fn update_buildings(engine: &mut GameEngine, dt: f32) {
             // Huấn luyện lính
             if !b.training_queue.is_empty() {
                 b.training_timer += dt;
-                let required_time = b.training_queue[0].training_time();
+                let mut required_time = b.training_queue[0].training_time();
+                if b.team == Team::Player && engine.player_tech.hive_proliferation {
+                    required_time *= 0.65;
+                }
                 if b.training_timer >= required_time {
                     let u_type = b.training_queue.remove(0);
                     b.training_timer = 0.0;
@@ -678,6 +783,7 @@ fn update_buildings(engine: &mut GameEngine, dt: f32) {
                             } else {
                                 1.0
                             };
+                        let is_dark_rocket = b.team == Team::Player && engine.player_tech.dark_matter_rockets;
                         new_turret_projectiles.push(Projectile {
                             id: 0,
                             team: b.team,
@@ -685,10 +791,16 @@ fn update_buildings(engine: &mut GameEngine, dt: f32) {
                             y: b.y - 20.0,
                             target_x: *ex,
                             target_y: *ey,
-                            speed: 900.0,
-                            damage: 25.0,
-                            is_laser: true,
-                            lifetime: 0.3,
+                            speed: if is_dark_rocket { 750.0 } else { 900.0 },
+                            damage: if is_dark_rocket { 35.0 } else { 25.0 },
+                            damage_type: if is_dark_rocket {
+                                DamageType::Explosive
+                            } else {
+                                DamageType::Energy
+                            },
+                            aoe_radius: if is_dark_rocket { 40.0 } else { 0.0 },
+                            is_laser: !is_dark_rocket,
+                            lifetime: if is_dark_rocket { 1.2 } else { 0.3 },
                         });
                     }
                 }
@@ -698,20 +810,188 @@ fn update_buildings(engine: &mut GameEngine, dt: f32) {
 
     for (team, u_type, sx, sy, rx, ry) in new_spawned_units {
         let u_id = engine.alloc_id();
-        let (speed, hp, range, dmg, cd) = match u_type {
-            UnitType::Engineer => (120.0, 90.0, 30.0, 5.0, 1.0),
+        let (speed, hp, range, dmg, cd, dmg_type, aoe, mut res) = match u_type {
+            UnitType::Engineer => (
+                120.0,
+                90.0,
+                30.0,
+                5.0,
+                1.0,
+                DamageType::Physical,
+                0.0,
+                Resistances {
+                    physical: 0.05,
+                    energy: 0.0,
+                    explosive: 0.0,
+                    arcane: 0.0,
+                },
+            ),
             UnitType::ShockTrooper => {
                 let hp = if team == Team::Player && engine.player_tech.energy_shielding {
                     190.0
                 } else {
                     160.0
                 };
-                (140.0, hp, 40.0, 22.0, 0.8)
+                (
+                    140.0,
+                    hp,
+                    40.0,
+                    22.0,
+                    0.8,
+                    DamageType::Energy,
+                    0.0,
+                    Resistances {
+                        physical: 0.15,
+                        energy: 0.20,
+                        explosive: 0.05,
+                        arcane: 0.10,
+                    },
+                )
             }
-            UnitType::Rifleman => (110.0, 120.0, 160.0, 14.0, 1.1),
-            UnitType::Vanguard => (90.0, 320.0, 45.0, 18.0, 1.2),
-            UnitType::LaserMarksman => (95.0, 110.0, 220.0, 38.0, 1.6),
+            UnitType::Rifleman => (
+                110.0,
+                120.0,
+                160.0,
+                14.0,
+                1.1,
+                DamageType::Physical,
+                0.0,
+                Resistances {
+                    physical: 0.10,
+                    energy: 0.05,
+                    explosive: 0.05,
+                    arcane: 0.05,
+                },
+            ),
+            UnitType::Vanguard => (
+                90.0,
+                320.0,
+                45.0,
+                18.0,
+                1.2,
+                DamageType::Physical,
+                0.0,
+                Resistances {
+                    physical: 0.40,
+                    energy: 0.50,
+                    explosive: 0.25,
+                    arcane: 0.15,
+                },
+            ),
+            UnitType::LaserMarksman => (
+                95.0,
+                110.0,
+                220.0,
+                38.0,
+                1.6,
+                DamageType::Energy,
+                0.0,
+                Resistances {
+                    physical: 0.05,
+                    energy: 0.30,
+                    explosive: 0.0,
+                    arcane: 0.15,
+                },
+            ),
+            UnitType::DarkRocketeer => (
+                95.0,
+                140.0,
+                200.0,
+                32.0,
+                1.8,
+                DamageType::Explosive,
+                40.0,
+                Resistances {
+                    physical: 0.20,
+                    energy: 0.10,
+                    explosive: 0.35,
+                    arcane: 0.05,
+                },
+            ),
+            UnitType::TaoistSwordmaster => (
+                130.0,
+                170.0,
+                140.0,
+                28.0,
+                1.0,
+                DamageType::Arcane,
+                0.0,
+                Resistances {
+                    physical: 0.15,
+                    energy: 0.35,
+                    explosive: 0.15,
+                    arcane: 0.45,
+                },
+            ),
+            UnitType::VoidWarlock => (
+                100.0,
+                135.0,
+                175.0,
+                30.0,
+                1.5,
+                DamageType::Arcane,
+                35.0,
+                Resistances {
+                    physical: 0.10,
+                    energy: 0.25,
+                    explosive: 0.20,
+                    arcane: 0.50,
+                },
+            ),
+            UnitType::BehemothTitan => (
+                80.0,
+                650.0,
+                55.0,
+                48.0,
+                1.4,
+                DamageType::Physical,
+                45.0,
+                Resistances {
+                    physical: 0.50,
+                    energy: 0.20,
+                    explosive: 0.45,
+                    arcane: 0.10,
+                },
+            ),
+            UnitType::AcidBaneling => (
+                160.0,
+                85.0,
+                25.0,
+                75.0,
+                0.5,
+                DamageType::Explosive,
+                65.0,
+                Resistances {
+                    physical: 0.05,
+                    energy: 0.05,
+                    explosive: 0.20,
+                    arcane: 0.20,
+                },
+            ),
         };
+
+        let mut final_speed = speed;
+        if team == Team::Player {
+            if engine.player_tech.exo_boosters || engine.player_tech.hive_proliferation {
+                final_speed *= 1.25;
+            }
+            if engine.player_tech.titan_alloy_plating {
+                res.physical = (res.physical + 0.25).min(0.80);
+            }
+            if engine.player_tech.golden_bell_shield {
+                res.energy = (res.energy + 0.25).min(0.80);
+                res.arcane = (res.arcane + 0.30).min(0.80);
+            }
+            if engine.player_tech.primeval_scales
+                && (u_type == UnitType::ShockTrooper
+                    || u_type == UnitType::Vanguard
+                    || u_type == UnitType::BehemothTitan
+                    || u_type == UnitType::AcidBaneling)
+            {
+                res.physical = (res.physical + 0.25).min(0.80);
+                res.explosive = (res.explosive + 0.25).min(0.80);
+            }
+        }
 
         engine.units.push(Unit {
             id: u_id,
@@ -721,11 +1001,14 @@ fn update_buildings(engine: &mut GameEngine, dt: f32) {
             y: sy,
             target_x: rx,
             target_y: ry,
-            speed,
+            speed: final_speed,
             hp,
             max_hp: hp,
             attack_range: range,
             attack_damage: dmg,
+            damage_type: dmg_type,
+            aoe_radius: aoe,
+            resistances: res,
             attack_cooldown: cd,
             current_cooldown: 0.0,
             walk_cycle: 0.0,
@@ -744,7 +1027,21 @@ fn update_buildings(engine: &mut GameEngine, dt: f32) {
     engine.buildings.retain(|b| b.hp > 0.0);
 }
 
+pub fn calculate_effective_damage(raw_dmg: f32, dmg_type: DamageType, res: &Resistances) -> f32 {
+    let r = match dmg_type {
+        DamageType::Physical => res.physical,
+        DamageType::Energy => res.energy,
+        DamageType::Explosive => res.explosive,
+        DamageType::Arcane => res.arcane,
+    };
+    let factor = (1.0 - r.clamp(-0.5, 0.85)).max(0.1);
+    (raw_dmg * factor).max(1.0)
+}
+
 fn update_projectiles(engine: &mut GameEngine, dt: f32) {
+    let has_corrosive = engine.player_tech.corrosive_curse;
+    let mut new_texts = Vec::new();
+
     for p in engine.projectiles.iter_mut() {
         p.lifetime -= dt;
         let dx = p.target_x - p.x;
@@ -757,27 +1054,88 @@ fn update_projectiles(engine: &mut GameEngine, dt: f32) {
         }
 
         if dist <= 18.0 || p.lifetime <= 0.0 {
-            // Sát thương lính địch xung quanh
+            let is_aoe = p.aoe_radius > 0.0;
+            let aoe_range = if is_aoe { p.aoe_radius.max(30.0) } else { 24.0 };
+
+            // Sát thương lính địch
             for u in engine.units.iter_mut() {
-                if u.team != p.team
-                    && ((u.x - p.target_x).powi(2) + (u.y - p.target_y).powi(2)).sqrt() <= 24.0
-                {
-                    u.hp -= p.damage;
+                if u.team != p.team {
+                    let d = ((u.x - p.target_x).powi(2) + (u.y - p.target_y).powi(2)).sqrt();
+                    if d <= aoe_range {
+                        let falloff = if is_aoe {
+                            (1.0 - (d / aoe_range) * 0.35).max(0.65)
+                        } else {
+                            1.0
+                        };
+                        let taken = calculate_effective_damage(
+                            p.damage * falloff,
+                            p.damage_type,
+                            &u.resistances,
+                        );
+                        u.hp -= taken;
+
+                        if p.team == Team::Player && has_corrosive {
+                            u.resistances.physical = (u.resistances.physical - 0.04).max(0.0);
+                            u.resistances.energy = (u.resistances.energy - 0.04).max(0.0);
+                            u.resistances.explosive = (u.resistances.explosive - 0.04).max(0.0);
+                            u.resistances.arcane = (u.resistances.arcane - 0.04).max(0.0);
+                        }
+
+                        new_texts.push(FloatingText {
+                            id: 0,
+                            text: format!("-{:.0}", taken),
+                            x: u.x,
+                            y: u.y - 12.0,
+                            color: p.damage_type.color_code().to_string(),
+                            lifetime: 0.7,
+                            max_lifetime: 0.7,
+                        });
+
+                        if !is_aoe {
+                            break;
+                        }
+                    }
                 }
             }
-            // Sát thương công trình địch xung quanh
+
+            // Sát thương công trình địch
             for b in engine.buildings.iter_mut() {
                 if b.team != p.team {
                     let b_rad = b.width.max(b.height) * 0.5;
                     let dist_to_b =
                         ((b.x - p.target_x).powi(2) + (b.y - p.target_y).powi(2)).sqrt();
-                    if dist_to_b <= b_rad + 20.0 {
-                        b.hp -= p.damage;
+                    if dist_to_b <= b_rad + aoe_range {
+                        let taken = calculate_effective_damage(
+                            p.damage,
+                            p.damage_type,
+                            &b.resistances,
+                        );
+                        b.hp -= taken;
+
+                        new_texts.push(FloatingText {
+                            id: 0,
+                            text: format!("-{:.0}", taken),
+                            x: b.x,
+                            y: b.y - b_rad,
+                            color: p.damage_type.color_code().to_string(),
+                            lifetime: 0.8,
+                            max_lifetime: 0.8,
+                        });
+
+                        if !is_aoe {
+                            break;
+                        }
                     }
                 }
             }
+
             p.lifetime = -1.0;
         }
+    }
+
+    for mut ft in new_texts {
+        ft.id = engine.alloc_id();
+        engine.floating_texts.push(ft);
     }
 
     engine.projectiles.retain(|p| p.lifetime > 0.0);
@@ -997,11 +1355,11 @@ pub fn handle_mouse_move(engine: &mut GameEngine, cx: f32, cy: f32) {
     }
 
     // Hover trên Command Card
-    if cx >= vw - 220.0 && cx <= vw - 10.0 && cy >= vh - 140.0 && cy <= vh - 10.0 {
-        let rel_x = cx - (vw - 220.0);
-        let rel_y = cy - (vh - 140.0);
-        let col = (rel_x / 68.0) as usize;
-        let row = (rel_y / 60.0) as usize;
+    if cx >= vw - 225.0 && cx <= vw - 10.0 && cy >= vh - 150.0 && cy <= vh - 10.0 {
+        let rel_x = cx - (vw - 225.0);
+        let rel_y = cy - (vh - 150.0);
+        let col = ((rel_x - 5.0).max(0.0) / 67.0).min(2.0) as usize;
+        let row = ((rel_y - 6.0).max(0.0) / 44.0).min(2.0) as usize;
         engine.hovered_command_button = Some(row * 3 + col);
     } else {
         engine.hovered_command_button = None;
@@ -1271,6 +1629,44 @@ fn try_place_building(engine: &mut GameEngine, b_type: BuildingType, wx: f32, wy
         engine.player_eco.minerals -= cost_min;
         engine.player_eco.energy -= cost_en;
         let bid = engine.alloc_id();
+        let mut b_res = match b_type {
+            BuildingType::CommandCenter => Resistances {
+                physical: 0.25,
+                energy: 0.15,
+                explosive: 0.20,
+                arcane: 0.10,
+            },
+            BuildingType::TurretTower => Resistances {
+                physical: 0.20,
+                energy: 0.20,
+                explosive: 0.30,
+                arcane: 0.10,
+            },
+            BuildingType::Barracks => Resistances {
+                physical: 0.20,
+                energy: 0.10,
+                explosive: 0.20,
+                arcane: 0.0,
+            },
+            _ => Resistances {
+                physical: 0.15,
+                energy: 0.10,
+                explosive: 0.15,
+                arcane: 0.0,
+            },
+        };
+        if engine.player_tech.titan_alloy_plating {
+            b_res.physical = (b_res.physical + 0.20).min(0.80);
+        }
+
+        let mut hp_mult = 1.0;
+        if engine.player_tech.fortified_blueprints {
+            hp_mult += 0.3;
+        }
+        if engine.player_tech.titan_alloy_plating {
+            hp_mult += 0.25;
+        }
+
         engine.buildings.push(Building {
             id: bid,
             team: Team::Player,
@@ -1280,11 +1676,18 @@ fn try_place_building(engine: &mut GameEngine, b_type: BuildingType, wx: f32, wy
             width: w,
             height: h,
             hp: 1.0,
-            max_hp: if engine.player_tech.fortified_blueprints {
-                max_hp * 1.3
-            } else {
-                max_hp
+            max_hp: max_hp * hp_mult,
+            damage_type: match b_type {
+                BuildingType::TurretTower => {
+                    if engine.player_tech.dark_matter_rockets {
+                        DamageType::Explosive
+                    } else {
+                        DamageType::Energy
+                    }
+                }
+                _ => DamageType::Physical,
             },
+            resistances: b_res,
             build_progress: 0.05,
             attack_cooldown: 0.0,
             current_cooldown: 0.0,
@@ -1346,9 +1749,9 @@ fn check_bevy_hud_click(engine: &mut GameEngine, sx: f32, sy: f32) -> bool {
         return true;
     }
 
-    // 4. Command Card góc dưới phải (x: vw - 220..vw - 10, y: vh - 140..vh - 10)
-    if (vw - 220.0..=vw - 10.0).contains(&sx) && (vh - 140.0..=vh - 10.0).contains(&sy) {
-        handle_command_card_click(engine, sx - (vw - 220.0), sy - (vh - 140.0));
+    // 4. Command Card góc dưới phải (x: vw - 225..vw - 10, y: vh - 150..vh - 10)
+    if (vw - 225.0..=vw - 10.0).contains(&sx) && (vh - 150.0..=vh - 10.0).contains(&sy) {
+        handle_command_card_click(engine, sx - (vw - 225.0), sy - (vh - 150.0));
         return true;
     }
 
@@ -1356,8 +1759,8 @@ fn check_bevy_hud_click(engine: &mut GameEngine, sx: f32, sy: f32) -> bool {
 }
 
 fn handle_command_card_click(engine: &mut GameEngine, rel_x: f32, rel_y: f32) {
-    let col = (rel_x / 68.0) as usize;
-    let row = (rel_y / 60.0) as usize;
+    let col = ((rel_x - 5.0).max(0.0) / 67.0).min(2.0) as usize;
+    let row = ((rel_y - 6.0).max(0.0) / 44.0).min(2.0) as usize;
     let btn_idx = row * 3 + col;
 
     // Nếu đang chọn Worker -> Nút xây nhà
@@ -1403,6 +1806,21 @@ fn handle_command_card_click(engine: &mut GameEngine, rel_x: f32, rel_y: f32) {
                     3 if engine.player_tech.focused_laser => {
                         try_queue_unit(engine, bid, UnitType::LaserMarksman);
                     }
+                    4 if engine.player_tech.dark_matter_rockets => {
+                        try_queue_unit(engine, bid, UnitType::DarkRocketeer);
+                    }
+                    5 if engine.player_tech.celestial_flying_swords => {
+                        try_queue_unit(engine, bid, UnitType::TaoistSwordmaster);
+                    }
+                    6 if engine.player_tech.void_cataclysm => {
+                        try_queue_unit(engine, bid, UnitType::VoidWarlock);
+                    }
+                    7 if engine.player_tech.behemoth_mutation => {
+                        try_queue_unit(engine, bid, UnitType::BehemothTitan);
+                    }
+                    8 if engine.player_tech.acid_banelings => {
+                        try_queue_unit(engine, bid, UnitType::AcidBaneling);
+                    }
                     _ => {}
                 },
                 _ => {}
@@ -1412,8 +1830,8 @@ fn handle_command_card_click(engine: &mut GameEngine, rel_x: f32, rel_y: f32) {
 }
 
 fn handle_command_card_right_click(engine: &mut GameEngine, rel_x: f32, rel_y: f32) {
-    let col = (rel_x / 68.0) as usize;
-    let row = (rel_y / 60.0) as usize;
+    let col = ((rel_x - 5.0).max(0.0) / 67.0).min(2.0) as usize;
+    let row = ((rel_y - 6.0).max(0.0) / 44.0).min(2.0) as usize;
     let btn_idx = row * 3 + col;
 
     if let Some(bid) = engine.selected_building_id {
@@ -1438,6 +1856,21 @@ fn handle_command_card_right_click(engine: &mut GameEngine, rel_x: f32, rel_y: f
                     3 if engine.player_tech.focused_laser => {
                         try_cancel_unit(engine, bid, UnitType::LaserMarksman);
                     }
+                    4 if engine.player_tech.dark_matter_rockets => {
+                        try_cancel_unit(engine, bid, UnitType::DarkRocketeer);
+                    }
+                    5 if engine.player_tech.celestial_flying_swords => {
+                        try_cancel_unit(engine, bid, UnitType::TaoistSwordmaster);
+                    }
+                    6 if engine.player_tech.void_cataclysm => {
+                        try_cancel_unit(engine, bid, UnitType::VoidWarlock);
+                    }
+                    7 if engine.player_tech.behemoth_mutation => {
+                        try_cancel_unit(engine, bid, UnitType::BehemothTitan);
+                    }
+                    8 if engine.player_tech.acid_banelings => {
+                        try_cancel_unit(engine, bid, UnitType::AcidBaneling);
+                    }
                     _ => {}
                 },
                 _ => {}
@@ -1451,7 +1884,11 @@ fn try_queue_unit(engine: &mut GameEngine, bid: u32, u_type: UnitType) {
         return; // Hết dân số
     }
 
-    let (min_cost, en_cost) = u_type.cost();
+    let (mut min_cost, mut en_cost) = u_type.cost();
+    if engine.player_tech.hive_proliferation {
+        min_cost *= 0.65;
+        en_cost *= 0.65;
+    }
     if engine.player_eco.minerals >= min_cost && engine.player_eco.energy >= en_cost {
         if let Some(b) = engine.buildings.iter_mut().find(|b| b.id == bid) {
             if b.training_queue.len() < 5 {
@@ -1469,7 +1906,11 @@ fn try_queue_unit(engine: &mut GameEngine, bid: u32, u_type: UnitType) {
 fn try_cancel_unit(engine: &mut GameEngine, bid: u32, u_type: UnitType) {
     let mut refunded = false;
     let mut spawn_pos = (0.0, 0.0);
-    let (min_cost, en_cost) = u_type.cost();
+    let (mut min_cost, mut en_cost) = u_type.cost();
+    if engine.player_tech.hive_proliferation {
+        min_cost *= 0.65;
+        en_cost *= 0.65;
+    }
 
     if let Some(b) = engine
         .buildings

@@ -12,6 +12,16 @@ export const BuildingType = Object.freeze({
 });
 
 /**
+ * @enum {0 | 1 | 2 | 3}
+ */
+export const DamageType = Object.freeze({
+    Physical: 0, "0": "Physical",
+    Energy: 1, "1": "Energy",
+    Explosive: 2, "2": "Explosive",
+    Arcane: 3, "3": "Arcane",
+});
+
+/**
  * @enum {0 | 1}
  */
 export const Team = Object.freeze({
@@ -20,7 +30,7 @@ export const Team = Object.freeze({
 });
 
 /**
- * @enum {0 | 1 | 2 | 3 | 4}
+ * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}
  */
 export const UnitType = Object.freeze({
     Engineer: 0, "0": "Engineer",
@@ -28,6 +38,11 @@ export const UnitType = Object.freeze({
     Rifleman: 2, "2": "Rifleman",
     Vanguard: 3, "3": "Vanguard",
     LaserMarksman: 4, "4": "LaserMarksman",
+    DarkRocketeer: 5, "5": "DarkRocketeer",
+    TaoistSwordmaster: 6, "6": "TaoistSwordmaster",
+    VoidWarlock: 7, "7": "VoidWarlock",
+    BehemothTitan: 8, "8": "BehemothTitan",
+    AcidBaneling: 9, "9": "AcidBaneling",
 });
 
 /**

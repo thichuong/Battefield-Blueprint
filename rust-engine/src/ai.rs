@@ -121,7 +121,23 @@ pub fn update_ai(engine: &mut GameEngine) {
             && b.training_queue.len() < 2
             && engine.enemy_eco.supply < engine.enemy_eco.max_supply
         {
-            if engine.enemy_eco.minerals >= 100.0 && engine.enemy_eco.energy >= 20.0 {
+            // Huấn luyện đơn vị chiến đấu đa dạng
+            if engine.enemy_eco.minerals >= 200.0 && engine.enemy_eco.energy >= 100.0 && engine.game_time > 45.0 {
+                let choice = (engine.units.len() + b.id as usize) % 5;
+                let evo_unit = match choice {
+                    0 => UnitType::DarkRocketeer,
+                    1 => UnitType::TaoistSwordmaster,
+                    2 => UnitType::VoidWarlock,
+                    3 => UnitType::BehemothTitan,
+                    _ => UnitType::AcidBaneling,
+                };
+                let (mc, ec) = evo_unit.cost();
+                if engine.enemy_eco.minerals >= mc && engine.enemy_eco.energy >= ec {
+                    engine.enemy_eco.minerals -= mc;
+                    engine.enemy_eco.energy -= ec;
+                    b.training_queue.push(evo_unit);
+                }
+            } else if engine.enemy_eco.minerals >= 100.0 && engine.enemy_eco.energy >= 20.0 {
                 engine.enemy_eco.minerals -= 100.0;
                 engine.enemy_eco.energy -= 20.0;
                 b.training_queue.push(UnitType::Rifleman);
@@ -185,6 +201,13 @@ fn try_ai_build(
             height: h,
             hp: 1.0,
             max_hp: hp,
+            damage_type: DamageType::Physical,
+            resistances: Resistances {
+                physical: 0.15,
+                energy: 0.10,
+                explosive: 0.15,
+                arcane: 0.0,
+            },
             build_progress: 0.1,
             attack_cooldown: 0.0,
             current_cooldown: 0.0,

@@ -425,6 +425,68 @@ fn draw_procedural_stickman(ctx: &CanvasRenderingContext2d, u: &Unit, color: &st
             ctx.line_to(x + 20.0 * flip as f64, y - 11.0);
             ctx.stroke();
         }
+        UnitType::DarkRocketeer => {
+            // Ống phóng tên lửa vác vai 2 nòng
+            ctx.set_stroke_style_str("#fb923c");
+            ctx.set_line_width(3.5);
+            ctx.begin_path();
+            ctx.move_to(x - 8.0 * flip as f64, y - 16.0);
+            ctx.line_to(x + 16.0 * flip as f64, y - 12.0);
+            ctx.stroke();
+            // Đầu tên lửa
+            ctx.set_fill_style_str("#ef4444");
+            ctx.fill_rect(x + 15.0 * flip as f64, y - 14.0, 4.0, 4.0);
+        }
+        UnitType::TaoistSwordmaster => {
+            // Phi kiếm lơ lửng phát sáng sau lưng
+            ctx.set_stroke_style_str("#38bdf8");
+            ctx.set_line_width(2.0);
+            ctx.begin_path();
+            ctx.move_to(x - 8.0 * flip as f64, y - 28.0);
+            ctx.line_to(x - 2.0 * flip as f64, y - 12.0);
+            ctx.stroke();
+            // Tay kết ấn
+            ctx.begin_path();
+            ctx.move_to(x, y - 10.0);
+            ctx.line_to(x + 12.0 * flip as f64, y - 10.0);
+            ctx.stroke();
+        }
+        UnitType::VoidWarlock => {
+            // Quyền trượng hư không có cầu ma thuật tím
+            ctx.set_stroke_style_str("#a855f7");
+            ctx.set_line_width(2.5);
+            ctx.begin_path();
+            ctx.move_to(x + 10.0 * flip as f64, y + 2.0);
+            ctx.line_to(x + 10.0 * flip as f64, y - 24.0);
+            ctx.stroke();
+            // Cầu bóng tối xoay
+            ctx.set_fill_style_str("#c084fc");
+            ctx.begin_path();
+            let _ = ctx.arc(x + 10.0 * flip as f64, y - 26.0, 4.0, 0.0, std::f64::consts::PI * 2.0);
+            ctx.fill();
+        }
+        UnitType::BehemothTitan => {
+            // Cự thú Titan: chùy gai khổng lồ
+            ctx.set_stroke_style_str("#f59e0b");
+            ctx.set_line_width(4.0);
+            ctx.begin_path();
+            ctx.move_to(x, y - 10.0);
+            ctx.line_to(x + 16.0 * flip as f64, y - 18.0);
+            ctx.stroke();
+            // Đầu chùy gai to
+            ctx.set_fill_style_str("#d97706");
+            ctx.fill_rect(x + 14.0 * flip as f64, y - 22.0, 8.0, 8.0);
+        }
+        UnitType::AcidBaneling => {
+            // Bọ nổ axit: túi dịch axit phát sáng trên lưng
+            ctx.set_fill_style_str("#84cc16");
+            ctx.begin_path();
+            let _ = ctx.arc(x - 4.0 * flip as f64, y - 12.0, 7.0, 0.0, std::f64::consts::PI * 2.0);
+            ctx.fill();
+            ctx.set_stroke_style_str("#a3e635");
+            ctx.set_line_width(1.5);
+            ctx.stroke();
+        }
     }
 
     ctx.restore();
@@ -445,10 +507,23 @@ fn render_projectiles(engine: &GameEngine) {
             ctx.line_to(p.target_x as f64, p.target_y as f64);
             ctx.stroke();
         } else {
-            ctx.set_fill_style_str("#facc15");
+            let color = match p.damage_type {
+                DamageType::Explosive => "#fb923c",
+                DamageType::Arcane => "#c084fc",
+                DamageType::Energy => "#38bdf8",
+                DamageType::Physical => "#facc15",
+            };
+            ctx.set_fill_style_str(color);
             ctx.begin_path();
-            let _ = ctx.arc(p.x as f64, p.y as f64, 3.0, 0.0, std::f64::consts::PI * 2.0);
+            let radius = if p.aoe_radius > 0.0 { 4.5 } else { 3.0 };
+            let _ = ctx.arc(p.x as f64, p.y as f64, radius, 0.0, std::f64::consts::PI * 2.0);
             ctx.fill();
+
+            if p.aoe_radius > 0.0 {
+                ctx.set_stroke_style_str(color);
+                ctx.set_line_width(1.0);
+                ctx.stroke();
+            }
         }
     }
 }
@@ -675,10 +750,10 @@ fn render_in_game_hud(engine: &GameEngine) {
     ctx.stroke_rect(cam_rect_x, cam_rect_y, cam_rect_w, cam_rect_h);
 
     // 3. SELECTION INFO PANEL (TRUNG TÂM ĐÁY MÀN HÌNH)
-    render_selection_info_panel(engine, (vw - 320.0) * 0.5, vh - 140.0, 320.0, 130.0);
+    render_selection_info_panel(engine, (vw - 360.0) * 0.5, vh - 150.0, 360.0, 140.0);
 
     // 4. BẢNG NÚT BẤM LỆNH GÓC DƯỚI PHẢI (COMMAND CARD)
-    render_command_card(engine, vw - 220.0, vh - 140.0);
+    render_command_card(engine, vw - 225.0, vh - 150.0);
 }
 
 fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f64) {
@@ -706,21 +781,36 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
                 BuildingType::Barracks => "INFANTRY BARRACKS",
                 BuildingType::TurretTower => "DEFENSE TURRET",
             };
-            let _ = ctx.fill_text(title, x + 15.0, y + 25.0);
+            let _ = ctx.fill_text(title, x + 15.0, y + 22.0);
 
             // Thanh máu chi tiết
             let hp_pct = (b.hp / b.max_hp).clamp(0.0, 1.0) as f64;
             ctx.set_fill_style_str("#1e293b");
-            ctx.fill_rect(x + 15.0, y + 36.0, w - 30.0, 12.0);
+            ctx.fill_rect(x + 15.0, y + 30.0, w - 30.0, 10.0);
             ctx.set_fill_style_str(if hp_pct > 0.4 { "#22c55e" } else { "#ef4444" });
-            ctx.fill_rect(x + 15.0, y + 36.0, (w - 30.0) * hp_pct, 12.0);
+            ctx.fill_rect(x + 15.0, y + 30.0, (w - 30.0) * hp_pct, 10.0);
 
             ctx.set_font("bold 10px monospace");
             ctx.set_fill_style_str("#ffffff");
             let _ = ctx.fill_text(
                 &format!("{:.0} / {:.0} HP", b.hp, b.max_hp),
                 x + 20.0,
-                y + 46.0,
+                y + 39.0,
+            );
+
+            // Chỉ số kháng công trình
+            ctx.set_font("10px monospace");
+            ctx.set_fill_style_str("#38bdf8");
+            let _ = ctx.fill_text(
+                &format!(
+                    "🛡️ RES: PHY {:.0}% | ENG {:.0}% | EXP {:.0}% | ARC {:.0}%",
+                    b.resistances.physical * 100.0,
+                    b.resistances.energy * 100.0,
+                    b.resistances.explosive * 100.0,
+                    b.resistances.arcane * 100.0
+                ),
+                x + 15.0,
+                y + 58.0,
             );
 
             // Hàng đợi huấn luyện (Training queue)
@@ -733,13 +823,13 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
                 let _ = ctx.fill_text(
                     &format!("TRAINING: {} ({:.0}%)", cur_unit, prog * 100.0),
                     x + 15.0,
-                    y + 70.0,
+                    y + 80.0,
                 );
 
                 ctx.set_fill_style_str("#334155");
-                ctx.fill_rect(x + 15.0, y + 76.0, w - 30.0, 6.0);
+                ctx.fill_rect(x + 15.0, y + 86.0, w - 30.0, 6.0);
                 ctx.set_fill_style_str("#facc15");
-                ctx.fill_rect(x + 15.0, y + 76.0, (w - 30.0) * (prog as f64), 6.0);
+                ctx.fill_rect(x + 15.0, y + 86.0, (w - 30.0) * (prog as f64), 6.0);
 
                 if b.training_queue.len() > 1 {
                     ctx.set_font("10px monospace");
@@ -751,13 +841,13 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
                         }
                         q_str.push_str(u.button_label());
                     }
-                    let _ = ctx.fill_text(&q_str, x + 15.0, y + 98.0);
+                    let _ = ctx.fill_text(&q_str, x + 15.0, y + 108.0);
                 }
             } else {
                 ctx.set_font("11px monospace");
                 ctx.set_fill_style_str("#94a3b8");
-                let _ = ctx.fill_text("STATUS: OPERATIONAL // IDLE", x + 15.0, y + 75.0);
-                let _ = ctx.fill_text("Rally Point: Set via Right-Click", x + 15.0, y + 95.0);
+                let _ = ctx.fill_text("STATUS: OPERATIONAL // IDLE", x + 15.0, y + 85.0);
+                let _ = ctx.fill_text("Rally Point: Set via Right-Click", x + 15.0, y + 105.0);
             }
             return;
         }
@@ -768,45 +858,57 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
         let uid = engine.selected_unit_ids[0];
         if let Some(u) = engine.units.iter().find(|u| u.id == uid) {
             ctx.set_font("bold 13px monospace");
-            ctx.set_fill_style_str("#00e5ff");
-            let name = match u.unit_type {
-                UnitType::Engineer => "ENGINEER // WORKER",
-                UnitType::ShockTrooper => "STRIKER // SHOCK TROOPER",
-                UnitType::Rifleman => "MARKSMAN // RIFLEMAN",
-                UnitType::Vanguard => "VANGUARD // SHIELDER",
-                UnitType::LaserMarksman => "SIEGE // LASER MARKSMAN",
-            };
-            let _ = ctx.fill_text(name, x + 15.0, y + 25.0);
+            ctx.set_fill_style_str(if u.team == Team::Player { "#00e5ff" } else { "#f43f5e" });
+            let name = u.unit_type.display_name();
+            let _ = ctx.fill_text(name, x + 15.0, y + 22.0);
 
             // Thanh máu
             let hp_pct = (u.hp / u.max_hp).clamp(0.0, 1.0) as f64;
             ctx.set_fill_style_str("#1e293b");
-            ctx.fill_rect(x + 15.0, y + 36.0, w - 30.0, 12.0);
+            ctx.fill_rect(x + 15.0, y + 30.0, w - 30.0, 10.0);
             ctx.set_fill_style_str(if hp_pct > 0.4 { "#22c55e" } else { "#ef4444" });
-            ctx.fill_rect(x + 15.0, y + 36.0, (w - 30.0) * hp_pct, 12.0);
+            ctx.fill_rect(x + 15.0, y + 30.0, (w - 30.0) * hp_pct, 10.0);
 
             ctx.set_font("bold 10px monospace");
             ctx.set_fill_style_str("#ffffff");
             let _ = ctx.fill_text(
                 &format!("{:.0} / {:.0} HP", u.hp, u.max_hp),
                 x + 20.0,
-                y + 46.0,
+                y + 39.0,
             );
 
-            // Chỉ số chiến đấu
+            // Chỉ số chiến đấu & Loại sát thương
             ctx.set_font("11px monospace");
             ctx.set_fill_style_str("#e2e8f0");
             let _ = ctx.fill_text(
                 &format!(
-                    "⚔️ ATK: {:.0}   🎯 RNG: {:.0}   🏃 SPD: {:.0}",
-                    u.attack_damage, u.attack_range, u.speed
+                    "⚔️ ATK: {:.0} [{}]   🎯 RNG: {:.0}   🏃 SPD: {:.0}",
+                    u.attack_damage,
+                    u.damage_type.display_name(),
+                    u.attack_range,
+                    u.speed
                 ),
                 x + 15.0,
-                y + 74.0,
+                y + 60.0,
+            );
+
+            // Chỉ số kháng
+            ctx.set_font("10px monospace");
+            ctx.set_fill_style_str("#38bdf8");
+            let _ = ctx.fill_text(
+                &format!(
+                    "🛡️ RES: PHY {:.0}% | ENG {:.0}% | EXP {:.0}% | ARC {:.0}%",
+                    u.resistances.physical * 100.0,
+                    u.resistances.energy * 100.0,
+                    u.resistances.explosive * 100.0,
+                    u.resistances.arcane * 100.0
+                ),
+                x + 15.0,
+                y + 80.0,
             );
 
             // Trạng thái hành động
-            ctx.set_fill_style_str("#38bdf8");
+            ctx.set_fill_style_str("#94a3b8");
             let status_text = match u.order {
                 UnitOrder::Idle => "Status: Standing By [IDLE]",
                 UnitOrder::MoveTo { .. } => "Status: Moving to coordinates",
@@ -825,7 +927,7 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
                     }
                 }
             };
-            let _ = ctx.fill_text(status_text, x + 15.0, y + 96.0);
+            let _ = ctx.fill_text(status_text, x + 15.0, y + 102.0);
             return;
         }
     }
@@ -841,19 +943,19 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
         );
 
         let mut workers = 0;
-        let mut strikers = 0;
-        let mut rifles = 0;
-        let mut shields = 0;
-        let mut lasers = 0;
+        let mut combat_count = 0;
+        let mut evo_count = 0;
 
         for uid in &engine.selected_unit_ids {
             if let Some(u) = engine.units.iter().find(|u| u.id == *uid) {
                 match u.unit_type {
                     UnitType::Engineer => workers += 1,
-                    UnitType::ShockTrooper => strikers += 1,
-                    UnitType::Rifleman => rifles += 1,
-                    UnitType::Vanguard => shields += 1,
-                    UnitType::LaserMarksman => lasers += 1,
+                    UnitType::ShockTrooper | UnitType::Rifleman | UnitType::Vanguard | UnitType::LaserMarksman => {
+                        combat_count += 1;
+                    }
+                    _ => {
+                        evo_count += 1;
+                    }
                 }
             }
         }
@@ -861,25 +963,21 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
         ctx.set_font("11px monospace");
         ctx.set_fill_style_str("#e2e8f0");
         let _ = ctx.fill_text(
-            &format!("• Workers: {}  • Strikers: {}", workers, strikers),
+            &format!("• Workers: {}  • Regular Forces: {}", workers, combat_count),
             x + 15.0,
             y + 55.0,
         );
         let _ = ctx.fill_text(
-            &format!("• Marksmen: {}  • Vanguard: {}", rifles, shields),
+            &format!("• Evolution Elite Units: {}", evo_count),
             x + 15.0,
             y + 75.0,
         );
-        if lasers > 0 {
-            let _ = ctx.fill_text(&format!("• Laser Siege: {}", lasers), x + 15.0, y + 95.0);
-        } else {
-            ctx.set_fill_style_str("#64748b");
-            let _ = ctx.fill_text(
-                "Phím A: Attack-Move  | Chuột Phải: Điều động",
-                x + 15.0,
-                y + 105.0,
-            );
-        }
+        ctx.set_fill_style_str("#64748b");
+        let _ = ctx.fill_text(
+            "Phím A: Attack-Move  | Chuột Phải: Điều động",
+            x + 15.0,
+            y + 105.0,
+        );
         return;
     }
 
@@ -900,13 +998,58 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
     );
 }
 
+fn draw_barracks_slot(
+    ctx: &CanvasRenderingContext2d,
+    engine: &GameEngine,
+    b: &Building,
+    u_type: UnitType,
+    slot_x: f64,
+    slot_y: f64,
+    btn_idx: usize,
+) -> (usize, bool, f32) {
+    let count = b.training_queue.iter().filter(|&&t| t == u_type).count();
+    let is_training = b.training_queue.first() == Some(&u_type);
+    let mut req_time = u_type.training_time();
+    if b.team == Team::Player && engine.player_tech.hive_proliferation {
+        req_time *= 0.65;
+    }
+    let prog = if is_training {
+        (b.training_timer / req_time).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let (mut min_cost, mut en_cost) = u_type.cost();
+    if engine.player_tech.hive_proliferation {
+        min_cost *= 0.65;
+        en_cost *= 0.65;
+    }
+    let can_afford = engine.player_eco.minerals >= min_cost && engine.player_eco.energy >= en_cost;
+
+    draw_unit_purchase_button(
+        ctx,
+        slot_x,
+        slot_y,
+        62.0,
+        40.0,
+        u_type.button_label(),
+        u_type.cost_label(),
+        count,
+        is_training,
+        prog,
+        engine.hovered_command_button == Some(btn_idx),
+        can_afford,
+    );
+
+    (count, is_training, prog)
+}
+
 fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
     let ctx = &engine.context;
     ctx.set_fill_style_str("rgba(3, 13, 26, 0.94)");
-    ctx.fill_rect(x, y, 210.0, 130.0);
+    ctx.fill_rect(x, y, 215.0, 140.0);
     ctx.set_stroke_style_str("#0284c7");
     ctx.set_line_width(1.5);
-    ctx.stroke_rect(x, y, 210.0, 130.0);
+    ctx.stroke_rect(x, y, 215.0, 140.0);
 
     let has_worker = engine.selected_unit_ids.iter().any(|uid| {
         engine
@@ -918,11 +1061,11 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
     let mut tooltip: Option<(String, String)> = None;
 
     if has_worker {
-        draw_hud_button(ctx, x + 5.0, y + 10.0, 60.0, 50.0, "SUPPLY", "100M");
-        draw_hud_button(ctx, x + 72.0, y + 10.0, 60.0, 50.0, "REACTOR", "120M");
-        draw_hud_button(ctx, x + 140.0, y + 10.0, 60.0, 50.0, "BARRACKS", "150M");
-        draw_hud_button(ctx, x + 5.0, y + 68.0, 60.0, 50.0, "TURRET", "125M 50E");
-        draw_hud_button(ctx, x + 72.0, y + 68.0, 60.0, 50.0, "HQ CC", "400M");
+        draw_hud_button(ctx, x + 5.0, y + 6.0, 62.0, 40.0, "SUPPLY", "100M");
+        draw_hud_button(ctx, x + 72.0, y + 6.0, 62.0, 40.0, "REACTOR", "120M");
+        draw_hud_button(ctx, x + 139.0, y + 6.0, 62.0, 40.0, "BARRACKS", "150M");
+        draw_hud_button(ctx, x + 5.0, y + 50.0, 62.0, 40.0, "TURRET", "125M 50E");
+        draw_hud_button(ctx, x + 72.0, y + 50.0, 62.0, 40.0, "HQ CC", "400M");
 
         if let Some(hover_idx) = engine.hovered_command_button {
             tooltip = match hover_idx {
@@ -972,9 +1115,9 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
                     draw_unit_purchase_button(
                         ctx,
                         x + 5.0,
-                        y + 10.0,
-                        60.0,
-                        50.0,
+                        y + 6.0,
+                        62.0,
+                        40.0,
                         u_type.button_label(),
                         u_type.cost_label(),
                         count,
@@ -1006,147 +1149,67 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
                 }
                 BuildingType::Barracks => {
                     // 0: Striker
-                    let u0 = UnitType::ShockTrooper;
-                    let c0 = b.training_queue.iter().filter(|&&t| t == u0).count();
-                    let t0 = b.training_queue.first() == Some(&u0);
-                    let p0 = if t0 {
-                        (b.training_timer / u0.training_time()).clamp(0.0, 1.0)
-                    } else {
-                        0.0
-                    };
-                    let a0 = engine.player_eco.minerals >= u0.cost().0
-                        && engine.player_eco.energy >= u0.cost().1;
-                    draw_unit_purchase_button(
-                        ctx,
-                        x + 5.0,
-                        y + 10.0,
-                        60.0,
-                        50.0,
-                        u0.button_label(),
-                        u0.cost_label(),
-                        c0,
-                        t0,
-                        p0,
-                        engine.hovered_command_button == Some(0),
-                        a0,
-                    );
-
+                    let s0 = draw_barracks_slot(ctx, engine, b, UnitType::ShockTrooper, x + 5.0, y + 6.0, 0);
                     // 1: Rifle
-                    let u1 = UnitType::Rifleman;
-                    let c1 = b.training_queue.iter().filter(|&&t| t == u1).count();
-                    let t1 = b.training_queue.first() == Some(&u1);
-                    let p1 = if t1 {
-                        (b.training_timer / u1.training_time()).clamp(0.0, 1.0)
+                    let s1 = draw_barracks_slot(ctx, engine, b, UnitType::Rifleman, x + 72.0, y + 6.0, 1);
+                    // 2: Vanguard
+                    let s2 = if engine.player_tech.energy_shielding {
+                        Some(draw_barracks_slot(ctx, engine, b, UnitType::Vanguard, x + 139.0, y + 6.0, 2))
                     } else {
-                        0.0
+                        None
                     };
-                    let a1 = engine.player_eco.minerals >= u1.cost().0
-                        && engine.player_eco.energy >= u1.cost().1;
-                    draw_unit_purchase_button(
-                        ctx,
-                        x + 72.0,
-                        y + 10.0,
-                        60.0,
-                        50.0,
-                        u1.button_label(),
-                        u1.cost_label(),
-                        c1,
-                        t1,
-                        p1,
-                        engine.hovered_command_button == Some(1),
-                        a1,
-                    );
-
-                    // 2: Shield (Vanguard)
-                    let u2 = UnitType::Vanguard;
-                    let c2 = b.training_queue.iter().filter(|&&t| t == u2).count();
-                    let t2 = b.training_queue.first() == Some(&u2);
-                    let p2 = if t2 {
-                        (b.training_timer / u2.training_time()).clamp(0.0, 1.0)
-                    } else {
-                        0.0
-                    };
-                    let a2 = engine.player_eco.minerals >= u2.cost().0
-                        && engine.player_eco.energy >= u2.cost().1;
-                    if engine.player_tech.energy_shielding {
-                        draw_unit_purchase_button(
-                            ctx,
-                            x + 140.0,
-                            y + 10.0,
-                            60.0,
-                            50.0,
-                            u2.button_label(),
-                            u2.cost_label(),
-                            c2,
-                            t2,
-                            p2,
-                            engine.hovered_command_button == Some(2),
-                            a2,
-                        );
-                    }
-
                     // 3: Laser
-                    let u3 = UnitType::LaserMarksman;
-                    let c3 = b.training_queue.iter().filter(|&&t| t == u3).count();
-                    let t3 = b.training_queue.first() == Some(&u3);
-                    let p3 = if t3 {
-                        (b.training_timer / u3.training_time()).clamp(0.0, 1.0)
+                    let s3 = if engine.player_tech.focused_laser {
+                        Some(draw_barracks_slot(ctx, engine, b, UnitType::LaserMarksman, x + 5.0, y + 50.0, 3))
                     } else {
-                        0.0
+                        None
                     };
-                    let a3 = engine.player_eco.minerals >= u3.cost().0
-                        && engine.player_eco.energy >= u3.cost().1;
-                    if engine.player_tech.focused_laser {
-                        draw_unit_purchase_button(
-                            ctx,
-                            x + 5.0,
-                            y + 68.0,
-                            60.0,
-                            50.0,
-                            u3.button_label(),
-                            u3.cost_label(),
-                            c3,
-                            t3,
-                            p3,
-                            engine.hovered_command_button == Some(3),
-                            a3,
-                        );
-                    }
+                    // 4: Dark Rocketeer
+                    let s4 = if engine.player_tech.dark_matter_rockets {
+                        Some(draw_barracks_slot(ctx, engine, b, UnitType::DarkRocketeer, x + 72.0, y + 50.0, 4))
+                    } else {
+                        None
+                    };
+                    // 5: Taoist Swordmaster
+                    let s5 = if engine.player_tech.celestial_flying_swords {
+                        Some(draw_barracks_slot(ctx, engine, b, UnitType::TaoistSwordmaster, x + 139.0, y + 50.0, 5))
+                    } else {
+                        None
+                    };
+                    // 6: Void Warlock
+                    let s6 = if engine.player_tech.void_cataclysm {
+                        Some(draw_barracks_slot(ctx, engine, b, UnitType::VoidWarlock, x + 5.0, y + 94.0, 6))
+                    } else {
+                        None
+                    };
+                    // 7: Behemoth Titan
+                    let s7 = if engine.player_tech.behemoth_mutation {
+                        Some(draw_barracks_slot(ctx, engine, b, UnitType::BehemothTitan, x + 72.0, y + 94.0, 7))
+                    } else {
+                        None
+                    };
+                    // 8: Acid Baneling
+                    let s8 = if engine.player_tech.acid_banelings {
+                        Some(draw_barracks_slot(ctx, engine, b, UnitType::AcidBaneling, x + 139.0, y + 94.0, 8))
+                    } else {
+                        None
+                    };
 
                     if let Some(hover_idx) = engine.hovered_command_button {
-                        let (name, base_desc, count, is_tr, prog) = match hover_idx {
-                            0 => (
-                                "SHOCK TROOPER",
-                                "Giá: 75M. Kiếm sĩ Plasma, chạy nhanh, chém mạnh.",
-                                c0,
-                                t0,
-                                p0,
-                            ),
-                            1 => (
-                                "RIFLEMAN",
-                                "Giá: 100M 20E. Xạ thủ súng trường tầm xa.",
-                                c1,
-                                t1,
-                                p1,
-                            ),
-                            2 if engine.player_tech.energy_shielding => (
-                                "VANGUARD",
-                                "Giá: 150M 50E. Vệ binh khiên chắn năng lượng.",
-                                c2,
-                                t2,
-                                p2,
-                            ),
-                            3 if engine.player_tech.focused_laser => (
-                                "LASER MARKSMAN",
-                                "Giá: 175M 100E. Pháo Laser siêu sát thương.",
-                                c3,
-                                t3,
-                                p3,
-                            ),
-                            _ => ("", "", 0, false, 0.0),
+                        let info = match hover_idx {
+                            0 => Some(("SHOCK TROOPER", "Giá: 75M. Kiếm sĩ Plasma, chạy nhanh, chém mạnh.", s0)),
+                            1 => Some(("RIFLEMAN", "Giá: 100M 20E. Xạ thủ súng trường tầm xa.", s1)),
+                            2 => s2.map(|s| ("VANGUARD", "Giá: 150M 50E. Vệ binh khiên chắn năng lượng.", s)),
+                            3 => s3.map(|s| ("LASER MARKSMAN", "Giá: 175M 100E. Pháo Laser siêu sát thương.", s)),
+                            4 => s4.map(|s| ("DARK ROCKETEER", "Giá: 160M 80E. Bệ phóng Rocket nổ AoE tầm xa.", s)),
+                            5 => s5.map(|s| ("SWORDMASTER", "Giá: 180M 90E. Tu tiên giả ngự phi kiếm chân khí Arcane.", s)),
+                            6 => s6.map(|s| ("VOID WARLOCK", "Giá: 200M 120E. Vu sư hư không, cầu ma thuật nổ AoE.", s)),
+                            7 => s7.map(|s| ("BEHEMOTH TITAN", "Giá: 250M 100E. Cự thú 650 HP, dậm chấn động diện rộng.", s)),
+                            8 => s8.map(|s| ("ACID BANELING", "Giá: 60M 30E. Bọ cảm tử lao vào tự nổ axit AoE cực lớn.", s)),
+                            _ => None,
                         };
 
-                        if !name.is_empty() {
+                        if let Some((name, base_desc, (count, is_tr, prog))) = info {
                             let mut desc = base_desc.to_string();
                             if count > 0 {
                                 if is_tr {

@@ -9,6 +9,13 @@ export enum BuildingType {
     TurretTower = 4,
 }
 
+export enum DamageType {
+    Physical = 0,
+    Energy = 1,
+    Explosive = 2,
+    Arcane = 3,
+}
+
 export enum Team {
     Player = 0,
     Enemy = 1,
@@ -20,6 +27,11 @@ export enum UnitType {
     Rifleman = 2,
     Vanguard = 3,
     LaserMarksman = 4,
+    DarkRocketeer = 5,
+    TaoistSwordmaster = 6,
+    VoidWarlock = 7,
+    BehemothTitan = 8,
+    AcidBaneling = 9,
 }
 
 export function engine_step(dt: number): void;

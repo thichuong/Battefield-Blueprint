@@ -13,12 +13,36 @@ Dự án kết hợp kiến trúc hiệu năng cao giữa **Rust WebAssembly (Wa
 - **Kiến trúc Hybrid Wasm + React**:
   - Giao tiếp 2 chiều không độ trễ giữa Rust và React qua `wasm-bindgen` và Event Queue.
   - Rust Wasm vẽ trực tiếp bằng đồ họa vector toán học (procedural geometry/strokes), không cần tải ảnh ngoài, kích thước Wasm siêu nhẹ (~228KB).
-- **Hệ thống Đơn vị Người Que (5 Binh chủng)**:
+- **Hệ thống Đa dạng Loại Sát Thương & Chỉ số Kháng (Combat Matrix)**:
+  - 💥 **4 Loại Sát Thương**:
+    - **Vật lý (Physical)**: Sát thương đơn mục tiêu tốc độ cao, số nhảy màu trắng bạc.
+    - **Năng lượng (Energy)**: Laser / plasma tốc độ cực nhanh, số nhảy xanh Cyan neon.
+    - **Nổ (Explosive - AoE)**: Rocket / bọ cảm tử nổ diện rộng bán kính 30-65px, số nhảy cam đỏ rực rỡ.
+    - **Ma thuật (Arcane)**: Bỏ qua giáp vật lý thông thường, số nhảy tím ma ảo.
+  - 🛡️ **Bảng Chỉ Số Kháng Đa Diện (Resistances)**:
+    - Mỗi đơn vị và công trình sở hữu 4 chỉ số kháng riêng: `Kháng Vật lý`, `Kháng Năng lượng`, `Kháng Nổ`, `Kháng Ma thuật`.
+    - Công thức giảm trừ sát thương thực tế theo thời gian thực và hiển thị cụ thể trên HUD khi click chọn mục tiêu.
+- **Hệ thống Tiến Hóa 3 Nhánh Đại Chủng Loài (Evolution System)**:
+  - 🔬 **Khoa học (Science)**:
+    - *Công nghệ tương lai*: Tia laser hội tụ quang năng, Khiên lượng tử phản xạ (+40% Kháng Năng lượng).
+    - *Hắc khoa kỹ*: Lính bệ phóng Rocket nổ AoE (Dark Rocketeer), Tháp pháo bắn đạn nổ, Khung xương Titan cường lực (+35% Kháng Vật lý).
+  - 🔮 **Ma thuật (Magic)**:
+    - *Tiên pháp*: Tu tiên giả ngự phi kiếm chân khí Arcane (Taoist Swordmaster), Kim cang hộ thể linh quang (+40% Kháng Phép & hồi 3 HP/s).
+    - *Pháp thuật bóng tối*: Hắc ám chú ấn (bào mòn kháng đối phương khi trúng đòn), Vu sư hư không nổ bóng tối AoE (Void Warlock).
+  - 🧬 **Quái vật (Monsters)**:
+    - *Khổng lồ*: Vảy cổ đại (+50% Kháng Vật lý & +40% Kháng Nổ), Cự thú Titan 650 HP (Behemoth Titan) dậm chấn động diện rộng.
+    - *Bọ bầy đàn*: Bọ nổ cảm tử axit AoE cực lớn (Acid Baneling), Sinh sôi siêu tốc (-35% chi phí & thời gian huấn luyện toàn quân, +25% tốc chạy).
+- **Hệ thống Đơn vị Người Que (10 Binh chủng)**:
   - 🔧 **Kỹ sư / Thợ mỏ (Engineer)**: Cầm cờ-lê/máy hàn, khai thác khoáng sản và thi công công trình.
   - ⚔️ **Kiếm sĩ Xung kích (Shock Trooper)**: Cầm kiếm Plasma Blade, tốc độ chạy nhanh, cận chiến mạnh.
   - 🎯 **Xạ thủ Súng trường (Rifleman)**: Tấn công tầm xa, thích hợp lập đội hình hỏa lực.
   - 🛡️ **Vệ binh Khiên chắn (Vanguard)**: Khiên năng lượng hấp thụ sát thương lớn cho tuyến sau.
   - ⚡ **Pháo thủ Laser Tầm xa (Laser Marksman)**: Chiếu tia laser xuyên thấu với tầm bắn và sát thương cực cao.
+  - 🚀 **Lính Pháo Rocket Hắc Ám (Dark Rocketeer)**: Bệ phóng tên lửa nổ AoE tầm xa.
+  - 🗡️ **Tu Tiên Giả Ngự Kiếm (Taoist Swordmaster)**: Phi kiếm chân khí sát thương Ma thuật Arcane.
+  - 💀 **Vu Sư Hư Không (Void Warlock)**: Trượng bóng tối bắn cầu ma thuật bộc phá AoE.
+  - 🦣 **Chiến Thú Khổng Lồ (Behemoth Titan)**: Stickman 650 HP to lớn, dậm chấn động diện rộng.
+  - 🦗 **Bọ Nổ Cảm Tử (Acid Baneling)**: Bò 4 chân tốc độ cao, lao vào tự kích nổ axit AoE cực mạnh.
 - **Hệ thống Công trình Blueprint (5 Công trình)**:
   - 🏢 **Trung tâm Chỉ huy (Command Center)**: Thu nhận khoáng sản, xin thợ mỏ.
   - 📦 **Trạm Tiếp vận (Supply Depot)**: Tăng giới hạn dân số (+8 Supply).

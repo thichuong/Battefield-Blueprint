@@ -14,15 +14,33 @@ import init, {
 import { soundEngine } from '../audio/soundEngine';
 
 export interface TechState {
+  // Khoa học
+  focused_laser: boolean;
+  energy_shielding: boolean;
+  dark_matter_rockets: boolean;
+  titan_alloy_plating: boolean;
+
+  // Ma thuật
+  celestial_flying_swords: boolean;
+  golden_bell_shield: boolean;
+  corrosive_curse: boolean;
+  void_cataclysm: boolean;
+
+  // Quái vật
+  primeval_scales: boolean;
+  behemoth_mutation: boolean;
+  acid_banelings: boolean;
+  hive_proliferation: boolean;
+
+  // Kinh tế & phụ trợ
   optical_drills: boolean;
   overcharged_reactors: boolean;
   fortified_blueprints: boolean;
-  energy_shielding: boolean;
   magnetic_rounds: boolean;
   exo_boosters: boolean;
-  focused_laser: boolean;
   superheated_blades: boolean;
   overload_strike: boolean;
+
   current_research: string | null;
   research_progress: number;
   research_total_time: number;
