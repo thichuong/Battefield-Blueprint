@@ -53,8 +53,8 @@ export interface InitOutput {
     readonly init_engine: (a: any) => [number, number];
     readonly poll_events_from_engine: () => [number, number];
     readonly send_command_to_engine: (a: number, b: number) => void;
-    readonly resize_canvas: (a: number, b: number) => void;
     readonly handle_mouse_move: (a: number, b: number) => void;
+    readonly resize_canvas: (a: number, b: number) => void;
     readonly handle_mouse_wheel: (a: number) => void;
     readonly engine_step: (a: number) => void;
     readonly handle_mouse_down: (a: number, b: number, c: number) => void;

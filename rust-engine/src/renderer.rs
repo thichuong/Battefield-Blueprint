@@ -622,20 +622,8 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
             if !b.training_queue.is_empty() {
                 ctx.set_font("11px monospace");
                 ctx.set_fill_style(&JsValue::from_str("#facc15"));
-                let cur_unit = match b.training_queue[0] {
-                    UnitType::Engineer => "WORKER",
-                    UnitType::ShockTrooper => "STRIKER",
-                    UnitType::Rifleman => "RIFLEMAN",
-                    UnitType::Vanguard => "VANGUARD",
-                    UnitType::LaserMarksman => "LASER",
-                };
-                let req_time = match b.training_queue[0] {
-                    UnitType::Engineer => 5.0,
-                    UnitType::ShockTrooper => 7.0,
-                    UnitType::Rifleman => 8.0,
-                    UnitType::Vanguard => 12.0,
-                    UnitType::LaserMarksman => 15.0,
-                };
+                let cur_unit = b.training_queue[0].button_label();
+                let req_time = b.training_queue[0].training_time();
                 let prog = (b.training_timer / req_time).clamp(0.0, 1.0);
                 let _ = ctx.fill_text(&format!("TRAINING: {} ({:.0}%)", cur_unit, prog * 100.0), x + 15.0, y + 70.0);
 
@@ -647,7 +635,12 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
                 if b.training_queue.len() > 1 {
                     ctx.set_font("10px monospace");
                     ctx.set_fill_style(&JsValue::from_str("#94a3b8"));
-                    let _ = ctx.fill_text(&format!("Queued: +{} units", b.training_queue.len() - 1), x + 15.0, y + 98.0);
+                    let mut q_str = String::from("Queue: ");
+                    for (i, u) in b.training_queue.iter().skip(1).enumerate() {
+                        if i > 0 { q_str.push_str(" > "); }
+                        q_str.push_str(u.button_label());
+                    }
+                    let _ = ctx.fill_text(&q_str, x + 15.0, y + 98.0);
                 }
             } else {
                 ctx.set_font("11px monospace");
@@ -769,7 +762,7 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
         engine.units.iter().any(|u| u.id == *uid && u.unit_type == UnitType::Engineer)
     });
 
-    let mut tooltip: Option<(&'static str, &'static str)> = None;
+    let mut tooltip: Option<(String, String)> = None;
 
     if has_worker {
         draw_hud_button(ctx, x + 5.0, y + 10.0, 60.0, 50.0, "SUPPLY", "100M");
@@ -780,11 +773,11 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
 
         if let Some(hover_idx) = engine.hovered_command_button {
             tooltip = match hover_idx {
-                0 => Some(("SUPPLY DEPOT", "Giá: 100M. Tăng +8 Giới hạn dân số (Supply).")),
-                1 => Some(("POWER REACTOR", "Giá: 120M. Tăng tốc độ sản sinh Năng lượng +8/s.")),
-                2 => Some(("BARRACKS", "Giá: 150M. Trại huấn luyện lính chiến đấu.")),
-                3 => Some(("TURRET TOWER", "Giá: 125M 50E. Tháp phòng thủ tự động bắn tỉa.")),
-                4 => Some(("HQ COMMAND CENTER", "Giá: 400M. Trung tâm chỉ huy mở rộng.")),
+                0 => Some(("SUPPLY DEPOT".into(), "Giá: 100M. Tăng +8 Giới hạn dân số (Supply).".into())),
+                1 => Some(("POWER REACTOR".into(), "Giá: 120M. Tăng tốc độ sản sinh Năng lượng +8/s.".into())),
+                2 => Some(("BARRACKS".into(), "Giá: 150M. Trại huấn luyện lính chiến đấu.".into())),
+                3 => Some(("TURRET TOWER".into(), "Giá: 125M 50E. Tháp phòng thủ tự động bắn tỉa.".into())),
+                4 => Some(("HQ COMMAND CENTER".into(), "Giá: 400M. Trung tâm chỉ huy mở rộng.".into())),
                 _ => None,
             };
         }
@@ -792,29 +785,151 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
         if let Some(b) = engine.buildings.iter().find(|b| b.id == bid && b.team == Team::Player) {
             match b.building_type {
                 BuildingType::CommandCenter => {
-                    draw_hud_button(ctx, x + 5.0, y + 10.0, 60.0, 50.0, "WORKER", "50M");
+                    let u_type = UnitType::Engineer;
+                    let count = b.training_queue.iter().filter(|&&t| t == u_type).count();
+                    let is_training = b.training_queue.first() == Some(&u_type);
+                    let prog = if is_training { (b.training_timer / u_type.training_time()).clamp(0.0, 1.0) } else { 0.0 };
+                    let (min_cost, en_cost) = u_type.cost();
+                    let can_afford = engine.player_eco.minerals >= min_cost && engine.player_eco.energy >= en_cost;
+
+                    draw_unit_purchase_button(
+                        ctx,
+                        x + 5.0,
+                        y + 10.0,
+                        60.0,
+                        50.0,
+                        u_type.button_label(),
+                        u_type.cost_label(),
+                        count,
+                        is_training,
+                        prog,
+                        engine.hovered_command_button == Some(0),
+                        can_afford,
+                    );
+
                     if engine.hovered_command_button == Some(0) {
-                        tooltip = Some(("TRAIN WORKER", "Giá: 50M. Huấn luyện thợ mỏ/kỹ sư xây dựng."));
+                        let mut desc = format!("Giá: {}. Huấn luyện thợ mỏ / kỹ sư xây dựng.", u_type.cost_label());
+                        if count > 0 {
+                            if is_training {
+                                desc.push_str(&format!(" [Đang tạo: {:.0}% | Chờ: {}]", prog * 100.0, count));
+                            } else {
+                                desc.push_str(&format!(" [Đang chờ: {}]", count));
+                            }
+                            desc.push_str(" (Click phải để hủy & hoàn tiền)");
+                        }
+                        tooltip = Some(("TRAIN WORKER".into(), desc));
                     }
                 }
                 BuildingType::Barracks => {
-                    draw_hud_button(ctx, x + 5.0, y + 10.0, 60.0, 50.0, "STRIKER", "75M");
-                    draw_hud_button(ctx, x + 72.0, y + 10.0, 60.0, 50.0, "RIFLE", "100M 20E");
+                    // 0: Striker
+                    let u0 = UnitType::ShockTrooper;
+                    let c0 = b.training_queue.iter().filter(|&&t| t == u0).count();
+                    let t0 = b.training_queue.first() == Some(&u0);
+                    let p0 = if t0 { (b.training_timer / u0.training_time()).clamp(0.0, 1.0) } else { 0.0 };
+                    let a0 = engine.player_eco.minerals >= u0.cost().0 && engine.player_eco.energy >= u0.cost().1;
+                    draw_unit_purchase_button(
+                        ctx,
+                        x + 5.0,
+                        y + 10.0,
+                        60.0,
+                        50.0,
+                        u0.button_label(),
+                        u0.cost_label(),
+                        c0,
+                        t0,
+                        p0,
+                        engine.hovered_command_button == Some(0),
+                        a0,
+                    );
+
+                    // 1: Rifle
+                    let u1 = UnitType::Rifleman;
+                    let c1 = b.training_queue.iter().filter(|&&t| t == u1).count();
+                    let t1 = b.training_queue.first() == Some(&u1);
+                    let p1 = if t1 { (b.training_timer / u1.training_time()).clamp(0.0, 1.0) } else { 0.0 };
+                    let a1 = engine.player_eco.minerals >= u1.cost().0 && engine.player_eco.energy >= u1.cost().1;
+                    draw_unit_purchase_button(
+                        ctx,
+                        x + 72.0,
+                        y + 10.0,
+                        60.0,
+                        50.0,
+                        u1.button_label(),
+                        u1.cost_label(),
+                        c1,
+                        t1,
+                        p1,
+                        engine.hovered_command_button == Some(1),
+                        a1,
+                    );
+
+                    // 2: Shield (Vanguard)
+                    let u2 = UnitType::Vanguard;
+                    let c2 = b.training_queue.iter().filter(|&&t| t == u2).count();
+                    let t2 = b.training_queue.first() == Some(&u2);
+                    let p2 = if t2 { (b.training_timer / u2.training_time()).clamp(0.0, 1.0) } else { 0.0 };
+                    let a2 = engine.player_eco.minerals >= u2.cost().0 && engine.player_eco.energy >= u2.cost().1;
                     if engine.player_tech.energy_shielding {
-                        draw_hud_button(ctx, x + 140.0, y + 10.0, 60.0, 50.0, "SHIELD", "150M 50E");
+                        draw_unit_purchase_button(
+                            ctx,
+                            x + 140.0,
+                            y + 10.0,
+                            60.0,
+                            50.0,
+                            u2.button_label(),
+                            u2.cost_label(),
+                            c2,
+                            t2,
+                            p2,
+                            engine.hovered_command_button == Some(2),
+                            a2,
+                        );
                     }
+
+                    // 3: Laser
+                    let u3 = UnitType::LaserMarksman;
+                    let c3 = b.training_queue.iter().filter(|&&t| t == u3).count();
+                    let t3 = b.training_queue.first() == Some(&u3);
+                    let p3 = if t3 { (b.training_timer / u3.training_time()).clamp(0.0, 1.0) } else { 0.0 };
+                    let a3 = engine.player_eco.minerals >= u3.cost().0 && engine.player_eco.energy >= u3.cost().1;
                     if engine.player_tech.focused_laser {
-                        draw_hud_button(ctx, x + 5.0, y + 68.0, 60.0, 50.0, "LASER", "175M 100E");
+                        draw_unit_purchase_button(
+                            ctx,
+                            x + 5.0,
+                            y + 68.0,
+                            60.0,
+                            50.0,
+                            u3.button_label(),
+                            u3.cost_label(),
+                            c3,
+                            t3,
+                            p3,
+                            engine.hovered_command_button == Some(3),
+                            a3,
+                        );
                     }
 
                     if let Some(hover_idx) = engine.hovered_command_button {
-                        tooltip = match hover_idx {
-                            0 => Some(("SHOCK TROOPER", "Giá: 75M. Kiếm sĩ Plasma, chạy nhanh, chém mạnh.")),
-                            1 => Some(("RIFLEMAN", "Giá: 100M 20E. Xạ thủ súng trường tầm xa.")),
-                            2 => Some(("VANGUARD", "Giá: 150M 50E. Vệ binh khiên chắn năng lượng trâu bò.")),
-                            3 => Some(("LASER MARKSMAN", "Giá: 175M 100E. Pháo Laser siêu sát thương.")),
-                            _ => None,
+                        let (name, base_desc, count, is_tr, prog) = match hover_idx {
+                            0 => ("SHOCK TROOPER", "Giá: 75M. Kiếm sĩ Plasma, chạy nhanh, chém mạnh.", c0, t0, p0),
+                            1 => ("RIFLEMAN", "Giá: 100M 20E. Xạ thủ súng trường tầm xa.", c1, t1, p1),
+                            2 if engine.player_tech.energy_shielding => ("VANGUARD", "Giá: 150M 50E. Vệ binh khiên chắn năng lượng.", c2, t2, p2),
+                            3 if engine.player_tech.focused_laser => ("LASER MARKSMAN", "Giá: 175M 100E. Pháo Laser siêu sát thương.", c3, t3, p3),
+                            _ => ("", "", 0, false, 0.0),
                         };
+
+                        if !name.is_empty() {
+                            let mut desc = base_desc.to_string();
+                            if count > 0 {
+                                if is_tr {
+                                    desc.push_str(&format!(" [Đang tạo: {:.0}% | Chờ: {}]", prog * 100.0, count));
+                                } else {
+                                    desc.push_str(&format!(" [Đang chờ: {}]", count));
+                                }
+                                desc.push_str(" (Click phải để hủy & hoàn tiền)");
+                            }
+                            tooltip = Some((name.to_string(), desc));
+                        }
                     }
                 }
                 _ => {}
@@ -824,7 +939,7 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
 
     // Vẽ Tooltip thông tin nút nếu đang rê chuột
     if let Some((name, desc)) = tooltip {
-        let tt_w = 260.0;
+        let tt_w = 320.0;
         let tt_h = 45.0;
         let tt_x = (x + 210.0 - tt_w).max(10.0);
         let tt_y = y - tt_h - 8.0;
@@ -837,11 +952,11 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
 
         ctx.set_font("bold 11px monospace");
         ctx.set_fill_style(&JsValue::from_str("#38bdf8"));
-        let _ = ctx.fill_text(name, tt_x + 8.0, tt_y + 16.0);
+        let _ = ctx.fill_text(&name, tt_x + 8.0, tt_y + 16.0);
 
         ctx.set_font("10px monospace");
         ctx.set_fill_style(&JsValue::from_str("#cbd5e1"));
-        let _ = ctx.fill_text(desc, tt_x + 8.0, tt_y + 34.0);
+        let _ = ctx.fill_text(&desc, tt_x + 8.0, tt_y + 34.0);
     }
 }
 
@@ -859,4 +974,120 @@ fn draw_hud_button(ctx: &CanvasRenderingContext2d, x: f64, y: f64, w: f64, h: f6
     ctx.set_font("9px monospace");
     ctx.set_fill_style(&JsValue::from_str("#38bdf8"));
     let _ = ctx.fill_text(cost, x + 4.0, y + 38.0);
+}
+
+fn draw_unit_purchase_button(
+    ctx: &CanvasRenderingContext2d,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    label: &str,
+    cost: &str,
+    queue_count: usize,
+    is_actively_training: bool,
+    training_progress: f32,
+    is_hovered: bool,
+    can_afford: bool,
+) {
+    // 1. Nền nút
+    let bg_color = if is_actively_training {
+        "#0b2d4d"
+    } else if is_hovered {
+        "#13385c"
+    } else if !can_afford && queue_count == 0 {
+        "#0a1c2e"
+    } else {
+        "#0f2942"
+    };
+    ctx.set_fill_style(&JsValue::from_str(bg_color));
+    ctx.fill_rect(x, y, w, h);
+
+    // 2. Viền nút
+    let stroke_color = if is_actively_training {
+        "#00e5ff"
+    } else if is_hovered {
+        "#38bdf8"
+    } else {
+        "#0284c7"
+    };
+    ctx.set_stroke_style(&JsValue::from_str(stroke_color));
+    ctx.set_line_width(if is_actively_training || is_hovered { 1.5 } else { 1.0 });
+    ctx.stroke_rect(x, y, w, h);
+
+    // 3. Tên đơn vị
+    ctx.set_font("bold 10px monospace");
+    let label_color = if is_actively_training {
+        "#00e5ff"
+    } else if can_afford {
+        "#e2e8f0"
+    } else {
+        "#94a3b8"
+    };
+    ctx.set_fill_style(&JsValue::from_str(label_color));
+    let _ = ctx.fill_text(label, x + 4.0, y + 16.0);
+
+    // 4. Giá tài nguyên
+    ctx.set_font("9px monospace");
+    let cost_color = if can_afford { "#38bdf8" } else { "#f87171" };
+    ctx.set_fill_style(&JsValue::from_str(cost_color));
+    let _ = ctx.fill_text(cost, x + 4.0, y + 27.0);
+
+    // 5. Huy hiệu số lượng đang chờ (Queue Badge góc trên phải)
+    if queue_count > 0 {
+        let badge_w = 18.0;
+        let badge_h = 13.0;
+        let bx = x + w - badge_w - 2.0;
+        let by = y + 2.0;
+
+        let badge_bg = if is_actively_training { "#0284c7" } else { "#d97706" };
+        ctx.set_fill_style(&JsValue::from_str(badge_bg));
+        ctx.fill_rect(bx, by, badge_w, badge_h);
+        ctx.set_stroke_style(&JsValue::from_str("#ffffff"));
+        ctx.set_line_width(0.8);
+        ctx.stroke_rect(bx, by, badge_w, badge_h);
+
+        ctx.set_font("bold 9px monospace");
+        ctx.set_fill_style(&JsValue::from_str("#ffffff"));
+        let count_str = format!("x{}", queue_count);
+        let _ = ctx.fill_text(&count_str, bx + 2.0, by + 10.0);
+    }
+
+    // 6. Thanh tiến độ tạo đơn vị ở đáy nút
+    let pb_x = x + 3.0;
+    let pb_y = y + 32.0;
+    let pb_w = w - 6.0;
+    let pb_h = 14.0;
+
+    if is_actively_training {
+        // Khung nền thanh tiến độ
+        ctx.set_fill_style(&JsValue::from_str("#051322"));
+        ctx.fill_rect(pb_x, pb_y, pb_w, pb_h);
+        ctx.set_stroke_style(&JsValue::from_str("#0284c7"));
+        ctx.set_line_width(0.8);
+        ctx.stroke_rect(pb_x, pb_y, pb_w, pb_h);
+
+        // Vạch tiến độ neon cyan
+        let prog_norm = training_progress.clamp(0.0, 1.0) as f64;
+        let fill_w = (pb_w * prog_norm).max(1.0);
+        ctx.set_fill_style(&JsValue::from_str("#00e5ff"));
+        ctx.fill_rect(pb_x, pb_y, fill_w, pb_h);
+
+        // Chữ phần trăm %
+        ctx.set_font("bold 9px monospace");
+        ctx.set_fill_style(&JsValue::from_str("#ffffff"));
+        let pct_str = format!("{:.0}%", prog_norm * 100.0);
+        let _ = ctx.fill_text(&pct_str, pb_x + 13.0, pb_y + 10.5);
+    } else if queue_count > 0 {
+        // Đang chờ trong hàng đợi sau đơn vị khác
+        ctx.set_fill_style(&JsValue::from_str("#051322"));
+        ctx.fill_rect(pb_x, pb_y, pb_w, pb_h);
+        ctx.set_stroke_style(&JsValue::from_str("#334155"));
+        ctx.set_line_width(0.8);
+        ctx.stroke_rect(pb_x, pb_y, pb_w, pb_h);
+
+        ctx.set_font("bold 8px monospace");
+        ctx.set_fill_style(&JsValue::from_str("#94a3b8"));
+        let _ = ctx.fill_text("QUEUED", pb_x + 9.0, pb_y + 10.5);
+    }
 }

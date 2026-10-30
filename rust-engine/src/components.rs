@@ -18,6 +18,58 @@ pub enum UnitType {
     LaserMarksman = 4,// Pháo thủ Laser tầm xa
 }
 
+impl UnitType {
+    pub fn training_time(&self) -> f32 {
+        match self {
+            UnitType::Engineer => 5.0,
+            UnitType::ShockTrooper => 7.0,
+            UnitType::Rifleman => 8.0,
+            UnitType::Vanguard => 12.0,
+            UnitType::LaserMarksman => 15.0,
+        }
+    }
+
+    pub fn cost(&self) -> (f32, f32) {
+        match self {
+            UnitType::Engineer => (50.0, 0.0),
+            UnitType::ShockTrooper => (75.0, 0.0),
+            UnitType::Rifleman => (100.0, 20.0),
+            UnitType::Vanguard => (150.0, 50.0),
+            UnitType::LaserMarksman => (175.0, 100.0),
+        }
+    }
+
+    pub fn button_label(&self) -> &'static str {
+        match self {
+            UnitType::Engineer => "WORKER",
+            UnitType::ShockTrooper => "STRIKER",
+            UnitType::Rifleman => "RIFLE",
+            UnitType::Vanguard => "SHIELD",
+            UnitType::LaserMarksman => "LASER",
+        }
+    }
+
+    pub fn cost_label(&self) -> &'static str {
+        match self {
+            UnitType::Engineer => "50M",
+            UnitType::ShockTrooper => "75M",
+            UnitType::Rifleman => "100M 20E",
+            UnitType::Vanguard => "150M 50E",
+            UnitType::LaserMarksman => "175M 100E",
+        }
+    }
+
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            UnitType::Engineer => "ENGINEER // WORKER",
+            UnitType::ShockTrooper => "STRIKER // SHOCK TROOPER",
+            UnitType::Rifleman => "MARKSMAN // RIFLEMAN",
+            UnitType::Vanguard => "VANGUARD // SHIELDER",
+            UnitType::LaserMarksman => "SIEGE // LASER MARKSMAN",
+        }
+    }
+}
+
 #[wasm_bindgen]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BuildingType {
