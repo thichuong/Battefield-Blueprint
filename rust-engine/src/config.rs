@@ -73,9 +73,25 @@ impl Default for EconomyConfig {
     }
 }
 
+// =========================================================================
+// HẰNG SỐ CẤU HÌNH HỆ THỐNG (CENTRALIZED CONSTANTS)
+// =========================================================================
+
+// === TỐC ĐỘ XÂY DỰNG & HIỆU ỨNG BỊ TẤN CÔNG ===
+pub const BUILD_SPEED_BASE: f32 = 0.05; // Tốc độ xây tự động cơ bản khi không có thợ (1/20s)
+pub const BUILD_SPEED_WORKER: f32 = 0.20; // Tốc độ xây khi có Engineer ở gần (1/5s)
+pub const WORKER_BUILD_RANGE: f32 = 90.0; // Khoảng cách thợ hỗ trợ xây dựng
+pub const BUILDING_UNDER_ATTACK_DURATION: f32 = 5.0; // Thời gian duy trì hiệu ứng bị tấn công (5s)
+pub const BUILDING_UNDER_ATTACK_SPEED_MULTIPLIER: f32 = 0.30; // Giảm còn 30% tốc độ xây khi bị tấn công
+
+// === NGHIÊN CỨU ĐA NHÁNH CÔNG NGHỆ ===
+pub const MAX_CONCURRENT_RESEARCH_PER_BRANCH: usize = 1; // 1 công nghệ mỗi nhánh cùng lúc
+pub const MAX_TOTAL_CONCURRENT_RESEARCH: usize = 4; // Tối đa 4 nhánh chạy đồng thời
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct TechItemConfig {
     pub name: String,
+    pub branch: String, // "science" | "magic" | "monster" | "logistics"
     pub cost_minerals: f32,
     pub cost_energy: f32,
     pub research_time: f32,
@@ -404,25 +420,25 @@ impl Default for GameConfig {
         );
 
         // 3. TECHS
-        techs.insert("focused_laser".to_string(), TechItemConfig { name: "Focused Laser".to_string(), cost_minerals: 250.0, cost_energy: 200.0, research_time: 20.0 });
-        techs.insert("energy_shielding".to_string(), TechItemConfig { name: "Energy Shielding".to_string(), cost_minerals: 180.0, cost_energy: 150.0, research_time: 15.0 });
-        techs.insert("dark_matter_rockets".to_string(), TechItemConfig { name: "Dark Matter Rockets".to_string(), cost_minerals: 220.0, cost_energy: 120.0, research_time: 18.0 });
-        techs.insert("titan_alloy_plating".to_string(), TechItemConfig { name: "Titan Alloy Plating".to_string(), cost_minerals: 300.0, cost_energy: 180.0, research_time: 25.0 });
-        techs.insert("celestial_flying_swords".to_string(), TechItemConfig { name: "Celestial Flying Swords".to_string(), cost_minerals: 260.0, cost_energy: 160.0, research_time: 22.0 });
-        techs.insert("golden_bell_shield".to_string(), TechItemConfig { name: "Golden Bell Shield".to_string(), cost_minerals: 200.0, cost_energy: 140.0, research_time: 16.0 });
-        techs.insert("corrosive_curse".to_string(), TechItemConfig { name: "Corrosive Curse".to_string(), cost_minerals: 180.0, cost_energy: 160.0, research_time: 16.0 });
-        techs.insert("void_cataclysm".to_string(), TechItemConfig { name: "Void Cataclysm".to_string(), cost_minerals: 320.0, cost_energy: 240.0, research_time: 28.0 });
-        techs.insert("primeval_scales".to_string(), TechItemConfig { name: "Primeval Scales".to_string(), cost_minerals: 220.0, cost_energy: 120.0, research_time: 18.0 });
-        techs.insert("behemoth_mutation".to_string(), TechItemConfig { name: "Behemoth Mutation".to_string(), cost_minerals: 320.0, cost_energy: 180.0, research_time: 26.0 });
-        techs.insert("acid_banelings".to_string(), TechItemConfig { name: "Acid Banelings".to_string(), cost_minerals: 160.0, cost_energy: 90.0, research_time: 14.0 });
-        techs.insert("hive_proliferation".to_string(), TechItemConfig { name: "Hive Proliferation".to_string(), cost_minerals: 260.0, cost_energy: 160.0, research_time: 20.0 });
-        techs.insert("optical_drills".to_string(), TechItemConfig { name: "Optical Drills".to_string(), cost_minerals: 100.0, cost_energy: 50.0, research_time: 10.0 });
-        techs.insert("overcharged_reactors".to_string(), TechItemConfig { name: "Overcharged Reactors".to_string(), cost_minerals: 150.0, cost_energy: 100.0, research_time: 15.0 });
-        techs.insert("fortified_blueprints".to_string(), TechItemConfig { name: "Fortified Blueprints".to_string(), cost_minerals: 200.0, cost_energy: 150.0, research_time: 20.0 });
-        techs.insert("magnetic_rounds".to_string(), TechItemConfig { name: "Magnetic Rounds".to_string(), cost_minerals: 200.0, cost_energy: 150.0, research_time: 15.0 });
-        techs.insert("exo_boosters".to_string(), TechItemConfig { name: "Exo Boosters".to_string(), cost_minerals: 250.0, cost_energy: 200.0, research_time: 20.0 });
-        techs.insert("superheated_blades".to_string(), TechItemConfig { name: "Superheated Blades".to_string(), cost_minerals: 350.0, cost_energy: 300.0, research_time: 30.0 });
-        techs.insert("overload_strike".to_string(), TechItemConfig { name: "Overload Strike".to_string(), cost_minerals: 400.0, cost_energy: 350.0, research_time: 35.0 });
+        techs.insert("focused_laser".to_string(), TechItemConfig { name: "Focused Laser".to_string(), branch: "science".to_string(), cost_minerals: 250.0, cost_energy: 200.0, research_time: 20.0 });
+        techs.insert("energy_shielding".to_string(), TechItemConfig { name: "Energy Shielding".to_string(), branch: "science".to_string(), cost_minerals: 180.0, cost_energy: 150.0, research_time: 15.0 });
+        techs.insert("dark_matter_rockets".to_string(), TechItemConfig { name: "Dark Matter Rockets".to_string(), branch: "science".to_string(), cost_minerals: 220.0, cost_energy: 120.0, research_time: 18.0 });
+        techs.insert("titan_alloy_plating".to_string(), TechItemConfig { name: "Titan Alloy Plating".to_string(), branch: "science".to_string(), cost_minerals: 300.0, cost_energy: 180.0, research_time: 25.0 });
+        techs.insert("celestial_flying_swords".to_string(), TechItemConfig { name: "Celestial Flying Swords".to_string(), branch: "magic".to_string(), cost_minerals: 260.0, cost_energy: 160.0, research_time: 22.0 });
+        techs.insert("golden_bell_shield".to_string(), TechItemConfig { name: "Golden Bell Shield".to_string(), branch: "magic".to_string(), cost_minerals: 200.0, cost_energy: 140.0, research_time: 16.0 });
+        techs.insert("corrosive_curse".to_string(), TechItemConfig { name: "Corrosive Curse".to_string(), branch: "magic".to_string(), cost_minerals: 180.0, cost_energy: 160.0, research_time: 16.0 });
+        techs.insert("void_cataclysm".to_string(), TechItemConfig { name: "Void Cataclysm".to_string(), branch: "magic".to_string(), cost_minerals: 320.0, cost_energy: 240.0, research_time: 28.0 });
+        techs.insert("primeval_scales".to_string(), TechItemConfig { name: "Primeval Scales".to_string(), branch: "monster".to_string(), cost_minerals: 220.0, cost_energy: 120.0, research_time: 18.0 });
+        techs.insert("behemoth_mutation".to_string(), TechItemConfig { name: "Behemoth Mutation".to_string(), branch: "monster".to_string(), cost_minerals: 320.0, cost_energy: 180.0, research_time: 26.0 });
+        techs.insert("acid_banelings".to_string(), TechItemConfig { name: "Acid Banelings".to_string(), branch: "monster".to_string(), cost_minerals: 160.0, cost_energy: 90.0, research_time: 14.0 });
+        techs.insert("hive_proliferation".to_string(), TechItemConfig { name: "Hive Proliferation".to_string(), branch: "monster".to_string(), cost_minerals: 260.0, cost_energy: 160.0, research_time: 20.0 });
+        techs.insert("optical_drills".to_string(), TechItemConfig { name: "Optical Drills".to_string(), branch: "logistics".to_string(), cost_minerals: 100.0, cost_energy: 50.0, research_time: 10.0 });
+        techs.insert("overcharged_reactors".to_string(), TechItemConfig { name: "Overcharged Reactors".to_string(), branch: "logistics".to_string(), cost_minerals: 150.0, cost_energy: 100.0, research_time: 15.0 });
+        techs.insert("fortified_blueprints".to_string(), TechItemConfig { name: "Fortified Blueprints".to_string(), branch: "logistics".to_string(), cost_minerals: 200.0, cost_energy: 150.0, research_time: 20.0 });
+        techs.insert("magnetic_rounds".to_string(), TechItemConfig { name: "Magnetic Rounds".to_string(), branch: "logistics".to_string(), cost_minerals: 200.0, cost_energy: 150.0, research_time: 15.0 });
+        techs.insert("exo_boosters".to_string(), TechItemConfig { name: "Exo Boosters".to_string(), branch: "logistics".to_string(), cost_minerals: 250.0, cost_energy: 200.0, research_time: 20.0 });
+        techs.insert("superheated_blades".to_string(), TechItemConfig { name: "Superheated Blades".to_string(), branch: "logistics".to_string(), cost_minerals: 350.0, cost_energy: 300.0, research_time: 30.0 });
+        techs.insert("overload_strike".to_string(), TechItemConfig { name: "Overload Strike".to_string(), branch: "logistics".to_string(), cost_minerals: 400.0, cost_energy: 350.0, research_time: 35.0 });
 
         Self {
             units,
@@ -607,6 +623,7 @@ impl GameConfig {
             damage_type: cfg.turret_damage_type,
             resistances: cfg.resistances,
             build_progress: if is_completed { 1.0 } else { 0.0 },
+            under_attack_timer: 0.0,
             attack_cooldown: 0.0,
             current_cooldown: 0.0,
             rally_x: x,

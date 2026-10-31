@@ -43,9 +43,17 @@ export interface TechState {
   superheated_blades: boolean;
   overload_strike: boolean;
 
+  active_researches?: ActiveResearch[];
   current_research: string | null;
   research_progress: number;
   research_total_time: number;
+}
+
+export interface ActiveResearch {
+  tech_id: string;
+  branch: string;
+  progress: number;
+  total_time: number;
 }
 
 export interface EngineSyncState {

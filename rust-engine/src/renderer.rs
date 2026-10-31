@@ -312,7 +312,12 @@ fn render_buildings(engine: &GameEngine) {
         if b.build_progress < 1.0 {
             ctx.set_fill_style_str("#334155");
             ctx.fill_rect(bx, by - 12.0, bw, 6.0);
-            ctx.set_fill_style_str("#fbbf24");
+            let bar_color = if b.under_attack_timer > 0.0 {
+                "#ef4444" // Bị tấn công: cảnh báo đỏ giảm tốc độ xây
+            } else {
+                "#fbbf24" // Tiến độ xây bình thường
+            };
+            ctx.set_fill_style_str(bar_color);
             ctx.fill_rect(bx, by - 12.0, bw * (b.build_progress as f64), 6.0);
         } else {
             // Thanh máu HP bar
@@ -794,8 +799,22 @@ fn render_in_game_hud(engine: &GameEngine) {
         29.0,
     );
 
-    // Tiến trình nghiên cứu hiện tại
-    if let Some(ref tech_id) = engine.player_tech.current_research {
+    // Tiến trình nghiên cứu hiện tại (hỗ trợ hiển thị nhiều nhánh song song)
+    if !engine.player_tech.active_researches.is_empty() {
+        ctx.set_fill_style_str("#facc15");
+        let list_str = engine
+            .player_tech
+            .active_researches
+            .iter()
+            .map(|r| format!("{} ({:.0}%)", r.tech_id, r.progress * 100.0))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let _ = ctx.fill_text(
+            &format!("🔬 RESEARCHING: {}", list_str),
+            610.0,
+            29.0,
+        );
+    } else if let Some(ref tech_id) = engine.player_tech.current_research {
         ctx.set_fill_style_str("#facc15");
         let _ = ctx.fill_text(
             &format!(

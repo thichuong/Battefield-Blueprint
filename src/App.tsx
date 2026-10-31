@@ -31,6 +31,7 @@ const initialGameState: EngineSyncState = {
     exo_boosters: false,
     superheated_blades: false,
     overload_strike: false,
+    active_researches: [],
     current_research: null,
     research_progress: 0,
     research_total_time: 0,

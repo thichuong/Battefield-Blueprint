@@ -229,6 +229,7 @@ pub struct Building {
     pub damage_type: DamageType,
     pub resistances: Resistances,
     pub build_progress: f32, // 0.0 -> 1.0 (1.0 là hoàn tất)
+    pub under_attack_timer: f32, // Thời gian còn lại chịu hiệu ứng bị tấn công (s)
     pub attack_cooldown: f32,
     pub current_cooldown: f32,
     pub rally_x: f32,

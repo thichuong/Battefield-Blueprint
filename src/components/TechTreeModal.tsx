@@ -417,7 +417,7 @@ const TechCard = React.memo<TechCardProps>(
               {isLocked
                 ? 'CHƯA ĐỦ ĐIỀU KIỆN'
                 : isOtherResearching
-                ? 'ĐANG BẬN NGHIÊN CỨU'
+                ? 'NHÁNH ĐANG BẬN'
                 : !canAfford
                 ? 'THIẾU TÀI NGUYÊN'
                 : 'NGHIÊN CỨU'}
@@ -468,11 +468,34 @@ export const TechTreeModal: React.FC<TechTreeModalProps> = ({
     [techState]
   );
 
-  const isResearching = useCallback(
-    (id: string): boolean => {
-      return techState?.current_research === id;
+  const getResearchItem = useCallback(
+    (id: string) => {
+      if (techState?.active_researches && techState.active_researches.length > 0) {
+        return techState.active_researches.find((r) => r.tech_id === id);
+      }
+      if (techState?.current_research === id) {
+        return {
+          tech_id: id,
+          branch: '',
+          progress: techState.research_progress,
+          total_time: techState.research_total_time,
+        };
+      }
+      return undefined;
     },
-    [techState?.current_research]
+    [techState?.active_researches, techState?.current_research, techState?.research_progress, techState?.research_total_time]
+  );
+
+  const isBranchResearching = useCallback(
+    (branch: MajorBranch, excludeTechId?: string) => {
+      if (techState?.active_researches && techState.active_researches.length > 0) {
+        return techState.active_researches.some(
+          (r) => r.branch === branch && r.tech_id !== excludeTechId
+        );
+      }
+      return false;
+    },
+    [techState?.active_researches]
   );
 
   const currentNodes = useMemo(
@@ -518,7 +541,6 @@ export const TechTreeModal: React.FC<TechTreeModalProps> = ({
   };
 
   const headerInfo = getTabHeader();
-  const isAnyResearching = !!techState?.current_research;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 select-none">
@@ -654,7 +676,10 @@ export const TechTreeModal: React.FC<TechTreeModalProps> = ({
                 <div className="flex flex-col gap-3.5">
                   {nodes.map((node) => {
                     const unlocked = isUnlocked(node.id);
-                    const researching = isResearching(node.id);
+                    const researchItem = getResearchItem(node.id);
+                    const researching = !!researchItem;
+                    const progress = researchItem ? researchItem.progress : 0;
+                    const isOtherResearchingInBranch = isBranchResearching(node.majorBranch, node.id);
                     const lockedByReq = Boolean(node.requires && !isUnlocked(node.requires));
                     const canAfford = minerals >= node.minerals && energy >= node.energy;
 
@@ -665,8 +690,8 @@ export const TechTreeModal: React.FC<TechTreeModalProps> = ({
                       status = 'researching';
                     } else if (lockedByReq) {
                       status = 'locked';
-                    } else if (isAnyResearching || !canAfford) {
-                      status = 'available'; // nút sẽ disabled nếu đang bận hoặc thiếu tiền
+                    } else if (isOtherResearchingInBranch || !canAfford) {
+                      status = 'available'; // nút sẽ disabled nếu cùng nhánh đang bận hoặc thiếu tiền
                     }
 
                     const reqNode = node.requires ? TECH_NODES.find((n) => n.id === node.requires) : undefined;
@@ -677,8 +702,8 @@ export const TechTreeModal: React.FC<TechTreeModalProps> = ({
                         key={node.id}
                         node={node}
                         status={status}
-                        progress={techState?.research_progress || 0}
-                        isOtherResearching={isAnyResearching && !researching}
+                        progress={progress}
+                        isOtherResearching={isOtherResearchingInBranch}
                         canAfford={canAfford}
                         prerequisiteName={prerequisiteName}
                         onResearch={onResearch}

@@ -23,6 +23,14 @@ impl Default for PlayerEconomy {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ActiveResearch {
+    pub tech_id: String,
+    pub branch: String,
+    pub progress: f32, // 0.0 -> 1.0
+    pub total_time: f32,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct TechTreeState {
     // === NHÁNH KHOA HỌC (SCIENCE) ===
@@ -58,7 +66,10 @@ pub struct TechTreeState {
     pub superheated_blades: bool,   // Xuyên giáp kiếm sĩ
     pub overload_strike: bool,      // +40% tốc bắn Tháp canh & Laser
 
-    // Đang nghiên cứu
+    // Danh sách các công nghệ đang nghiên cứu song song
+    pub active_researches: Vec<ActiveResearch>,
+
+    // Đang nghiên cứu (giữ tương thích ngược với single research)
     pub current_research: Option<String>,
     pub research_progress: f32, // 0.0 -> 1.0
     pub research_total_time: f32,

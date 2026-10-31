@@ -1,8 +1,8 @@
 use crate::bridge::*;
 use crate::components::*;
-use crate::config::BuildingStatsConfig;
+use crate::config::{BuildingStatsConfig, GameConfig};
 use crate::map::{MAP_HEIGHT, MAP_WIDTH};
-use crate::resources::TechTreeState;
+use crate::resources::{PlayerEconomy, TechTreeState};
 use crate::GameEngine;
 
 pub fn step(engine: &mut GameEngine, dt: f32) {
@@ -112,42 +112,127 @@ fn process_commands(engine: &mut GameEngine) {
     }
 }
 
-fn try_start_research(engine: &mut GameEngine, tech_id: &str) {
-    if engine.player_tech.current_research.is_some() {
-        return;
-    }
-
-    let (cost_minerals, cost_energy, time) = if let Some(t) = engine.config.get_tech(tech_id) {
-        (t.cost_minerals, t.cost_energy, t.research_time)
-    } else {
-        return;
-    };
-
-    if engine.player_eco.minerals >= cost_minerals && engine.player_eco.energy >= cost_energy {
-        engine.player_eco.minerals -= cost_minerals;
-        engine.player_eco.energy -= cost_energy;
-        engine.player_tech.current_research = Some(tech_id.to_string());
-        engine.player_tech.research_progress = 0.0;
-        engine.player_tech.research_total_time = time;
-        engine.outgoing_events.push(EngineToReactEvent::PlaySound {
-            sound: "research_start".to_string(),
-        });
+fn is_tech_unlocked(tech_state: &TechTreeState, tech_id: &str) -> bool {
+    match tech_id {
+        "focused_laser" => tech_state.focused_laser,
+        "energy_shielding" => tech_state.energy_shielding,
+        "dark_matter_rockets" => tech_state.dark_matter_rockets,
+        "titan_alloy_plating" => tech_state.titan_alloy_plating,
+        "celestial_flying_swords" => tech_state.celestial_flying_swords,
+        "golden_bell_shield" => tech_state.golden_bell_shield,
+        "corrosive_curse" => tech_state.corrosive_curse,
+        "void_cataclysm" => tech_state.void_cataclysm,
+        "primeval_scales" => tech_state.primeval_scales,
+        "behemoth_mutation" => tech_state.behemoth_mutation,
+        "acid_banelings" => tech_state.acid_banelings,
+        "hive_proliferation" => tech_state.hive_proliferation,
+        "optical_drills" => tech_state.optical_drills,
+        "overcharged_reactors" => tech_state.overcharged_reactors,
+        "fortified_blueprints" => tech_state.fortified_blueprints,
+        "magnetic_rounds" => tech_state.magnetic_rounds,
+        "exo_boosters" => tech_state.exo_boosters,
+        "superheated_blades" => tech_state.superheated_blades,
+        "overload_strike" => tech_state.overload_strike,
+        _ => false,
     }
 }
 
-fn update_tech_research(engine: &mut GameEngine, dt: f32) {
-    if let Some(ref tech_id) = engine.player_tech.current_research.clone() {
-        engine.player_tech.research_progress += dt / engine.player_tech.research_total_time;
-        if engine.player_tech.research_progress >= 1.0 {
+fn sync_compat_research_fields(tech_state: &mut TechTreeState) {
+    if let Some(first) = tech_state.active_researches.first() {
+        tech_state.current_research = Some(first.tech_id.clone());
+        tech_state.research_progress = first.progress;
+        tech_state.research_total_time = first.total_time;
+    } else {
+        tech_state.current_research = None;
+        tech_state.research_progress = 0.0;
+        tech_state.research_total_time = 0.0;
+    }
+}
+
+pub fn process_start_research(
+    player_tech: &mut TechTreeState,
+    player_eco: &mut PlayerEconomy,
+    config: &GameConfig,
+    tech_id: &str,
+) -> bool {
+    // Nếu đã mở khóa rồi thì bỏ qua
+    if is_tech_unlocked(player_tech, tech_id) {
+        return false;
+    }
+
+    // Nếu công nghệ này đang được nghiên cứu thì bỏ qua
+    if player_tech.active_researches.iter().any(|r| r.tech_id == tech_id) {
+        return false;
+    }
+
+    let (cost_minerals, cost_energy, time, branch) = if let Some(t) = config.get_tech(tech_id) {
+        (t.cost_minerals, t.cost_energy, t.research_time, t.branch.clone())
+    } else {
+        return false;
+    };
+
+    // Kiểm tra giới hạn số công nghệ đang nghiên cứu trong cùng một nhánh
+    let branch_active = player_tech
+        .active_researches
+        .iter()
+        .filter(|r| r.branch == branch)
+        .count();
+    if branch_active >= crate::config::MAX_CONCURRENT_RESEARCH_PER_BRANCH {
+        return false;
+    }
+
+    // Kiểm tra tổng số công nghệ đang nghiên cứu đồng thời
+    if player_tech.active_researches.len() >= crate::config::MAX_TOTAL_CONCURRENT_RESEARCH {
+        return false;
+    }
+
+    if player_eco.minerals >= cost_minerals && player_eco.energy >= cost_energy {
+        player_eco.minerals -= cost_minerals;
+        player_eco.energy -= cost_energy;
+
+        player_tech.active_researches.push(crate::resources::ActiveResearch {
+            tech_id: tech_id.to_string(),
+            branch,
+            progress: 0.0,
+            total_time: time,
+        });
+
+        sync_compat_research_fields(player_tech);
+        true
+    } else {
+        false
+    }
+}
+
+pub fn process_update_tech_research(
+    player_tech: &mut TechTreeState,
+    buildings: &mut [Building],
+    units: &mut [Unit],
+    config: &GameConfig,
+    dt: f32,
+) -> Vec<String> {
+    if player_tech.active_researches.is_empty() {
+        return Vec::new();
+    }
+
+    let mut completed_techs = Vec::new();
+    for research in player_tech.active_researches.iter_mut() {
+        research.progress += dt / research.total_time;
+        if research.progress >= 1.0 {
+            completed_techs.push(research.tech_id.clone());
+        }
+    }
+
+    if !completed_techs.is_empty() {
+        for tech_id in &completed_techs {
             match tech_id.as_str() {
                 // Khoa học
-                "focused_laser" => engine.player_tech.focused_laser = true,
-                "energy_shielding" => engine.player_tech.energy_shielding = true,
+                "focused_laser" => player_tech.focused_laser = true,
+                "energy_shielding" => player_tech.energy_shielding = true,
                 "dark_matter_rockets" => {
-                    engine.player_tech.dark_matter_rockets = true;
-                    for b in engine.buildings.iter_mut().filter(|b| b.team == Team::Player) {
-                        let is_armed = engine
-                            .config
+                    player_tech.dark_matter_rockets = true;
+                    for b in buildings.iter_mut().filter(|b| b.team == Team::Player) {
+                        let is_armed = config
                             .get_building(b.building_type)
                             .map(|c| c.turret_damage > 0.0)
                             .unwrap_or(false);
@@ -157,9 +242,9 @@ fn update_tech_research(engine: &mut GameEngine, dt: f32) {
                     }
                 }
                 "titan_alloy_plating" => {
-                    engine.player_tech.titan_alloy_plating = true;
+                    player_tech.titan_alloy_plating = true;
                     // Tăng thêm máu cho các công trình hiện hữu
-                    for b in engine.buildings.iter_mut().filter(|b| b.team == Team::Player) {
+                    for b in buildings.iter_mut().filter(|b| b.team == Team::Player) {
                         b.max_hp *= 1.25;
                         b.hp *= 1.25;
                         b.resistances.physical = (b.resistances.physical + 0.20).min(0.80);
@@ -167,51 +252,81 @@ fn update_tech_research(engine: &mut GameEngine, dt: f32) {
                 }
 
                 // Ma thuật
-                "celestial_flying_swords" => engine.player_tech.celestial_flying_swords = true,
+                "celestial_flying_swords" => player_tech.celestial_flying_swords = true,
                 "golden_bell_shield" => {
-                    engine.player_tech.golden_bell_shield = true;
-                    for u in engine.units.iter_mut().filter(|u| u.team == Team::Player) {
+                    player_tech.golden_bell_shield = true;
+                    for u in units.iter_mut().filter(|u| u.team == Team::Player) {
                         u.resistances.energy = (u.resistances.energy + 0.25).min(0.80);
                         u.resistances.arcane = (u.resistances.arcane + 0.30).min(0.80);
                     }
                 }
-                "corrosive_curse" => engine.player_tech.corrosive_curse = true,
-                "void_cataclysm" => engine.player_tech.void_cataclysm = true,
+                "corrosive_curse" => player_tech.corrosive_curse = true,
+                "void_cataclysm" => player_tech.void_cataclysm = true,
 
                 // Quái vật
                 "primeval_scales" => {
-                    engine.player_tech.primeval_scales = true;
-                    for u in engine.units.iter_mut().filter(|u| u.team == Team::Player) {
+                    player_tech.primeval_scales = true;
+                    for u in units.iter_mut().filter(|u| u.team == Team::Player) {
                         u.resistances.physical = (u.resistances.physical + 0.25).min(0.80);
                         u.resistances.explosive = (u.resistances.explosive + 0.25).min(0.80);
                     }
                 }
-                "behemoth_mutation" => engine.player_tech.behemoth_mutation = true,
-                "acid_banelings" => engine.player_tech.acid_banelings = true,
+                "behemoth_mutation" => player_tech.behemoth_mutation = true,
+                "acid_banelings" => player_tech.acid_banelings = true,
                 "hive_proliferation" => {
-                    engine.player_tech.hive_proliferation = true;
-                    for u in engine.units.iter_mut().filter(|u| u.team == Team::Player) {
+                    player_tech.hive_proliferation = true;
+                    for u in units.iter_mut().filter(|u| u.team == Team::Player) {
                         u.speed *= 1.25;
                     }
                 }
 
                 // Kinh tế / Phụ trợ
-                "optical_drills" => engine.player_tech.optical_drills = true,
-                "overcharged_reactors" => engine.player_tech.overcharged_reactors = true,
-                "fortified_blueprints" => engine.player_tech.fortified_blueprints = true,
-                "magnetic_rounds" => engine.player_tech.magnetic_rounds = true,
-                "exo_boosters" => engine.player_tech.exo_boosters = true,
-                "superheated_blades" => engine.player_tech.superheated_blades = true,
-                "overload_strike" => engine.player_tech.overload_strike = true,
+                "optical_drills" => player_tech.optical_drills = true,
+                "overcharged_reactors" => player_tech.overcharged_reactors = true,
+                "fortified_blueprints" => player_tech.fortified_blueprints = true,
+                "magnetic_rounds" => player_tech.magnetic_rounds = true,
+                "exo_boosters" => player_tech.exo_boosters = true,
+                "superheated_blades" => player_tech.superheated_blades = true,
+                "overload_strike" => player_tech.overload_strike = true,
                 _ => {}
             }
-            engine.player_tech.current_research = None;
-            engine.player_tech.research_progress = 0.0;
-            engine.outgoing_events.push(EngineToReactEvent::PlaySound {
-                sound: "research_complete".to_string(),
-            });
-            send_sync_event(engine);
         }
+
+        player_tech.active_researches.retain(|r| !completed_techs.contains(&r.tech_id));
+    }
+
+    sync_compat_research_fields(player_tech);
+    completed_techs
+}
+
+fn try_start_research(engine: &mut GameEngine, tech_id: &str) {
+    if process_start_research(
+        &mut engine.player_tech,
+        &mut engine.player_eco,
+        &engine.config,
+        tech_id,
+    ) {
+        engine.outgoing_events.push(EngineToReactEvent::PlaySound {
+            sound: "research_start".to_string(),
+        });
+        send_sync_event(engine);
+    }
+}
+
+fn update_tech_research(engine: &mut GameEngine, dt: f32) {
+    let completed = process_update_tech_research(
+        &mut engine.player_tech,
+        &mut engine.buildings,
+        &mut engine.units,
+        &engine.config,
+        dt,
+    );
+
+    if !completed.is_empty() {
+        engine.outgoing_events.push(EngineToReactEvent::PlaySound {
+            sound: "research_complete".to_string(),
+        });
+        send_sync_event(engine);
     }
 }
 
@@ -778,6 +893,23 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
     engine.units.retain(|u| u.hp > 0.0);
 }
 
+pub fn calculate_building_construction_step(
+    build_progress: f32,
+    under_attack_timer: f32,
+    is_worker_near: bool,
+    dt: f32,
+) -> f32 {
+    let mut build_speed = if is_worker_near {
+        crate::config::BUILD_SPEED_WORKER
+    } else {
+        crate::config::BUILD_SPEED_BASE
+    };
+    if under_attack_timer > 0.0 {
+        build_speed *= crate::config::BUILDING_UNDER_ATTACK_SPEED_MULTIPLIER;
+    }
+    (build_progress + build_speed * dt).min(1.0)
+}
+
 fn update_buildings(engine: &mut GameEngine, dt: f32) {
     let mut new_spawned_units = Vec::new();
     let mut new_turret_projectiles = Vec::new();
@@ -795,12 +927,20 @@ fn update_buildings(engine: &mut GameEngine, dt: f32) {
         engine.buildings.iter().map(|b| (b.team, b.x, b.y)).collect();
 
     for b in engine.buildings.iter_mut() {
+        if b.under_attack_timer > 0.0 {
+            b.under_attack_timer = (b.under_attack_timer - dt).max(0.0);
+        }
+
         if b.build_progress < 1.0 {
             let is_worker_near = engineer_pos.iter().any(|(t, x, y)| {
-                *t == b.team && ((*x - b.x).powi(2) + (*y - b.y).powi(2)).sqrt() <= 90.0
+                *t == b.team && ((*x - b.x).powi(2) + (*y - b.y).powi(2)).sqrt() <= crate::config::WORKER_BUILD_RANGE
             });
-            let build_speed = if is_worker_near { 0.2 } else { 0.05 };
-            b.build_progress = (b.build_progress + build_speed * dt).min(1.0);
+            b.build_progress = calculate_building_construction_step(
+                b.build_progress,
+                b.under_attack_timer,
+                is_worker_near,
+                dt,
+            );
             b.hp = b.max_hp * b.build_progress;
         } else {
             // Huấn luyện lính
@@ -1055,6 +1195,7 @@ fn update_projectiles(engine: &mut GameEngine, dt: f32) {
                             &b.resistances,
                         );
                         b.hp -= taken;
+                        b.under_attack_timer = crate::config::BUILDING_UNDER_ATTACK_DURATION;
 
                         new_texts.push(FloatingText {
                             id: 0,
@@ -2035,5 +2176,69 @@ mod tests {
         );
 
         assert!(proj.is_none(), "Unarmed building should not fire");
+    }
+
+    #[test]
+    fn test_multi_branch_concurrent_research() {
+        let config = crate::config::GameConfig::default();
+        let mut p_tech = TechTreeState::default();
+        let mut p_eco = PlayerEconomy {
+            minerals: 1000.0,
+            energy: 1000.0,
+            supply: 4,
+            max_supply: 10,
+            minerals_per_sec: 0.0,
+            energy_per_sec: 2.0,
+        };
+        let mut buildings = Vec::new();
+        let mut units = Vec::new();
+
+        // Bắt đầu nghiên cứu nhánh Khoa học (focused_laser)
+        let ok1 = process_start_research(&mut p_tech, &mut p_eco, &config, "focused_laser");
+        assert!(ok1, "Khởi động focused_laser thành công");
+        assert_eq!(p_tech.active_researches.len(), 1);
+        assert_eq!(p_tech.active_researches[0].tech_id, "focused_laser");
+
+        // Cùng lúc đó, bắt đầu nghiên cứu nhánh Ma thuật (celestial_flying_swords)
+        let ok2 = process_start_research(&mut p_tech, &mut p_eco, &config, "celestial_flying_swords");
+        assert!(ok2, "Khởi động celestial_flying_swords cùng lúc thành công");
+        assert_eq!(p_tech.active_researches.len(), 2);
+        assert_eq!(p_tech.active_researches[1].tech_id, "celestial_flying_swords");
+
+        // Cố gắng bắt đầu thêm 1 công nghệ cùng nhánh Khoa học (dark_matter_rockets) -> Bị chặn
+        let ok3 = process_start_research(&mut p_tech, &mut p_eco, &config, "dark_matter_rockets");
+        assert!(!ok3, "Không được bắt đầu 2 công nghệ cùng nhánh Khoa học khi MAX_CONCURRENT_RESEARCH_PER_BRANCH = 1");
+        assert_eq!(p_tech.active_researches.len(), 2);
+
+        // Tiến hành nghiên cứu 15 giây (chưa tech nào xong: 20s và 22s)
+        let completed_early = process_update_tech_research(&mut p_tech, &mut buildings, &mut units, &config, 15.0);
+        assert!(completed_early.is_empty());
+        assert!(!p_tech.focused_laser);
+        assert!(!p_tech.celestial_flying_swords);
+
+        // Tiến hành nghiên cứu thêm 10 giây nữa (tổng 25s, cả 2 đều xong)
+        let completed_done = process_update_tech_research(&mut p_tech, &mut buildings, &mut units, &config, 10.0);
+        assert_eq!(completed_done.len(), 2);
+        assert!(p_tech.focused_laser, "Focused laser phải được mở khóa");
+        assert!(p_tech.celestial_flying_swords, "Celestial flying swords phải được mở khóa");
+        assert_eq!(p_tech.active_researches.len(), 0);
+    }
+
+    #[test]
+    fn test_building_under_attack_slows_down() {
+        // Tiến độ 1.0s bình thường không có thợ
+        let progress_normal = calculate_building_construction_step(0.0, 0.0, false, 1.0);
+        let expected_normal = crate::config::BUILD_SPEED_BASE * 1.0;
+        assert!((progress_normal - expected_normal).abs() < 1e-4);
+
+        // Tiến độ 1.0s khi đang bị tấn công (under_attack_timer = 5.0)
+        let progress_attacked = calculate_building_construction_step(0.0, 5.0, false, 1.0);
+        let expected_slowed = crate::config::BUILD_SPEED_BASE * crate::config::BUILDING_UNDER_ATTACK_SPEED_MULTIPLIER * 1.0;
+        assert!((progress_attacked - expected_slowed).abs() < 1e-4, "Tốc độ xây phải giảm còn 30% khi bị tấn công");
+
+        // Tiến độ 1.0s khi có thợ xây nhưng bị tấn công
+        let progress_worker_attacked = calculate_building_construction_step(0.0, 3.5, true, 1.0);
+        let expected_worker_slowed = crate::config::BUILD_SPEED_WORKER * crate::config::BUILDING_UNDER_ATTACK_SPEED_MULTIPLIER * 1.0;
+        assert!((progress_worker_attacked - expected_worker_slowed).abs() < 1e-4, "Tốc độ xây thợ phải giảm còn 30% khi bị tấn công");
     }
 }
