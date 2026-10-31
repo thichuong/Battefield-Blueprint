@@ -161,12 +161,21 @@ pub fn process_start_research(
     }
 
     // Nếu công nghệ này đang được nghiên cứu thì bỏ qua
-    if player_tech.active_researches.iter().any(|r| r.tech_id == tech_id) {
+    if player_tech
+        .active_researches
+        .iter()
+        .any(|r| r.tech_id == tech_id)
+    {
         return false;
     }
 
     let (cost_minerals, cost_energy, time, branch) = if let Some(t) = config.get_tech(tech_id) {
-        (t.cost_minerals, t.cost_energy, t.research_time, t.branch.clone())
+        (
+            t.cost_minerals,
+            t.cost_energy,
+            t.research_time,
+            t.branch.clone(),
+        )
     } else {
         return false;
     };
@@ -190,12 +199,14 @@ pub fn process_start_research(
         player_eco.minerals -= cost_minerals;
         player_eco.energy -= cost_energy;
 
-        player_tech.active_researches.push(crate::resources::ActiveResearch {
-            tech_id: tech_id.to_string(),
-            branch,
-            progress: 0.0,
-            total_time: time,
-        });
+        player_tech
+            .active_researches
+            .push(crate::resources::ActiveResearch {
+                tech_id: tech_id.to_string(),
+                branch,
+                progress: 0.0,
+                total_time: time,
+            });
 
         sync_compat_research_fields(player_tech);
         true
@@ -292,7 +303,9 @@ pub fn process_update_tech_research(
             }
         }
 
-        player_tech.active_researches.retain(|r| !completed_techs.contains(&r.tech_id));
+        player_tech
+            .active_researches
+            .retain(|r| !completed_techs.contains(&r.tech_id));
     }
 
     sync_compat_research_fields(player_tech);
@@ -378,7 +391,9 @@ fn update_camera(engine: &mut GameEngine, dt: f32) {
     engine.camera.y = engine.camera.y.clamp(min_y, max_y);
 }
 
-pub use crate::config::{CONVERT_ENERGY_PER_SEC, CONVERT_GOLD_PER_SEC, ENERGY_CONVERSION_THRESHOLD};
+pub use crate::config::{
+    CONVERT_ENERGY_PER_SEC, CONVERT_GOLD_PER_SEC, ENERGY_CONVERSION_THRESHOLD,
+};
 
 /// Tính toán năng lượng tiêu thụ và vàng nhận được từ quá trình chuyển đổi.
 /// - Ngưỡng an toàn tối thiểu là 1000 Năng lượng. Dưới 1000 tự động dừng.
@@ -502,7 +517,9 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
     let has_superheated = engine.player_tech.superheated_blades;
     let has_magnetic = engine.player_tech.magnetic_rounds;
 
-    engine.spatial_grid.rebuild(&engine.units, &engine.buildings);
+    engine
+        .spatial_grid
+        .rebuild(&engine.units, &engine.buildings);
     let spatial_grid = &engine.spatial_grid;
 
     // Snapshot vị trí công trình và lính để tra cứu mục tiêu
@@ -562,17 +579,17 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                     let dx = x - unit.x;
                     let dy = y - unit.y;
                     let dist = (dx * dx + dy * dy).sqrt();
-                        if dist > 4.0 {
-                            let move_dist = (cur_speed * dt).min(dist);
-                            unit.x += (dx / dist) * move_dist;
-                            unit.y += (dy / dist) * move_dist;
-                            unit.walk_cycle += dt * 10.0;
-                            unit.facing_right = dx >= 0.0;
-                        } else {
-                            unit.order = UnitOrder::Idle;
-                        }
+                    if dist > 4.0 {
+                        let move_dist = (cur_speed * dt).min(dist);
+                        unit.x += (dx / dist) * move_dist;
+                        unit.y += (dy / dist) * move_dist;
+                        unit.walk_cycle += dt * 10.0;
+                        unit.facing_right = dx >= 0.0;
+                    } else {
+                        unit.order = UnitOrder::Idle;
                     }
                 }
+            }
             UnitOrder::MoveTo { x, y } => {
                 let dx = x - unit.x;
                 let dy = y - unit.y;
@@ -921,8 +938,11 @@ fn update_buildings(engine: &mut GameEngine, dt: f32) {
 
     let enemy_unit_targets: Vec<(Team, f32, f32)> =
         engine.units.iter().map(|u| (u.team, u.x, u.y)).collect();
-    let enemy_building_targets: Vec<(Team, f32, f32)> =
-        engine.buildings.iter().map(|b| (b.team, b.x, b.y)).collect();
+    let enemy_building_targets: Vec<(Team, f32, f32)> = engine
+        .buildings
+        .iter()
+        .map(|b| (b.team, b.x, b.y))
+        .collect();
 
     for b in engine.buildings.iter_mut() {
         if b.under_attack_timer > 0.0 {
@@ -931,7 +951,9 @@ fn update_buildings(engine: &mut GameEngine, dt: f32) {
 
         if b.build_progress < 1.0 {
             let is_worker_near = engineer_pos.iter().any(|(t, x, y)| {
-                *t == b.team && ((*x - b.x).powi(2) + (*y - b.y).powi(2)).sqrt() <= crate::config::WORKER_BUILD_RANGE
+                *t == b.team
+                    && ((*x - b.x).powi(2) + (*y - b.y).powi(2)).sqrt()
+                        <= crate::config::WORKER_BUILD_RANGE
             });
             b.build_progress = calculate_building_construction_step(
                 b.build_progress,
@@ -1047,16 +1069,19 @@ pub fn process_building_combat(
 
     let base_cd = b_cfg.map(|c| c.turret_cooldown).unwrap_or(1.0).max(0.1);
     let base_dmg_type = b_cfg.map(|c| c.turret_damage_type).unwrap_or(b.damage_type);
-    let base_speed = b_cfg.map(|c| c.turret_projectile_speed).unwrap_or(900.0).max(100.0);
+    let base_speed = b_cfg
+        .map(|c| c.turret_projectile_speed)
+        .unwrap_or(900.0)
+        .max(100.0);
 
     // Ưu tiên ngắm lính đối phương gần nhất, nếu không có mới ngắm công trình đối phương
     let target_pos = enemy_unit_targets
         .iter()
         .find(|(t, x, y)| *t != b.team && ((*x - b.x).powi(2) + (*y - b.y).powi(2)).sqrt() <= range)
         .or_else(|| {
-            enemy_building_targets
-                .iter()
-                .find(|(t, x, y)| *t != b.team && ((*x - b.x).powi(2) + (*y - b.y).powi(2)).sqrt() <= range)
+            enemy_building_targets.iter().find(|(t, x, y)| {
+                *t != b.team && ((*x - b.x).powi(2) + (*y - b.y).powi(2)).sqrt() <= range
+            })
         });
 
     if let Some((_, ex, ey)) = target_pos {
@@ -1065,11 +1090,7 @@ pub fn process_building_combat(
         } else {
             enemy_tech.overload_strike
         };
-        b.current_cooldown = if has_overload {
-            base_cd * 0.6
-        } else {
-            base_cd
-        };
+        b.current_cooldown = if has_overload { base_cd * 0.6 } else { base_cd };
 
         let has_dark_rockets = if b.team == Team::Player {
             player_tech.dark_matter_rockets
@@ -1087,8 +1108,16 @@ pub fn process_building_combat(
             y: spawn_y,
             target_x: *ex,
             target_y: *ey,
-            speed: if has_dark_rockets { base_speed * (750.0 / 900.0) } else { base_speed },
-            damage: if has_dark_rockets { base_damage * 1.4 } else { base_damage },
+            speed: if has_dark_rockets {
+                base_speed * (750.0 / 900.0)
+            } else {
+                base_speed
+            },
+            damage: if has_dark_rockets {
+                base_damage * 1.4
+            } else {
+                base_damage
+            },
             damage_type: if has_dark_rockets {
                 DamageType::Explosive
             } else {
@@ -1187,11 +1216,8 @@ fn update_projectiles(engine: &mut GameEngine, dt: f32) {
                     let dist_to_b =
                         ((b.x - p.target_x).powi(2) + (b.y - p.target_y).powi(2)).sqrt();
                     if dist_to_b <= b_rad + aoe_range {
-                        let taken = calculate_effective_damage(
-                            p.damage,
-                            p.damage_type,
-                            &b.resistances,
-                        );
+                        let taken =
+                            calculate_effective_damage(p.damage, p.damage_type, &b.resistances);
                         b.hp -= taken;
                         b.under_attack_timer = crate::config::BUILDING_UNDER_ATTACK_DURATION;
 
@@ -1713,7 +1739,9 @@ fn try_place_building(engine: &mut GameEngine, b_type: BuildingType, wx: f32, wy
         engine.player_eco.energy -= cost_en;
         let bid = engine.alloc_id();
 
-        let mut building = engine.config.create_building(bid, Team::Player, b_type, wx, wy, false);
+        let mut building = engine
+            .config
+            .create_building(bid, Team::Player, b_type, wx, wy, false);
         building.build_progress = 0.05;
         building.hp = 1.0;
         building.rally_x = wx + 40.0;
@@ -2056,7 +2084,14 @@ mod tests {
     fn test_building_combat_command_center_fires_at_enemy_unit() {
         let cfg = crate::config::GameConfig::default();
         let cc_cfg = cfg.get_building(BuildingType::CommandCenter).unwrap();
-        let mut cc = cfg.create_building(1, Team::Player, BuildingType::CommandCenter, 100.0, 100.0, true);
+        let mut cc = cfg.create_building(
+            1,
+            Team::Player,
+            BuildingType::CommandCenter,
+            100.0,
+            100.0,
+            true,
+        );
 
         let p_tech = TechTreeState::default();
         let e_tech = TechTreeState::default();
@@ -2096,7 +2131,8 @@ mod tests {
         }
 
         let b_cfg = cfg.get_building(BuildingType::Barracks).unwrap();
-        let mut barracks = cfg.create_building(2, Team::Player, BuildingType::Barracks, 100.0, 100.0, true);
+        let mut barracks =
+            cfg.create_building(2, Team::Player, BuildingType::Barracks, 100.0, 100.0, true);
 
         let p_tech = TechTreeState::default();
         let e_tech = TechTreeState::default();
@@ -2124,7 +2160,14 @@ mod tests {
     fn test_building_combat_receives_tech_upgrades() {
         let cfg = crate::config::GameConfig::default();
         let cc_cfg = cfg.get_building(BuildingType::CommandCenter).unwrap();
-        let mut cc = cfg.create_building(1, Team::Player, BuildingType::CommandCenter, 100.0, 100.0, true);
+        let mut cc = cfg.create_building(
+            1,
+            Team::Player,
+            BuildingType::CommandCenter,
+            100.0,
+            100.0,
+            true,
+        );
 
         let mut p_tech = TechTreeState::default();
         p_tech.overload_strike = true;
@@ -2156,7 +2199,14 @@ mod tests {
     fn test_unarmed_building_does_not_fire() {
         let cfg = crate::config::GameConfig::default();
         let depot_cfg = cfg.get_building(BuildingType::SupplyDepot).unwrap();
-        let mut depot = cfg.create_building(3, Team::Player, BuildingType::SupplyDepot, 100.0, 100.0, true);
+        let mut depot = cfg.create_building(
+            3,
+            Team::Player,
+            BuildingType::SupplyDepot,
+            100.0,
+            100.0,
+            true,
+        );
 
         let p_tech = TechTreeState::default();
         let e_tech = TechTreeState::default();
@@ -2198,10 +2248,14 @@ mod tests {
         assert_eq!(p_tech.active_researches[0].tech_id, "focused_laser");
 
         // Cùng lúc đó, bắt đầu nghiên cứu nhánh Ma thuật (celestial_flying_swords)
-        let ok2 = process_start_research(&mut p_tech, &mut p_eco, &config, "celestial_flying_swords");
+        let ok2 =
+            process_start_research(&mut p_tech, &mut p_eco, &config, "celestial_flying_swords");
         assert!(ok2, "Khởi động celestial_flying_swords cùng lúc thành công");
         assert_eq!(p_tech.active_researches.len(), 2);
-        assert_eq!(p_tech.active_researches[1].tech_id, "celestial_flying_swords");
+        assert_eq!(
+            p_tech.active_researches[1].tech_id,
+            "celestial_flying_swords"
+        );
 
         // Cố gắng bắt đầu thêm 1 công nghệ cùng nhánh Khoa học (dark_matter_rockets) -> Bị chặn
         let ok3 = process_start_research(&mut p_tech, &mut p_eco, &config, "dark_matter_rockets");
@@ -2209,16 +2263,21 @@ mod tests {
         assert_eq!(p_tech.active_researches.len(), 2);
 
         // Tiến hành nghiên cứu 15 giây (chưa tech nào xong: 20s và 22s)
-        let completed_early = process_update_tech_research(&mut p_tech, &mut buildings, &mut units, &config, 15.0);
+        let completed_early =
+            process_update_tech_research(&mut p_tech, &mut buildings, &mut units, &config, 15.0);
         assert!(completed_early.is_empty());
         assert!(!p_tech.focused_laser);
         assert!(!p_tech.celestial_flying_swords);
 
         // Tiến hành nghiên cứu thêm 10 giây nữa (tổng 25s, cả 2 đều xong)
-        let completed_done = process_update_tech_research(&mut p_tech, &mut buildings, &mut units, &config, 10.0);
+        let completed_done =
+            process_update_tech_research(&mut p_tech, &mut buildings, &mut units, &config, 10.0);
         assert_eq!(completed_done.len(), 2);
         assert!(p_tech.focused_laser, "Focused laser phải được mở khóa");
-        assert!(p_tech.celestial_flying_swords, "Celestial flying swords phải được mở khóa");
+        assert!(
+            p_tech.celestial_flying_swords,
+            "Celestial flying swords phải được mở khóa"
+        );
         assert_eq!(p_tech.active_researches.len(), 0);
     }
 
@@ -2231,12 +2290,22 @@ mod tests {
 
         // Tiến độ 1.0s khi đang bị tấn công (under_attack_timer = 5.0)
         let progress_attacked = calculate_building_construction_step(0.0, 5.0, false, 1.0);
-        let expected_slowed = crate::config::BUILD_SPEED_BASE * crate::config::BUILDING_UNDER_ATTACK_SPEED_MULTIPLIER * 1.0;
-        assert!((progress_attacked - expected_slowed).abs() < 1e-4, "Tốc độ xây phải giảm còn 30% khi bị tấn công");
+        let expected_slowed = crate::config::BUILD_SPEED_BASE
+            * crate::config::BUILDING_UNDER_ATTACK_SPEED_MULTIPLIER
+            * 1.0;
+        assert!(
+            (progress_attacked - expected_slowed).abs() < 1e-4,
+            "Tốc độ xây phải giảm còn 30% khi bị tấn công"
+        );
 
         // Tiến độ 1.0s khi có thợ xây nhưng bị tấn công
         let progress_worker_attacked = calculate_building_construction_step(0.0, 3.5, true, 1.0);
-        let expected_worker_slowed = crate::config::BUILD_SPEED_WORKER * crate::config::BUILDING_UNDER_ATTACK_SPEED_MULTIPLIER * 1.0;
-        assert!((progress_worker_attacked - expected_worker_slowed).abs() < 1e-4, "Tốc độ xây thợ phải giảm còn 30% khi bị tấn công");
+        let expected_worker_slowed = crate::config::BUILD_SPEED_WORKER
+            * crate::config::BUILDING_UNDER_ATTACK_SPEED_MULTIPLIER
+            * 1.0;
+        assert!(
+            (progress_worker_attacked - expected_worker_slowed).abs() < 1e-4,
+            "Tốc độ xây thợ phải giảm còn 30% khi bị tấn công"
+        );
     }
 }

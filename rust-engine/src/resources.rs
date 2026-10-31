@@ -35,8 +35,8 @@ pub struct ActiveResearch {
 pub struct TechTreeState {
     // === NHÁNH KHOA HỌC (SCIENCE) ===
     // 1. Công nghệ tương lai (Future Tech)
-    pub focused_laser: bool,      // Mở LaserMarksman & +25% Sát thương Năng lượng
-    pub energy_shielding: bool,   // Mở Vanguard & +40% Kháng Năng lượng
+    pub focused_laser: bool, // Mở LaserMarksman & +25% Sát thương Năng lượng
+    pub energy_shielding: bool, // Mở Vanguard & +40% Kháng Năng lượng
     // 2. Hắc khoa kỹ (Dark Tech)
     pub dark_matter_rockets: bool, // Mở DarkRocketeer & đạn nổ AoE
     pub titan_alloy_plating: bool, // +35% Kháng Vật lý & +30% Máu công trình
@@ -44,18 +44,18 @@ pub struct TechTreeState {
     // === NHÁNH MA THUẬT (MAGIC) ===
     // 1. Tiên pháp (Celestial / Taoist Arts)
     pub celestial_flying_swords: bool, // Mở TaoistSwordmaster & phi kiếm chân khí Arcane
-    pub golden_bell_shield: bool,      // Kim cang linh quang (+40% Kháng Năng lượng & Arcane, hồi 3 HP/s)
+    pub golden_bell_shield: bool, // Kim cang linh quang (+40% Kháng Năng lượng & Arcane, hồi 3 HP/s)
     // 2. Pháp thuật bóng tối (Dark Arts)
-    pub corrosive_curse: bool,         // Lời nguyền ăn mòn (-20% mọi chỉ số kháng của kẻ địch khi trúng đòn)
-    pub void_cataclysm: bool,          // Mở VoidWarlock & cầu ma thuật bộc phá AoE
+    pub corrosive_curse: bool, // Lời nguyền ăn mòn (-20% mọi chỉ số kháng của kẻ địch khi trúng đòn)
+    pub void_cataclysm: bool,  // Mở VoidWarlock & cầu ma thuật bộc phá AoE
 
     // === NHÁNH QUÁI VẬT (MONSTERS) ===
     // 1. Khổng lồ (Behemoth / Titan)
-    pub primeval_scales: bool,     // Vảy cổ đại (+50% Kháng Vật lý, +40% Kháng Nổ)
-    pub behemoth_mutation: bool,   // Mở BehemothTitan (HP 650, chấn động diện rộng)
+    pub primeval_scales: bool, // Vảy cổ đại (+50% Kháng Vật lý, +40% Kháng Nổ)
+    pub behemoth_mutation: bool, // Mở BehemothTitan (HP 650, chấn động diện rộng)
     // 2. Bọ bầy đàn (Swarm / Insectoid)
-    pub acid_banelings: bool,      // Mở AcidBaneling (Bọ nổ axit cảm tử AoE cực mạnh)
-    pub hive_proliferation: bool,  // Sinh sôi siêu tốc (-35% chi phí & thời gian tạo lính, +25% tốc chạy)
+    pub acid_banelings: bool, // Mở AcidBaneling (Bọ nổ axit cảm tử AoE cực mạnh)
+    pub hive_proliferation: bool, // Sinh sôi siêu tốc (-35% chi phí & thời gian tạo lính, +25% tốc chạy)
 
     // Các nâng cấp kinh tế / phụ trợ
     pub optical_drills: bool,       // +30% tốc độ khai thác

@@ -39,7 +39,7 @@ impl DamageType {
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Resistances {
-    pub physical: f32,   // 0.0 -> 0.8 (ví dụ 0.2 là giảm 20% sát thương)
+    pub physical: f32, // 0.0 -> 0.8 (ví dụ 0.2 là giảm 20% sát thương)
     pub energy: f32,
     pub explosive: f32,
     pub arcane: f32,
@@ -151,11 +151,11 @@ impl UnitType {
 #[wasm_bindgen]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BuildingType {
-    CommandCenter = 0, // Nhà chính (Nhận tài nguyên, xin Kỹ sư)
-    SupplyDepot = 1,   // Trạm tiếp vận (+Pop cap)
-    PowerReactor = 2,  // Lò phản ứng (+Energy/s)
-    Barracks = 3,      // Trại huấn luyện lính
-    TurretTower = 4,   // Tháp pháo phòng thủ tự động
+    CommandCenter = 0,   // Nhà chính (Nhận tài nguyên, xin Kỹ sư)
+    SupplyDepot = 1,     // Trạm tiếp vận (+Pop cap)
+    PowerReactor = 2,    // Lò phản ứng (+Energy/s)
+    Barracks = 3,        // Trại huấn luyện lính
+    TurretTower = 4,     // Tháp pháo phòng thủ tự động
     EnergyConverter = 5, // Trạm chuyển hóa năng lượng thành vàng
 }
 
@@ -228,7 +228,7 @@ pub struct Building {
     pub max_hp: f32,
     pub damage_type: DamageType,
     pub resistances: Resistances,
-    pub build_progress: f32, // 0.0 -> 1.0 (1.0 là hoàn tất)
+    pub build_progress: f32,     // 0.0 -> 1.0 (1.0 là hoàn tất)
     pub under_attack_timer: f32, // Thời gian còn lại chịu hiệu ứng bị tấn công (s)
     pub attack_cooldown: f32,
     pub current_cooldown: f32,

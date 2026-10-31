@@ -119,7 +119,10 @@ fn render_blueprint_grid(engine: &GameEngine) {
 fn render_obstacles(engine: &GameEngine) {
     let ctx = &engine.context;
     for obs in &engine.obstacles {
-        if !engine.camera.is_rect_visible(obs.x, obs.y, obs.width, obs.height, 50.0) {
+        if !engine
+            .camera
+            .is_rect_visible(obs.x, obs.y, obs.width, obs.height, 50.0)
+        {
             continue;
         }
 
@@ -224,7 +227,13 @@ fn render_buildings(engine: &GameEngine) {
                 ctx.set_stroke_style_str("rgba(0, 229, 255, 0.45)");
                 ctx.set_line_width(1.5);
                 ctx.begin_path();
-                let _ = ctx.arc(b.x as f64, b.y as f64, range as f64, 0.0, std::f64::consts::PI * 2.0);
+                let _ = ctx.arc(
+                    b.x as f64,
+                    b.y as f64,
+                    range as f64,
+                    0.0,
+                    std::f64::consts::PI * 2.0,
+                );
                 ctx.stroke();
             }
         }
@@ -277,7 +286,13 @@ fn render_buildings(engine: &GameEngine) {
 
                 ctx.set_fill_style_str("rgba(251, 191, 36, 0.35)");
                 ctx.begin_path();
-                let _ = ctx.arc(cx, cy, (8.0 + pulse).max(4.0), 0.0, std::f64::consts::PI * 2.0);
+                let _ = ctx.arc(
+                    cx,
+                    cy,
+                    (8.0 + pulse).max(4.0),
+                    0.0,
+                    std::f64::consts::PI * 2.0,
+                );
                 ctx.fill();
 
                 // Tia chuyển đổi xoay
@@ -287,8 +302,14 @@ fn render_buildings(engine: &GameEngine) {
                 ctx.begin_path();
                 ctx.move_to(cx + angle.cos() * 14.0, cy + angle.sin() * 14.0);
                 ctx.line_to(cx - angle.cos() * 14.0, cy - angle.sin() * 14.0);
-                ctx.move_to(cx + (angle + 1.57).cos() * 14.0, cy + (angle + 1.57).sin() * 14.0);
-                ctx.line_to(cx - (angle + 1.57).cos() * 14.0, cy - (angle + 1.57).sin() * 14.0);
+                ctx.move_to(
+                    cx + (angle + 1.57).cos() * 14.0,
+                    cy + (angle + 1.57).sin() * 14.0,
+                );
+                ctx.line_to(
+                    cx - (angle + 1.57).cos() * 14.0,
+                    cy - (angle + 1.57).sin() * 14.0,
+                );
                 ctx.stroke();
 
                 ctx.set_font("bold 9px monospace");
@@ -559,7 +580,13 @@ fn draw_procedural_stickman(ctx: &CanvasRenderingContext2d, u: &Unit, color: &st
             // Cầu bóng tối xoay
             ctx.set_fill_style_str("#c084fc");
             ctx.begin_path();
-            let _ = ctx.arc(x + 10.0 * flip as f64, y - 26.0, 4.0, 0.0, std::f64::consts::PI * 2.0);
+            let _ = ctx.arc(
+                x + 10.0 * flip as f64,
+                y - 26.0,
+                4.0,
+                0.0,
+                std::f64::consts::PI * 2.0,
+            );
             ctx.fill();
         }
         UnitType::BehemothTitan => {
@@ -578,7 +605,13 @@ fn draw_procedural_stickman(ctx: &CanvasRenderingContext2d, u: &Unit, color: &st
             // Bọ nổ axit: túi dịch axit phát sáng trên lưng
             ctx.set_fill_style_str("#84cc16");
             ctx.begin_path();
-            let _ = ctx.arc(x - 4.0 * flip as f64, y - 12.0, 7.0, 0.0, std::f64::consts::PI * 2.0);
+            let _ = ctx.arc(
+                x - 4.0 * flip as f64,
+                y - 12.0,
+                7.0,
+                0.0,
+                std::f64::consts::PI * 2.0,
+            );
             ctx.fill();
             ctx.set_stroke_style_str("#a3e635");
             ctx.set_line_width(1.5);
@@ -619,7 +652,13 @@ fn render_projectiles(engine: &GameEngine) {
             ctx.set_fill_style_str(color);
             ctx.begin_path();
             let radius = if p.aoe_radius > 0.0 { 4.5 } else { 3.0 };
-            let _ = ctx.arc(p.x as f64, p.y as f64, radius, 0.0, std::f64::consts::PI * 2.0);
+            let _ = ctx.arc(
+                p.x as f64,
+                p.y as f64,
+                radius,
+                0.0,
+                std::f64::consts::PI * 2.0,
+            );
             ctx.fill();
 
             if p.aoe_radius > 0.0 {
@@ -663,7 +702,13 @@ fn render_build_ghost(engine: &GameEngine, b_type: BuildingType) {
         ctx.set_stroke_style_str("rgba(0, 229, 255, 0.4)");
         ctx.set_line_width(1.5);
         ctx.begin_path();
-        let _ = ctx.arc(wx as f64, wy as f64, range as f64, 0.0, std::f64::consts::PI * 2.0);
+        let _ = ctx.arc(
+            wx as f64,
+            wy as f64,
+            range as f64,
+            0.0,
+            std::f64::consts::PI * 2.0,
+        );
         ctx.stroke();
     }
 }
@@ -809,11 +854,7 @@ fn render_in_game_hud(engine: &GameEngine) {
             .map(|r| format!("{} ({:.0}%)", r.tech_id, r.progress * 100.0))
             .collect::<Vec<_>>()
             .join(", ");
-        let _ = ctx.fill_text(
-            &format!("🔬 RESEARCHING: {}", list_str),
-            610.0,
-            29.0,
-        );
+        let _ = ctx.fill_text(&format!("🔬 RESEARCHING: {}", list_str), 610.0, 29.0);
     } else if let Some(ref tech_id) = engine.player_tech.current_research {
         ctx.set_fill_style_str("#facc15");
         let _ = ctx.fill_text(
@@ -991,14 +1032,22 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
                     let _ = ctx.fill_text("STATUS: CONVERTING (30⚡ ➔ 25💎/s)", x + 15.0, y + 85.0);
                     ctx.set_font("10px monospace");
                     ctx.set_fill_style_str("#38bdf8");
-                    let _ = ctx.fill_text("Tự động chuyển Năng lượng dư thừa (>1000⚡) thành Vàng.", x + 15.0, y + 105.0);
+                    let _ = ctx.fill_text(
+                        "Tự động chuyển Năng lượng dư thừa (>1000⚡) thành Vàng.",
+                        x + 15.0,
+                        y + 105.0,
+                    );
                 } else {
                     ctx.set_fill_style_str("#f97316");
-                    let _ = ctx.fill_text("STATUS: STANDBY (Năng lượng < 1000⚡)", x + 15.0, y + 85.0);
+                    let _ =
+                        ctx.fill_text("STATUS: STANDBY (Năng lượng < 1000⚡)", x + 15.0, y + 85.0);
                     ctx.set_font("10px monospace");
                     ctx.set_fill_style_str("#94a3b8");
                     let _ = ctx.fill_text(
-                        &format!("Cần thêm {:.0}⚡ để tự động kích hoạt.", (1000.0 - cur_energy).max(0.0)),
+                        &format!(
+                            "Cần thêm {:.0}⚡ để tự động kích hoạt.",
+                            (1000.0 - cur_energy).max(0.0)
+                        ),
                         x + 15.0,
                         y + 105.0,
                     );
@@ -1024,7 +1073,12 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
                     ctx.set_font("10px monospace");
                     ctx.set_fill_style_str("#38bdf8");
                     let _ = ctx.fill_text(
-                        &format!("⚔️ ATK: {:.0} [{}] | RNG: {:.0}", b_damage, b.damage_type.display_name(), b_range),
+                        &format!(
+                            "⚔️ ATK: {:.0} [{}] | RNG: {:.0}",
+                            b_damage,
+                            b.damage_type.display_name(),
+                            b_range
+                        ),
                         x + 15.0,
                         y + 106.0,
                     );
@@ -1042,10 +1096,15 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
                 }
             } else if is_armed {
                 let b_cd = b_cfg.map(|c| c.turret_cooldown).unwrap_or(1.0).max(0.1);
-                let has_dark_rockets = b.team == Team::Player && engine.player_tech.dark_matter_rockets;
+                let has_dark_rockets =
+                    b.team == Team::Player && engine.player_tech.dark_matter_rockets;
                 let has_overload = b.team == Team::Player && engine.player_tech.overload_strike;
 
-                let eff_damage = if has_dark_rockets { b_damage * 1.4 } else { b_damage };
+                let eff_damage = if has_dark_rockets {
+                    b_damage * 1.4
+                } else {
+                    b_damage
+                };
                 let eff_cd = if has_overload { b_cd * 0.6 } else { b_cd };
 
                 ctx.set_font("11px monospace");
@@ -1079,7 +1138,11 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
                 }
                 ctx.set_font("10px monospace");
                 ctx.set_fill_style_str("#64748b");
-                let _ = ctx.fill_text("Targeting: Automatic hostile engagement", x + 15.0, y + 112.0);
+                let _ = ctx.fill_text(
+                    "Targeting: Automatic hostile engagement",
+                    x + 15.0,
+                    y + 112.0,
+                );
             } else {
                 ctx.set_font("11px monospace");
                 ctx.set_fill_style_str("#94a3b8");
@@ -1095,7 +1158,11 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
         let uid = engine.selected_unit_ids[0];
         if let Some(u) = engine.units.iter().find(|u| u.id == uid) {
             ctx.set_font("bold 13px monospace");
-            ctx.set_fill_style_str(if u.team == Team::Player { "#00e5ff" } else { "#f43f5e" });
+            ctx.set_fill_style_str(if u.team == Team::Player {
+                "#00e5ff"
+            } else {
+                "#f43f5e"
+            });
             let name = u.unit_type.display_name();
             let _ = ctx.fill_text(name, x + 15.0, y + 22.0);
 
@@ -1187,7 +1254,10 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
             if let Some(u) = engine.units.iter().find(|u| u.id == *uid) {
                 match u.unit_type {
                     UnitType::Engineer => workers += 1,
-                    UnitType::ShockTrooper | UnitType::Rifleman | UnitType::Vanguard | UnitType::LaserMarksman => {
+                    UnitType::ShockTrooper
+                    | UnitType::Rifleman
+                    | UnitType::Vanguard
+                    | UnitType::LaserMarksman => {
                         combat_count += 1;
                     }
                     _ => {
@@ -1299,16 +1369,36 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
     let mut tooltip: Option<(String, String)> = None;
 
     if has_worker {
-        let supply_cost = engine.config.get_building_cost_label(BuildingType::SupplyDepot);
-        let reactor_cost = engine.config.get_building_cost_label(BuildingType::PowerReactor);
-        let barracks_cost = engine.config.get_building_cost_label(BuildingType::Barracks);
-        let turret_cost = engine.config.get_building_cost_label(BuildingType::TurretTower);
-        let cc_cost = engine.config.get_building_cost_label(BuildingType::CommandCenter);
-        let conv_cost = engine.config.get_building_cost_label(BuildingType::EnergyConverter);
+        let supply_cost = engine
+            .config
+            .get_building_cost_label(BuildingType::SupplyDepot);
+        let reactor_cost = engine
+            .config
+            .get_building_cost_label(BuildingType::PowerReactor);
+        let barracks_cost = engine
+            .config
+            .get_building_cost_label(BuildingType::Barracks);
+        let turret_cost = engine
+            .config
+            .get_building_cost_label(BuildingType::TurretTower);
+        let cc_cost = engine
+            .config
+            .get_building_cost_label(BuildingType::CommandCenter);
+        let conv_cost = engine
+            .config
+            .get_building_cost_label(BuildingType::EnergyConverter);
 
         draw_hud_button(ctx, x + 5.0, y + 6.0, 62.0, 40.0, "SUPPLY", &supply_cost);
         draw_hud_button(ctx, x + 72.0, y + 6.0, 62.0, 40.0, "REACTOR", &reactor_cost);
-        draw_hud_button(ctx, x + 139.0, y + 6.0, 62.0, 40.0, "BARRACKS", &barracks_cost);
+        draw_hud_button(
+            ctx,
+            x + 139.0,
+            y + 6.0,
+            62.0,
+            40.0,
+            "BARRACKS",
+            &barracks_cost,
+        );
         draw_hud_button(ctx, x + 5.0, y + 50.0, 62.0, 40.0, "TURRET", &turret_cost);
         draw_hud_button(ctx, x + 72.0, y + 50.0, 62.0, 40.0, "HQ CC", &cc_cost);
         draw_hud_button(ctx, x + 139.0, y + 50.0, 62.0, 40.0, "CONVERT", &conv_cost);
@@ -1399,10 +1489,8 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
                     );
 
                     if engine.hovered_command_button == Some(0) {
-                        let mut desc = format!(
-                            "Giá: {}. Huấn luyện thợ mỏ / kỹ sư xây dựng.",
-                            cost_lbl
-                        );
+                        let mut desc =
+                            format!("Giá: {}. Huấn luyện thợ mỏ / kỹ sư xây dựng.", cost_lbl);
                         if count > 0 {
                             if is_training {
                                 desc.push_str(&format!(
@@ -1420,63 +1508,183 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
                 }
                 BuildingType::Barracks => {
                     // 0: Striker
-                    let s0 = draw_barracks_slot(ctx, engine, b, UnitType::ShockTrooper, x + 5.0, y + 6.0, 0);
+                    let s0 = draw_barracks_slot(
+                        ctx,
+                        engine,
+                        b,
+                        UnitType::ShockTrooper,
+                        x + 5.0,
+                        y + 6.0,
+                        0,
+                    );
                     // 1: Rifle
-                    let s1 = draw_barracks_slot(ctx, engine, b, UnitType::Rifleman, x + 72.0, y + 6.0, 1);
+                    let s1 = draw_barracks_slot(
+                        ctx,
+                        engine,
+                        b,
+                        UnitType::Rifleman,
+                        x + 72.0,
+                        y + 6.0,
+                        1,
+                    );
                     // 2: Vanguard
                     let s2 = if engine.player_tech.energy_shielding {
-                        Some(draw_barracks_slot(ctx, engine, b, UnitType::Vanguard, x + 139.0, y + 6.0, 2))
+                        Some(draw_barracks_slot(
+                            ctx,
+                            engine,
+                            b,
+                            UnitType::Vanguard,
+                            x + 139.0,
+                            y + 6.0,
+                            2,
+                        ))
                     } else {
                         None
                     };
                     // 3: Laser
                     let s3 = if engine.player_tech.focused_laser {
-                        Some(draw_barracks_slot(ctx, engine, b, UnitType::LaserMarksman, x + 5.0, y + 50.0, 3))
+                        Some(draw_barracks_slot(
+                            ctx,
+                            engine,
+                            b,
+                            UnitType::LaserMarksman,
+                            x + 5.0,
+                            y + 50.0,
+                            3,
+                        ))
                     } else {
                         None
                     };
                     // 4: Dark Rocketeer
                     let s4 = if engine.player_tech.dark_matter_rockets {
-                        Some(draw_barracks_slot(ctx, engine, b, UnitType::DarkRocketeer, x + 72.0, y + 50.0, 4))
+                        Some(draw_barracks_slot(
+                            ctx,
+                            engine,
+                            b,
+                            UnitType::DarkRocketeer,
+                            x + 72.0,
+                            y + 50.0,
+                            4,
+                        ))
                     } else {
                         None
                     };
                     // 5: Taoist Swordmaster
                     let s5 = if engine.player_tech.celestial_flying_swords {
-                        Some(draw_barracks_slot(ctx, engine, b, UnitType::TaoistSwordmaster, x + 139.0, y + 50.0, 5))
+                        Some(draw_barracks_slot(
+                            ctx,
+                            engine,
+                            b,
+                            UnitType::TaoistSwordmaster,
+                            x + 139.0,
+                            y + 50.0,
+                            5,
+                        ))
                     } else {
                         None
                     };
                     // 6: Void Warlock
                     let s6 = if engine.player_tech.void_cataclysm {
-                        Some(draw_barracks_slot(ctx, engine, b, UnitType::VoidWarlock, x + 5.0, y + 94.0, 6))
+                        Some(draw_barracks_slot(
+                            ctx,
+                            engine,
+                            b,
+                            UnitType::VoidWarlock,
+                            x + 5.0,
+                            y + 94.0,
+                            6,
+                        ))
                     } else {
                         None
                     };
                     // 7: Behemoth Titan
                     let s7 = if engine.player_tech.behemoth_mutation {
-                        Some(draw_barracks_slot(ctx, engine, b, UnitType::BehemothTitan, x + 72.0, y + 94.0, 7))
+                        Some(draw_barracks_slot(
+                            ctx,
+                            engine,
+                            b,
+                            UnitType::BehemothTitan,
+                            x + 72.0,
+                            y + 94.0,
+                            7,
+                        ))
                     } else {
                         None
                     };
                     // 8: Acid Baneling
                     let s8 = if engine.player_tech.acid_banelings {
-                        Some(draw_barracks_slot(ctx, engine, b, UnitType::AcidBaneling, x + 139.0, y + 94.0, 8))
+                        Some(draw_barracks_slot(
+                            ctx,
+                            engine,
+                            b,
+                            UnitType::AcidBaneling,
+                            x + 139.0,
+                            y + 94.0,
+                            8,
+                        ))
                     } else {
                         None
                     };
 
                     if let Some(hover_idx) = engine.hovered_command_button {
                         let info = match hover_idx {
-                            0 => Some(("SHOCK TROOPER", "Giá: 75M. Kiếm sĩ Plasma, chạy nhanh, chém mạnh.", s0)),
-                            1 => Some(("RIFLEMAN", "Giá: 100M 20E. Xạ thủ súng trường tầm xa.", s1)),
-                            2 => s2.map(|s| ("VANGUARD", "Giá: 150M 50E. Vệ binh khiên chắn năng lượng.", s)),
-                            3 => s3.map(|s| ("LASER MARKSMAN", "Giá: 175M 100E. Pháo Laser siêu sát thương.", s)),
-                            4 => s4.map(|s| ("DARK ROCKETEER", "Giá: 160M 80E. Bệ phóng Rocket nổ AoE tầm xa.", s)),
-                            5 => s5.map(|s| ("SWORDMASTER", "Giá: 180M 90E. Tu tiên giả ngự phi kiếm chân khí Arcane.", s)),
-                            6 => s6.map(|s| ("VOID WARLOCK", "Giá: 200M 120E. Vu sư hư không, cầu ma thuật nổ AoE.", s)),
-                            7 => s7.map(|s| ("BEHEMOTH TITAN", "Giá: 250M 100E. Cự thú 650 HP, dậm chấn động diện rộng.", s)),
-                            8 => s8.map(|s| ("ACID BANELING", "Giá: 60M 30E. Bọ cảm tử lao vào tự nổ axit AoE cực lớn.", s)),
+                            0 => Some((
+                                "SHOCK TROOPER",
+                                "Giá: 75M. Kiếm sĩ Plasma, chạy nhanh, chém mạnh.",
+                                s0,
+                            )),
+                            1 => {
+                                Some(("RIFLEMAN", "Giá: 100M 20E. Xạ thủ súng trường tầm xa.", s1))
+                            }
+                            2 => s2.map(|s| {
+                                (
+                                    "VANGUARD",
+                                    "Giá: 150M 50E. Vệ binh khiên chắn năng lượng.",
+                                    s,
+                                )
+                            }),
+                            3 => s3.map(|s| {
+                                (
+                                    "LASER MARKSMAN",
+                                    "Giá: 175M 100E. Pháo Laser siêu sát thương.",
+                                    s,
+                                )
+                            }),
+                            4 => s4.map(|s| {
+                                (
+                                    "DARK ROCKETEER",
+                                    "Giá: 160M 80E. Bệ phóng Rocket nổ AoE tầm xa.",
+                                    s,
+                                )
+                            }),
+                            5 => s5.map(|s| {
+                                (
+                                    "SWORDMASTER",
+                                    "Giá: 180M 90E. Tu tiên giả ngự phi kiếm chân khí Arcane.",
+                                    s,
+                                )
+                            }),
+                            6 => s6.map(|s| {
+                                (
+                                    "VOID WARLOCK",
+                                    "Giá: 200M 120E. Vu sư hư không, cầu ma thuật nổ AoE.",
+                                    s,
+                                )
+                            }),
+                            7 => s7.map(|s| {
+                                (
+                                    "BEHEMOTH TITAN",
+                                    "Giá: 250M 100E. Cự thú 650 HP, dậm chấn động diện rộng.",
+                                    s,
+                                )
+                            }),
+                            8 => s8.map(|s| {
+                                (
+                                    "ACID BANELING",
+                                    "Giá: 60M 30E. Bọ cảm tử lao vào tự nổ axit AoE cực lớn.",
+                                    s,
+                                )
+                            }),
                             _ => None,
                         };
 

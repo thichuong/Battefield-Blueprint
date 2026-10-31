@@ -1,5 +1,5 @@
-use crate::config::{MAP_HEIGHT, MAP_WIDTH};
 pub use crate::config::{CELL_H, CELL_W, FOG_COLS, FOG_ROWS};
+use crate::config::{MAP_HEIGHT, MAP_WIDTH};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Visibility {

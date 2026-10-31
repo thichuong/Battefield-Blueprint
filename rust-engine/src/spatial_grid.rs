@@ -1,6 +1,6 @@
-use glam::Vec2;
 use crate::components::Team;
 pub use crate::config::{CELL_SIZE, COLS, ROWS};
+use glam::Vec2;
 
 #[derive(Clone, Copy, Debug)]
 pub struct GridEntity {
@@ -38,7 +38,11 @@ impl SpatialGrid {
     }
 
     /// Tái tạo lưới từ danh sách đơn vị và công trình
-    pub fn rebuild(&mut self, units: &[crate::components::Unit], buildings: &[crate::components::Building]) {
+    pub fn rebuild(
+        &mut self,
+        units: &[crate::components::Unit],
+        buildings: &[crate::components::Building],
+    ) {
         self.clear();
         for u in units {
             self.insert(GridEntity {

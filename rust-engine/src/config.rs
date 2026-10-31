@@ -1,6 +1,6 @@
+use crate::components::{Building, DamageType, Resistances, Team, Unit, UnitOrder};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use crate::components::{Building, DamageType, Resistances, Team, Unit, UnitOrder};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct UnitStatsConfig {
@@ -143,7 +143,12 @@ impl Default for GameConfig {
                 attack_cooldown: 1.0,
                 damage_type: DamageType::Physical,
                 aoe_radius: 0.0,
-                resistances: Resistances { physical: 0.05, energy: 0.0, explosive: 0.0, arcane: 0.0 },
+                resistances: Resistances {
+                    physical: 0.05,
+                    energy: 0.0,
+                    explosive: 0.0,
+                    arcane: 0.0,
+                },
                 cost_minerals: 50.0,
                 cost_energy: 0.0,
                 training_time: 5.0,
@@ -161,7 +166,12 @@ impl Default for GameConfig {
                 attack_cooldown: 0.8,
                 damage_type: DamageType::Energy,
                 aoe_radius: 0.0,
-                resistances: Resistances { physical: 0.15, energy: 0.20, explosive: 0.05, arcane: 0.10 },
+                resistances: Resistances {
+                    physical: 0.15,
+                    energy: 0.20,
+                    explosive: 0.05,
+                    arcane: 0.10,
+                },
                 cost_minerals: 75.0,
                 cost_energy: 0.0,
                 training_time: 7.0,
@@ -179,7 +189,12 @@ impl Default for GameConfig {
                 attack_cooldown: 1.1,
                 damage_type: DamageType::Physical,
                 aoe_radius: 0.0,
-                resistances: Resistances { physical: 0.10, energy: 0.05, explosive: 0.05, arcane: 0.05 },
+                resistances: Resistances {
+                    physical: 0.10,
+                    energy: 0.05,
+                    explosive: 0.05,
+                    arcane: 0.05,
+                },
                 cost_minerals: 100.0,
                 cost_energy: 20.0,
                 training_time: 8.0,
@@ -197,7 +212,12 @@ impl Default for GameConfig {
                 attack_cooldown: 1.2,
                 damage_type: DamageType::Physical,
                 aoe_radius: 0.0,
-                resistances: Resistances { physical: 0.40, energy: 0.50, explosive: 0.25, arcane: 0.15 },
+                resistances: Resistances {
+                    physical: 0.40,
+                    energy: 0.50,
+                    explosive: 0.25,
+                    arcane: 0.15,
+                },
                 cost_minerals: 150.0,
                 cost_energy: 50.0,
                 training_time: 12.0,
@@ -215,7 +235,12 @@ impl Default for GameConfig {
                 attack_cooldown: 1.6,
                 damage_type: DamageType::Energy,
                 aoe_radius: 0.0,
-                resistances: Resistances { physical: 0.05, energy: 0.30, explosive: 0.0, arcane: 0.15 },
+                resistances: Resistances {
+                    physical: 0.05,
+                    energy: 0.30,
+                    explosive: 0.0,
+                    arcane: 0.15,
+                },
                 cost_minerals: 175.0,
                 cost_energy: 100.0,
                 training_time: 15.0,
@@ -233,7 +258,12 @@ impl Default for GameConfig {
                 attack_cooldown: 1.8,
                 damage_type: DamageType::Explosive,
                 aoe_radius: 40.0,
-                resistances: Resistances { physical: 0.20, energy: 0.10, explosive: 0.35, arcane: 0.05 },
+                resistances: Resistances {
+                    physical: 0.20,
+                    energy: 0.10,
+                    explosive: 0.35,
+                    arcane: 0.05,
+                },
                 cost_minerals: 160.0,
                 cost_energy: 80.0,
                 training_time: 14.0,
@@ -251,7 +281,12 @@ impl Default for GameConfig {
                 attack_cooldown: 1.0,
                 damage_type: DamageType::Arcane,
                 aoe_radius: 0.0,
-                resistances: Resistances { physical: 0.15, energy: 0.35, explosive: 0.15, arcane: 0.45 },
+                resistances: Resistances {
+                    physical: 0.15,
+                    energy: 0.35,
+                    explosive: 0.15,
+                    arcane: 0.45,
+                },
                 cost_minerals: 180.0,
                 cost_energy: 90.0,
                 training_time: 15.0,
@@ -269,7 +304,12 @@ impl Default for GameConfig {
                 attack_cooldown: 1.5,
                 damage_type: DamageType::Arcane,
                 aoe_radius: 35.0,
-                resistances: Resistances { physical: 0.10, energy: 0.25, explosive: 0.20, arcane: 0.50 },
+                resistances: Resistances {
+                    physical: 0.10,
+                    energy: 0.25,
+                    explosive: 0.20,
+                    arcane: 0.50,
+                },
                 cost_minerals: 200.0,
                 cost_energy: 120.0,
                 training_time: 16.0,
@@ -287,7 +327,12 @@ impl Default for GameConfig {
                 attack_cooldown: 1.4,
                 damage_type: DamageType::Physical,
                 aoe_radius: 45.0,
-                resistances: Resistances { physical: 0.50, energy: 0.20, explosive: 0.45, arcane: 0.10 },
+                resistances: Resistances {
+                    physical: 0.50,
+                    energy: 0.20,
+                    explosive: 0.45,
+                    arcane: 0.10,
+                },
                 cost_minerals: 250.0,
                 cost_energy: 100.0,
                 training_time: 20.0,
@@ -305,7 +350,12 @@ impl Default for GameConfig {
                 attack_cooldown: 0.5,
                 damage_type: DamageType::Explosive,
                 aoe_radius: 65.0,
-                resistances: Resistances { physical: 0.05, energy: 0.05, explosive: 0.20, arcane: 0.20 },
+                resistances: Resistances {
+                    physical: 0.05,
+                    energy: 0.05,
+                    explosive: 0.20,
+                    arcane: 0.20,
+                },
                 cost_minerals: 60.0,
                 cost_energy: 30.0,
                 training_time: 6.0,
@@ -323,7 +373,12 @@ impl Default for GameConfig {
                 width: 90.0,
                 height: 90.0,
                 build_time: 15.0,
-                resistances: Resistances { physical: 0.80, energy: 0.60, explosive: 0.25, arcane: 0.20 },
+                resistances: Resistances {
+                    physical: 0.80,
+                    energy: 0.60,
+                    explosive: 0.25,
+                    arcane: 0.20,
+                },
                 supply_bonus: 10,
                 energy_per_sec: 0.0,
                 turret_range: 250.0,
@@ -344,7 +399,12 @@ impl Default for GameConfig {
                 width: 60.0,
                 height: 60.0,
                 build_time: 8.0,
-                resistances: Resistances { physical: 0.20, energy: 0.15, explosive: 0.10, arcane: 0.05 },
+                resistances: Resistances {
+                    physical: 0.20,
+                    energy: 0.15,
+                    explosive: 0.10,
+                    arcane: 0.05,
+                },
                 supply_bonus: 8,
                 energy_per_sec: 0.0,
                 turret_range: 0.0,
@@ -365,7 +425,12 @@ impl Default for GameConfig {
                 width: 60.0,
                 height: 60.0,
                 build_time: 10.0,
-                resistances: Resistances { physical: 0.15, energy: 0.25, explosive: 0.05, arcane: 0.15 },
+                resistances: Resistances {
+                    physical: 0.15,
+                    energy: 0.25,
+                    explosive: 0.05,
+                    arcane: 0.15,
+                },
                 supply_bonus: 0,
                 energy_per_sec: 8.0,
                 turret_range: 0.0,
@@ -386,7 +451,12 @@ impl Default for GameConfig {
                 width: 80.0,
                 height: 70.0,
                 build_time: 12.0,
-                resistances: Resistances { physical: 0.35, energy: 0.20, explosive: 0.25, arcane: 0.15 },
+                resistances: Resistances {
+                    physical: 0.35,
+                    energy: 0.20,
+                    explosive: 0.25,
+                    arcane: 0.15,
+                },
                 supply_bonus: 0,
                 energy_per_sec: 0.0,
                 turret_range: 0.0,
@@ -407,7 +477,12 @@ impl Default for GameConfig {
                 width: 50.0,
                 height: 50.0,
                 build_time: 10.0,
-                resistances: Resistances { physical: 0.85, energy: 0.60, explosive: 0.35, arcane: 0.30 },
+                resistances: Resistances {
+                    physical: 0.85,
+                    energy: 0.60,
+                    explosive: 0.35,
+                    arcane: 0.30,
+                },
                 supply_bonus: 0,
                 energy_per_sec: 0.0,
                 turret_range: 250.0,
@@ -428,7 +503,12 @@ impl Default for GameConfig {
                 width: 65.0,
                 height: 65.0,
                 build_time: 12.0,
-                resistances: Resistances { physical: 0.25, energy: 0.35, explosive: 0.10, arcane: 0.25 },
+                resistances: Resistances {
+                    physical: 0.25,
+                    energy: 0.35,
+                    explosive: 0.10,
+                    arcane: 0.25,
+                },
                 supply_bonus: 0,
                 energy_per_sec: 0.0,
                 turret_range: 0.0,
@@ -440,25 +520,196 @@ impl Default for GameConfig {
         );
 
         // 3. TECHS
-        techs.insert("focused_laser".to_string(), TechItemConfig { name: "Focused Laser".to_string(), branch: "science".to_string(), cost_minerals: 250.0, cost_energy: 200.0, research_time: 20.0 });
-        techs.insert("energy_shielding".to_string(), TechItemConfig { name: "Energy Shielding".to_string(), branch: "science".to_string(), cost_minerals: 180.0, cost_energy: 150.0, research_time: 15.0 });
-        techs.insert("dark_matter_rockets".to_string(), TechItemConfig { name: "Dark Matter Rockets".to_string(), branch: "science".to_string(), cost_minerals: 220.0, cost_energy: 120.0, research_time: 18.0 });
-        techs.insert("titan_alloy_plating".to_string(), TechItemConfig { name: "Titan Alloy Plating".to_string(), branch: "science".to_string(), cost_minerals: 300.0, cost_energy: 180.0, research_time: 25.0 });
-        techs.insert("celestial_flying_swords".to_string(), TechItemConfig { name: "Celestial Flying Swords".to_string(), branch: "magic".to_string(), cost_minerals: 260.0, cost_energy: 160.0, research_time: 22.0 });
-        techs.insert("golden_bell_shield".to_string(), TechItemConfig { name: "Golden Bell Shield".to_string(), branch: "magic".to_string(), cost_minerals: 200.0, cost_energy: 140.0, research_time: 16.0 });
-        techs.insert("corrosive_curse".to_string(), TechItemConfig { name: "Corrosive Curse".to_string(), branch: "magic".to_string(), cost_minerals: 180.0, cost_energy: 160.0, research_time: 16.0 });
-        techs.insert("void_cataclysm".to_string(), TechItemConfig { name: "Void Cataclysm".to_string(), branch: "magic".to_string(), cost_minerals: 320.0, cost_energy: 240.0, research_time: 28.0 });
-        techs.insert("primeval_scales".to_string(), TechItemConfig { name: "Primeval Scales".to_string(), branch: "monster".to_string(), cost_minerals: 220.0, cost_energy: 120.0, research_time: 18.0 });
-        techs.insert("behemoth_mutation".to_string(), TechItemConfig { name: "Behemoth Mutation".to_string(), branch: "monster".to_string(), cost_minerals: 320.0, cost_energy: 180.0, research_time: 26.0 });
-        techs.insert("acid_banelings".to_string(), TechItemConfig { name: "Acid Banelings".to_string(), branch: "monster".to_string(), cost_minerals: 160.0, cost_energy: 90.0, research_time: 14.0 });
-        techs.insert("hive_proliferation".to_string(), TechItemConfig { name: "Hive Proliferation".to_string(), branch: "monster".to_string(), cost_minerals: 260.0, cost_energy: 160.0, research_time: 20.0 });
-        techs.insert("optical_drills".to_string(), TechItemConfig { name: "Optical Drills".to_string(), branch: "logistics".to_string(), cost_minerals: 100.0, cost_energy: 50.0, research_time: 10.0 });
-        techs.insert("overcharged_reactors".to_string(), TechItemConfig { name: "Overcharged Reactors".to_string(), branch: "logistics".to_string(), cost_minerals: 150.0, cost_energy: 100.0, research_time: 15.0 });
-        techs.insert("fortified_blueprints".to_string(), TechItemConfig { name: "Fortified Blueprints".to_string(), branch: "logistics".to_string(), cost_minerals: 200.0, cost_energy: 150.0, research_time: 20.0 });
-        techs.insert("magnetic_rounds".to_string(), TechItemConfig { name: "Magnetic Rounds".to_string(), branch: "logistics".to_string(), cost_minerals: 200.0, cost_energy: 150.0, research_time: 15.0 });
-        techs.insert("exo_boosters".to_string(), TechItemConfig { name: "Exo Boosters".to_string(), branch: "logistics".to_string(), cost_minerals: 250.0, cost_energy: 200.0, research_time: 20.0 });
-        techs.insert("superheated_blades".to_string(), TechItemConfig { name: "Superheated Blades".to_string(), branch: "logistics".to_string(), cost_minerals: 350.0, cost_energy: 300.0, research_time: 30.0 });
-        techs.insert("overload_strike".to_string(), TechItemConfig { name: "Overload Strike".to_string(), branch: "logistics".to_string(), cost_minerals: 400.0, cost_energy: 350.0, research_time: 35.0 });
+        techs.insert(
+            "focused_laser".to_string(),
+            TechItemConfig {
+                name: "Focused Laser".to_string(),
+                branch: "science".to_string(),
+                cost_minerals: 250.0,
+                cost_energy: 200.0,
+                research_time: 20.0,
+            },
+        );
+        techs.insert(
+            "energy_shielding".to_string(),
+            TechItemConfig {
+                name: "Energy Shielding".to_string(),
+                branch: "science".to_string(),
+                cost_minerals: 180.0,
+                cost_energy: 150.0,
+                research_time: 15.0,
+            },
+        );
+        techs.insert(
+            "dark_matter_rockets".to_string(),
+            TechItemConfig {
+                name: "Dark Matter Rockets".to_string(),
+                branch: "science".to_string(),
+                cost_minerals: 220.0,
+                cost_energy: 120.0,
+                research_time: 18.0,
+            },
+        );
+        techs.insert(
+            "titan_alloy_plating".to_string(),
+            TechItemConfig {
+                name: "Titan Alloy Plating".to_string(),
+                branch: "science".to_string(),
+                cost_minerals: 300.0,
+                cost_energy: 180.0,
+                research_time: 25.0,
+            },
+        );
+        techs.insert(
+            "celestial_flying_swords".to_string(),
+            TechItemConfig {
+                name: "Celestial Flying Swords".to_string(),
+                branch: "magic".to_string(),
+                cost_minerals: 260.0,
+                cost_energy: 160.0,
+                research_time: 22.0,
+            },
+        );
+        techs.insert(
+            "golden_bell_shield".to_string(),
+            TechItemConfig {
+                name: "Golden Bell Shield".to_string(),
+                branch: "magic".to_string(),
+                cost_minerals: 200.0,
+                cost_energy: 140.0,
+                research_time: 16.0,
+            },
+        );
+        techs.insert(
+            "corrosive_curse".to_string(),
+            TechItemConfig {
+                name: "Corrosive Curse".to_string(),
+                branch: "magic".to_string(),
+                cost_minerals: 180.0,
+                cost_energy: 160.0,
+                research_time: 16.0,
+            },
+        );
+        techs.insert(
+            "void_cataclysm".to_string(),
+            TechItemConfig {
+                name: "Void Cataclysm".to_string(),
+                branch: "magic".to_string(),
+                cost_minerals: 320.0,
+                cost_energy: 240.0,
+                research_time: 28.0,
+            },
+        );
+        techs.insert(
+            "primeval_scales".to_string(),
+            TechItemConfig {
+                name: "Primeval Scales".to_string(),
+                branch: "monster".to_string(),
+                cost_minerals: 220.0,
+                cost_energy: 120.0,
+                research_time: 18.0,
+            },
+        );
+        techs.insert(
+            "behemoth_mutation".to_string(),
+            TechItemConfig {
+                name: "Behemoth Mutation".to_string(),
+                branch: "monster".to_string(),
+                cost_minerals: 320.0,
+                cost_energy: 180.0,
+                research_time: 26.0,
+            },
+        );
+        techs.insert(
+            "acid_banelings".to_string(),
+            TechItemConfig {
+                name: "Acid Banelings".to_string(),
+                branch: "monster".to_string(),
+                cost_minerals: 160.0,
+                cost_energy: 90.0,
+                research_time: 14.0,
+            },
+        );
+        techs.insert(
+            "hive_proliferation".to_string(),
+            TechItemConfig {
+                name: "Hive Proliferation".to_string(),
+                branch: "monster".to_string(),
+                cost_minerals: 260.0,
+                cost_energy: 160.0,
+                research_time: 20.0,
+            },
+        );
+        techs.insert(
+            "optical_drills".to_string(),
+            TechItemConfig {
+                name: "Optical Drills".to_string(),
+                branch: "logistics".to_string(),
+                cost_minerals: 100.0,
+                cost_energy: 50.0,
+                research_time: 10.0,
+            },
+        );
+        techs.insert(
+            "overcharged_reactors".to_string(),
+            TechItemConfig {
+                name: "Overcharged Reactors".to_string(),
+                branch: "logistics".to_string(),
+                cost_minerals: 150.0,
+                cost_energy: 100.0,
+                research_time: 15.0,
+            },
+        );
+        techs.insert(
+            "fortified_blueprints".to_string(),
+            TechItemConfig {
+                name: "Fortified Blueprints".to_string(),
+                branch: "logistics".to_string(),
+                cost_minerals: 200.0,
+                cost_energy: 150.0,
+                research_time: 20.0,
+            },
+        );
+        techs.insert(
+            "magnetic_rounds".to_string(),
+            TechItemConfig {
+                name: "Magnetic Rounds".to_string(),
+                branch: "logistics".to_string(),
+                cost_minerals: 200.0,
+                cost_energy: 150.0,
+                research_time: 15.0,
+            },
+        );
+        techs.insert(
+            "exo_boosters".to_string(),
+            TechItemConfig {
+                name: "Exo Boosters".to_string(),
+                branch: "logistics".to_string(),
+                cost_minerals: 250.0,
+                cost_energy: 200.0,
+                research_time: 20.0,
+            },
+        );
+        techs.insert(
+            "superheated_blades".to_string(),
+            TechItemConfig {
+                name: "Superheated Blades".to_string(),
+                branch: "logistics".to_string(),
+                cost_minerals: 350.0,
+                cost_energy: 300.0,
+                research_time: 30.0,
+            },
+        );
+        techs.insert(
+            "overload_strike".to_string(),
+            TechItemConfig {
+                name: "Overload Strike".to_string(),
+                branch: "logistics".to_string(),
+                cost_minerals: 400.0,
+                cost_energy: 350.0,
+                research_time: 35.0,
+            },
+        );
 
         Self {
             units,
@@ -502,7 +753,10 @@ impl GameConfig {
     }
 
     #[inline]
-    pub fn get_building(&self, b_type: crate::components::BuildingType) -> Option<&BuildingStatsConfig> {
+    pub fn get_building(
+        &self,
+        b_type: crate::components::BuildingType,
+    ) -> Option<&BuildingStatsConfig> {
         self.buildings.get(Self::building_key(b_type))
     }
 
@@ -701,7 +955,11 @@ mod tests {
             BuildingType::EnergyConverter,
         ];
         for b in building_types {
-            assert!(cfg.get_building(b).is_some(), "Missing config for building {:?}", b);
+            assert!(
+                cfg.get_building(b).is_some(),
+                "Missing config for building {:?}",
+                b
+            );
         }
     }
 
@@ -733,7 +991,14 @@ mod tests {
             b.hp = 5000.0;
         }
 
-        let building = cfg.create_building(1, Team::Player, BuildingType::CommandCenter, 200.0, 200.0, true);
+        let building = cfg.create_building(
+            1,
+            Team::Player,
+            BuildingType::CommandCenter,
+            200.0,
+            200.0,
+            true,
+        );
         assert_eq!(building.hp, 5000.0);
         assert_eq!(building.build_progress, 1.0);
     }
