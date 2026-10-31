@@ -77,6 +77,26 @@ impl Default for EconomyConfig {
 // HẰNG SỐ CẤU HÌNH HỆ THỐNG (CENTRALIZED CONSTANTS)
 // =========================================================================
 
+// === BẢN ĐỒ & CHIẾN TRƯỜNG (MAP & ENVIRONMENT) ===
+pub const MAP_WIDTH: f32 = 2400.0;
+pub const MAP_HEIGHT: f32 = 2400.0;
+
+// === SƯƠNG MÙ CHIẾN TRANH (FOG OF WAR) ===
+pub const FOG_COLS: usize = 60;
+pub const FOG_ROWS: usize = 60;
+pub const CELL_W: f32 = MAP_WIDTH / (FOG_COLS as f32);
+pub const CELL_H: f32 = MAP_HEIGHT / (FOG_ROWS as f32);
+
+// === LƯỚI KHÔNG GIAN TÌM KIẾM ĐƠN VỊ (SPATIAL GRID) ===
+pub const CELL_SIZE: f32 = 150.0;
+pub const COLS: usize = ((MAP_WIDTH / CELL_SIZE) as usize) + 1; // 17
+pub const ROWS: usize = ((MAP_HEIGHT / CELL_SIZE) as usize) + 1; // 17
+
+// === KINH TẾ & CHUYỂN ĐỔI NĂNG LƯỢNG (ECONOMY & CONVERSION) ===
+pub const ENERGY_CONVERSION_THRESHOLD: f32 = 1000.0;
+pub const CONVERT_ENERGY_PER_SEC: f32 = 30.0;
+pub const CONVERT_GOLD_PER_SEC: f32 = 25.0;
+
 // === TỐC ĐỘ XÂY DỰNG & HIỆU ỨNG BỊ TẤN CÔNG ===
 pub const BUILD_SPEED_BASE: f32 = 0.05; // Tốc độ xây tự động cơ bản khi không có thợ (1/20s)
 pub const BUILD_SPEED_WORKER: f32 = 0.20; // Tốc độ xây khi có Engineer ở gần (1/5s)

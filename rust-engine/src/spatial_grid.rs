@@ -1,10 +1,6 @@
 use glam::Vec2;
 use crate::components::Team;
-use crate::map::{MAP_HEIGHT, MAP_WIDTH};
-
-pub const CELL_SIZE: f32 = 150.0;
-pub const COLS: usize = ((MAP_WIDTH / CELL_SIZE) as usize) + 1; // 17
-pub const ROWS: usize = ((MAP_HEIGHT / CELL_SIZE) as usize) + 1; // 17
+pub use crate::config::{CELL_SIZE, COLS, ROWS};
 
 #[derive(Clone, Copy, Debug)]
 pub struct GridEntity {

@@ -378,9 +378,7 @@ fn update_camera(engine: &mut GameEngine, dt: f32) {
     engine.camera.y = engine.camera.y.clamp(min_y, max_y);
 }
 
-pub const ENERGY_CONVERSION_THRESHOLD: f32 = 1000.0;
-pub const CONVERT_ENERGY_PER_SEC: f32 = 30.0;
-pub const CONVERT_GOLD_PER_SEC: f32 = 25.0;
+pub use crate::config::{CONVERT_ENERGY_PER_SEC, CONVERT_GOLD_PER_SEC, ENERGY_CONVERSION_THRESHOLD};
 
 /// Tính toán năng lượng tiêu thụ và vàng nhận được từ quá trình chuyển đổi.
 /// - Ngưỡng an toàn tối thiểu là 1000 Năng lượng. Dưới 1000 tự động dừng.

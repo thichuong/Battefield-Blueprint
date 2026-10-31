@@ -1,7 +1,5 @@
 use crate::components::*;
-
-pub const MAP_WIDTH: f32 = 2400.0;
-pub const MAP_HEIGHT: f32 = 2400.0;
+pub use crate::config::{MAP_HEIGHT, MAP_WIDTH};
 
 pub fn generate_map_elements() -> (Vec<MineralNode>, Vec<Obstacle>) {
     let mut minerals = Vec::new();

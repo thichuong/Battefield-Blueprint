@@ -1,9 +1,5 @@
-use crate::map::{MAP_HEIGHT, MAP_WIDTH};
-
-pub const FOG_COLS: usize = 60;
-pub const FOG_ROWS: usize = 60;
-pub const CELL_W: f32 = MAP_WIDTH / (FOG_COLS as f32);
-pub const CELL_H: f32 = MAP_HEIGHT / (FOG_ROWS as f32);
+use crate::config::{MAP_HEIGHT, MAP_WIDTH};
+pub use crate::config::{CELL_H, CELL_W, FOG_COLS, FOG_ROWS};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Visibility {
