@@ -70,6 +70,7 @@ pub struct GameEngine {
 
     // AI timer & Income tracker
     pub ai_think_timer: f32,
+    pub ai_state: crate::ai::AiState,
     pub sync_timer: f32,
     pub minerals_mined_accumulator: f32,
     pub income_calc_timer: f32,
@@ -134,6 +135,7 @@ impl GameEngine {
             keys_down: std::collections::HashSet::new(),
 
             ai_think_timer: 0.0,
+            ai_state: crate::ai::AiState::default(),
             sync_timer: 0.0,
             minerals_mined_accumulator: 0.0,
             income_calc_timer: 0.0,
@@ -204,6 +206,7 @@ impl GameEngine {
         self.is_paused = false;
         self.game_over = false;
         self.ai_think_timer = 0.0;
+        self.ai_state = crate::ai::AiState::default();
         self.minerals_mined_accumulator = 0.0;
         self.income_calc_timer = 0.0;
 
