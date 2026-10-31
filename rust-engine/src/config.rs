@@ -51,7 +51,7 @@ pub struct EconomyConfig {
     pub worker_mining_time_upgraded: f32,
     pub converter_threshold: f32,
     pub converter_energy_per_sec: f32,
-    pub converter_gold_per_100_energy: f32,
+    pub converter_minerals_per_100_energy: f32,
 }
 
 impl Default for EconomyConfig {
@@ -68,7 +68,7 @@ impl Default for EconomyConfig {
             worker_mining_time_upgraded: 1.4,
             converter_threshold: 1000.0,
             converter_energy_per_sec: 100.0,
-            converter_gold_per_100_energy: 50.0,
+            converter_minerals_per_100_energy: 50.0,
         }
     }
 }
@@ -95,7 +95,7 @@ pub const ROWS: usize = ((MAP_HEIGHT / CELL_SIZE) as usize) + 1; // 17
 // === KINH TẾ & CHUYỂN ĐỔI NĂNG LƯỢNG (ECONOMY & CONVERSION) ===
 pub const ENERGY_CONVERSION_THRESHOLD: f32 = 1000.0;
 pub const CONVERT_ENERGY_PER_SEC: f32 = 30.0;
-pub const CONVERT_GOLD_PER_SEC: f32 = 25.0;
+pub const CONVERT_MINERALS_PER_SEC: f32 = 25.0;
 
 // === TỐC ĐỘ XÂY DỰNG & HIỆU ỨNG BỊ TẤN CÔNG ===
 pub const BUILD_SPEED_BASE: f32 = 0.05; // Tốc độ xây tự động cơ bản khi không có thợ (1/20s)
