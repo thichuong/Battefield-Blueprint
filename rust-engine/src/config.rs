@@ -330,7 +330,7 @@ impl Default for GameConfig {
                 resistances: Resistances {
                     physical: 0.50,
                     energy: 0.20,
-                    explosive: 0.45,
+                    explosive: 0.25,
                     arcane: 0.10,
                 },
                 cost_minerals: 250.0,
@@ -853,6 +853,7 @@ impl GameConfig {
             facing_right: team == Team::Player,
             order: UnitOrder::Idle,
             carried_minerals: 0.0,
+            formation_offset: (0.0, 0.0),
         }
     }
 

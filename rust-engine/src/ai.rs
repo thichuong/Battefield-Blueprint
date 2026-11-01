@@ -12,6 +12,8 @@ pub struct AiState {
     // RL Brain & Policy State
     pub rl_brain: RlBrain,
     pub current_action: BotStrategicAction,
+    #[serde(default)]
+    pub current_formation: FormationType,
     pub decision_timer: f32,
     pub last_state: Vec<f32>,
     pub cumulative_reward: f32,
@@ -26,6 +28,7 @@ impl Default for AiState {
             last_attack_target: None,
             rl_brain: RlBrain::default(),
             current_action: BotStrategicAction::ExpandEco,
+            current_formation: FormationType::Line,
             decision_timer: 0.0,
             last_state: vec![0.0; STATE_DIM],
             cumulative_reward: 0.0,
@@ -78,13 +81,17 @@ pub fn extract_state_vector_for_team(engine: &GameEngine, team: Team) -> Vec<f32
     let time_norm = (engine.game_time / 600.0).clamp(0.0, 1.0);
     s.push(time_norm);
 
-    // 2-3. Giai đoạn: Early (<100s), Mid (100-260s)
-    let is_early = if engine.game_time < 100.0 { 1.0 } else { 0.0 };
-    let is_mid = if engine.game_time >= 100.0 && engine.game_time < 260.0 { 1.0 } else { 0.0 };
-    s.push(is_early);
-    s.push(is_mid);
+    // 2. Giai đoạn trận đấu: Early (0.0), Mid (0.5), Late (1.0)
+    let game_phase = if engine.game_time < 100.0 {
+        0.0
+    } else if engine.game_time < 260.0 {
+        0.5
+    } else {
+        1.0
+    };
+    s.push(game_phase);
 
-    // 4-5. Kinh tế phe mình: Khoáng sản & Năng lượng hiện tại
+    // 3-4. Kinh tế phe mình: Khoáng sản & Năng lượng hiện tại
     s.push((my_eco.minerals / 800.0).clamp(0.0, 2.0));
     s.push((my_eco.energy / 400.0).clamp(0.0, 2.0));
 
@@ -156,7 +163,25 @@ pub fn extract_state_vector_for_team(engine: &GameEngine, team: Team) -> Vec<f32
     let opp_ccs = engine.buildings.iter().filter(|b| engine.are_hostile(team, b.team) && b.building_type == BuildingType::CommandCenter).count();
     s.push((opp_ccs as f32 / 2.0).clamp(0.0, 1.0));
 
-    // Đảm bảo đủ 24 chiều
+    // 23. Mức độ đe dọa sát thương diện rộng AoE của đối phương (Rocket, Warlock, Baneling, Titan, v.v.)
+    let opp_aoe_threat = engine.units.iter().filter(|u| {
+        engine.are_hostile(team, u.team) && (
+            u.unit_type == UnitType::DarkRocketeer
+            || u.unit_type == UnitType::VoidWarlock
+            || u.unit_type == UnitType::AcidBaneling
+            || u.unit_type == UnitType::BehemothTitan
+        )
+    }).count();
+    s.push((opp_aoe_threat as f32 / 8.0).clamp(0.0, 2.0));
+
+    // 24. Đội hình hiện tại của phe mình (chuẩn hóa 0.0 -> 1.0)
+    let cur_form = engine.team_formation(team).to_index() as f32 / 5.0;
+    s.push(cur_form);
+
+    // Đảm bảo đúng 24 chiều
+    if s.len() > STATE_DIM {
+        s.truncate(STATE_DIM);
+    }
     while s.len() < STATE_DIM {
         s.push(0.0);
     }
@@ -210,8 +235,12 @@ pub fn update_ai_for_team(engine: &mut GameEngine, team: Team, ai_state: &mut Ai
 
         let state = extract_state_vector_for_team(engine, team);
         let action = ai_state.rl_brain.select_action(&state, ai_state.training_enabled);
+        let formation = ai_state.rl_brain.select_formation(&state, ai_state.training_enabled);
+
         ai_state.current_action = action;
+        ai_state.current_formation = formation;
         ai_state.last_state = state;
+        engine.set_team_formation(team, formation);
 
         apply_strategic_action_for_team(engine, team, action);
     }
@@ -519,22 +548,27 @@ pub fn maintain_continuous_ai_reflexes_for_team(engine: &mut GameEngine, team: T
     let len = (dx * dx + dy * dy).sqrt().max(1.0);
     let rally_pos = (base_pos.0 + dx / len * 400.0, base_pos.1 + dy / len * 400.0);
 
-    let idle_combat_units: Vec<u32> = engine.units.iter()
+    let idle_combat_pairs: Vec<(u32, UnitType)> = engine.units.iter()
         .filter(|u| {
             u.team == team && u.unit_type != UnitType::Engineer && u.order == UnitOrder::Idle
                 && ((u.x - base_pos.0).powi(2) + (u.y - base_pos.1).powi(2)) < 650.0_f32.powi(2)
         })
-        .map(|u| u.id)
+        .map(|u| (u.id, u.unit_type))
         .collect();
 
-    for (i, uid) in idle_combat_units.iter().enumerate() {
-        if let Some(u) = engine.units.iter_mut().find(|u| u.id == *uid) {
-            let offset_x = ((i % 5) as f32 - 2.0) * 25.0;
-            let offset_y = ((i / 5) as f32) * 25.0;
-            u.order = UnitOrder::MoveTo {
-                x: rally_pos.0 + offset_x,
-                y: rally_pos.1 + offset_y,
-            };
+    if !idle_combat_pairs.is_empty() {
+        let form = engine.team_formation(team);
+        let form_pos = crate::formation::compute_formation_positions(
+            &idle_combat_pairs,
+            base_pos,
+            rally_pos,
+            form,
+        );
+        for (uid, tx, ty, off_x, off_y) in form_pos {
+            if let Some(u) = engine.units.iter_mut().find(|u| u.id == uid) {
+                u.formation_offset = (off_x, off_y);
+                u.order = UnitOrder::MoveTo { x: tx, y: ty };
+            }
         }
     }
 }
@@ -808,12 +842,12 @@ pub enum MilitaryCommand {
 pub fn command_team_military(engine: &mut GameEngine, team: Team, cmd: MilitaryCommand) {
     let opp_team = find_primary_hostile_team(engine, team);
 
-    let combat_unit_ids: Vec<u32> = engine.units.iter()
+    let combat_pairs: Vec<(u32, UnitType)> = engine.units.iter()
         .filter(|u| u.team == team && u.unit_type != UnitType::Engineer)
-        .map(|u| u.id)
+        .map(|u| (u.id, u.unit_type))
         .collect();
 
-    if combat_unit_ids.is_empty() {
+    if combat_pairs.is_empty() {
         return;
     }
 
@@ -827,6 +861,20 @@ pub fn command_team_military(engine: &mut GameEngine, team: Team, cmd: MilitaryC
     let len = (dx * dx + dy * dy).sqrt().max(1.0);
     let default_rally = (base_pos.0 + dx / len * 350.0, base_pos.1 + dy / len * 350.0);
 
+    let form = engine.team_formation(team);
+
+    let start_center = {
+        let mut sum_x = 0.0;
+        let mut sum_y = 0.0;
+        for (uid, _) in &combat_pairs {
+            if let Some(u) = engine.units.iter().find(|u| u.id == *uid) {
+                sum_x += u.x;
+                sum_y += u.y;
+            }
+        }
+        (sum_x / combat_pairs.len() as f32, sum_y / combat_pairs.len() as f32)
+    };
+
     match cmd {
         MilitaryCommand::DefendBase => {
             let nearest_threat = engine.units.iter()
@@ -839,9 +887,17 @@ pub fn command_team_military(engine: &mut GameEngine, team: Team, cmd: MilitaryC
                 .map(|u| (u.x, u.y))
                 .unwrap_or(base_pos);
 
-            for uid in combat_unit_ids {
+            let form_pos = crate::formation::compute_formation_positions(
+                &combat_pairs,
+                start_center,
+                nearest_threat,
+                form,
+            );
+
+            for (uid, tx, ty, off_x, off_y) in form_pos {
                 if let Some(u) = engine.units.iter_mut().find(|u| u.id == uid) {
-                    u.order = UnitOrder::AttackMove { x: nearest_threat.0, y: nearest_threat.1 };
+                    u.formation_offset = (off_x, off_y);
+                    u.order = UnitOrder::AttackMove { x: tx, y: ty };
                 }
             }
         }
@@ -851,14 +907,17 @@ pub fn command_team_military(engine: &mut GameEngine, team: Team, cmd: MilitaryC
                 .map(|u| (u.x, u.y))
                 .unwrap_or(default_opp_worker_pos);
 
-            for (i, uid) in combat_unit_ids.iter().enumerate() {
-                if let Some(u) = engine.units.iter_mut().find(|u| u.id == *uid) {
-                    let offset_x = ((i % 4) as f32 - 1.5) * 25.0;
-                    let offset_y = ((i / 4) as f32) * 25.0;
-                    u.order = UnitOrder::AttackMove {
-                        x: opp_worker_pos.0 + offset_x,
-                        y: opp_worker_pos.1 + offset_y,
-                    };
+            let form_pos = crate::formation::compute_formation_positions(
+                &combat_pairs,
+                start_center,
+                opp_worker_pos,
+                form,
+            );
+
+            for (uid, tx, ty, off_x, off_y) in form_pos {
+                if let Some(u) = engine.units.iter_mut().find(|u| u.id == uid) {
+                    u.formation_offset = (off_x, off_y);
+                    u.order = UnitOrder::AttackMove { x: tx, y: ty };
                 }
             }
         }
@@ -868,8 +927,15 @@ pub fn command_team_military(engine: &mut GameEngine, team: Team, cmd: MilitaryC
                 .map(|b| (b.x, b.y))
                 .unwrap_or(default_opp_base);
 
-            for (i, uid) in combat_unit_ids.iter().enumerate() {
-                if let Some(u) = engine.units.iter_mut().find(|u| u.id == *uid) {
+            let form_pos = crate::formation::compute_formation_positions(
+                &combat_pairs,
+                start_center,
+                target,
+                form,
+            );
+
+            for (uid, tx, ty, off_x, off_y) in form_pos {
+                if let Some(u) = engine.units.iter_mut().find(|u| u.id == uid) {
                     if let UnitOrder::AttackTarget { .. } = u.order {
                         continue;
                     }
@@ -880,21 +946,21 @@ pub fn command_team_military(engine: &mut GameEngine, team: Team, cmd: MilitaryC
                         }
                     }
 
-                    let angle = (i as f32) * 0.45;
-                    let radius = 40.0 + ((i % 4) as f32) * 15.0;
-                    let target_x = (target.0 + angle.cos() * radius).clamp(60.0, crate::map::MAP_WIDTH - 60.0);
-                    let target_y = (target.1 + angle.sin() * radius).clamp(60.0, crate::map::MAP_HEIGHT - 60.0);
-
-                    u.order = UnitOrder::AttackMove {
-                        x: target_x,
-                        y: target_y,
-                    };
+                    u.formation_offset = (off_x, off_y);
+                    u.order = UnitOrder::AttackMove { x: tx, y: ty };
                 }
             }
         }
         MilitaryCommand::Regroup => {
-            for (i, uid) in combat_unit_ids.iter().enumerate() {
-                if let Some(u) = engine.units.iter_mut().find(|u| u.id == *uid) {
+            let form_pos = crate::formation::compute_formation_positions(
+                &combat_pairs,
+                start_center,
+                default_rally,
+                form,
+            );
+
+            for (uid, tx, ty, off_x, off_y) in form_pos {
+                if let Some(u) = engine.units.iter_mut().find(|u| u.id == uid) {
                     if let UnitOrder::AttackTarget { .. } = u.order {
                         continue;
                     }
@@ -904,12 +970,9 @@ pub fn command_team_military(engine: &mut GameEngine, team: Team, cmd: MilitaryC
                             continue;
                         }
                     }
-                    let offset_x = ((i % 5) as f32 - 2.0) * 25.0;
-                    let offset_y = ((i / 5) as f32) * 25.0;
-                    u.order = UnitOrder::MoveTo {
-                        x: default_rally.0 + offset_x,
-                        y: default_rally.1 + offset_y,
-                    };
+
+                    u.formation_offset = (off_x, off_y);
+                    u.order = UnitOrder::MoveTo { x: tx, y: ty };
                 }
             }
         }

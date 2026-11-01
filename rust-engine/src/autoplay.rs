@@ -1,4 +1,4 @@
-use crate::components::{BuildingType, Team, UnitOrder, UnitType};
+use crate::components::{BuildingType, FormationType, Team, UnitOrder, UnitType};
 use crate::resources::TechTreeState;
 use crate::GameEngine;
 use serde::{Deserialize, Serialize};
@@ -31,7 +31,10 @@ pub enum AutoAction {
         tech_id: String,
         use_priority_queue: bool,
     },
-    AttackWave,
+    AttackWave {
+        #[serde(default)]
+        formation: Option<String>,
+    },
     Delay {
         seconds: f32,
     },
@@ -104,6 +107,8 @@ impl Default for TurretDefenseLine {
 pub struct AutoPlayConfig {
     pub enabled: bool,
     pub priority_techs: Vec<String>,
+    #[serde(default)]
+    pub preferred_formation: FormationType,
     #[serde(default)]
     pub turret_defense: TurretDefenseLine,
     pub loops: Vec<AutoLoop>,
@@ -261,7 +266,7 @@ impl AutoPlayConfig {
                         unit_type: "Combat".to_string(),
                         count: 20,
                     }],
-                    action: AutoAction::AttackWave,
+                    action: AutoAction::AttackWave { formation: None },
                 },
             ],
         };
@@ -269,6 +274,7 @@ impl AutoPlayConfig {
         Self {
             enabled: false,
             priority_techs: Vec::new(),
+            preferred_formation: FormationType::Line,
             turret_defense,
             loops: vec![production_loop, military_loop],
         }
@@ -639,7 +645,7 @@ fn execute_action_for_team(
 
             false
         }
-        AutoAction::AttackWave => {
+        AutoAction::AttackWave { formation: form_override } => {
             let target_pos = engine
                 .buildings
                 .iter()
@@ -663,21 +669,54 @@ fn execute_action_for_team(
                     (crate::map::MAP_WIDTH * 0.5, crate::map::MAP_HEIGHT * 0.5)
                 });
 
-            let combat_units: Vec<u32> = engine
+            let combat_pairs: Vec<(u32, UnitType)> = engine
                 .units
                 .iter()
                 .filter(|u| u.team == team && u.unit_type != UnitType::Engineer)
-                .map(|u| u.id)
+                .map(|u| (u.id, u.unit_type))
                 .collect();
 
-            for (i, uid) in combat_units.iter().enumerate() {
-                if let Some(u) = engine.units.iter_mut().find(|u| u.id == *uid) {
-                    let offset_x = ((i % 6) as f32 - 2.5) * 25.0;
-                    let offset_y = ((i / 6) as f32) * 25.0;
-                    u.order = UnitOrder::AttackMove {
-                        x: target_pos.0 + offset_x,
-                        y: target_pos.1 + offset_y,
-                    };
+            if !combat_pairs.is_empty() {
+                // Xác định đội hình tấn công: ưu tiên thẻ chỉ định -> cấu hình Auto -> đội hình hiện tại của team
+                let chosen_form = if let Some(ref f_str) = form_override {
+                    match f_str.to_lowercase().as_str() {
+                        "wedge" => FormationType::Wedge,
+                        "box" => FormationType::Box,
+                        "scatter" => FormationType::Scatter,
+                        "circle" => FormationType::Circle,
+                        "column" => FormationType::Column,
+                        _ => FormationType::Line,
+                    }
+                } else {
+                    engine.team_autoplay(team).config.preferred_formation
+                };
+
+                engine.set_team_formation(team, chosen_form);
+
+                let start_center = {
+                    let mut sum_x = 0.0;
+                    let mut sum_y = 0.0;
+                    for (uid, _) in &combat_pairs {
+                        if let Some(u) = engine.units.iter().find(|u| u.id == *uid) {
+                            sum_x += u.x;
+                            sum_y += u.y;
+                        }
+                    }
+                    (sum_x / combat_pairs.len() as f32, sum_y / combat_pairs.len() as f32)
+                };
+
+                let form_positions = crate::formation::compute_formation_positions(
+                    &combat_pairs,
+                    start_center,
+                    target_pos,
+                    chosen_form,
+                );
+
+                for (uid, tx, ty, off_x, off_y) in form_positions {
+                    if let Some(u) = engine.units.iter_mut().find(|u| u.id == uid) {
+                        u.formation_offset = (off_x, off_y);
+                        u.order = UnitOrder::AttackMove { x: tx, y: ty };
+                    }
                 }
             }
 
@@ -1223,6 +1262,7 @@ pub fn create_training_autoplay_config(team: Team, archetype: AutoTrainingArchet
                 "titan_alloy_plating".to_string(),
                 "overload_strike".to_string(),
             ];
+            config.preferred_formation = FormationType::Box;
             config.turret_defense.rows = 2;
         }
         AutoTrainingArchetype::MagicCelestialVoid => {
@@ -1232,6 +1272,7 @@ pub fn create_training_autoplay_config(team: Team, archetype: AutoTrainingArchet
                 "corrosive_curse".to_string(),
                 "void_cataclysm".to_string(),
             ];
+            config.preferred_formation = FormationType::Line;
         }
         AutoTrainingArchetype::MonsterSwarmBehemoth => {
             config.priority_techs = vec![
@@ -1241,6 +1282,7 @@ pub fn create_training_autoplay_config(team: Team, archetype: AutoTrainingArchet
                 "primeval_scales".to_string(),
                 "behemoth_mutation".to_string(),
             ];
+            config.preferred_formation = FormationType::Circle;
             // Swarm tăng số thợ mỏ ban đầu
             if let Some(prod_loop) = config.loops.iter_mut().find(|l| l.id == "loop_production") {
                 if let Some(w_card) = prod_loop.cards.iter_mut().find(|c| c.id == "card_prod_worker") {
@@ -1257,6 +1299,7 @@ pub fn create_training_autoplay_config(team: Team, archetype: AutoTrainingArchet
                 "exo_boosters".to_string(),
                 "superheated_blades".to_string(),
             ];
+            config.preferred_formation = FormationType::Wedge;
             // Rush sớm với ngưỡng quân thấp hơn
             if let Some(mil_loop) = config.loops.iter_mut().find(|l| l.id == "loop_military") {
                 if let Some(atk_card) = mil_loop.cards.iter_mut().find(|c| c.id == "card_mil_attack") {
@@ -1274,6 +1317,7 @@ pub fn create_training_autoplay_config(team: Team, archetype: AutoTrainingArchet
                 "fortified_blueprints".to_string(),
                 "dark_matter_rockets".to_string(),
             ];
+            config.preferred_formation = FormationType::Line;
             config.turret_defense.rows = 2;
             config.turret_defense.spacing = 75.0;
         }
@@ -1299,6 +1343,15 @@ pub fn adapt_training_autoplay_mid_match(engine: &mut GameEngine, team: Team) {
         .iter()
         .filter(|u| u.team == team && u.unit_type != UnitType::Engineer)
         .count();
+
+    let enemy_aoe_threat = engine.units.iter().any(|u| {
+        engine.are_hostile(team, u.team) && (
+            u.unit_type == UnitType::DarkRocketeer
+            || u.unit_type == UnitType::VoidWarlock
+            || u.unit_type == UnitType::AcidBaneling
+            || u.unit_type == UnitType::BehemothTitan
+        )
+    });
 
     let game_time = engine.game_time;
     let eco_minerals = engine.team_eco(team).minerals;
@@ -1491,7 +1544,11 @@ pub fn adapt_training_autoplay_mid_match(engine: &mut GameEngine, team: Team) {
         }
     }
 
-    // 3. Tùy biến Phòng Tuyến Tháp Pháo (Turret Defense)
+    // 3. Tùy biến Phòng Tuyến Tháp Pháo (Turret Defense) & Đội hình khắc chế AoE
+    if enemy_aoe_threat && config.preferred_formation != FormationType::Scatter {
+        config.preferred_formation = FormationType::Scatter;
+    }
+
     if enemy_combat_count >= 14 && config.turret_defense.rows < 2 {
         config.turret_defense.rows = 2;
     }

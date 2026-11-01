@@ -23,6 +23,18 @@ export const DamageType = Object.freeze({
 });
 
 /**
+ * @enum {0 | 1 | 2 | 3 | 4 | 5}
+ */
+export const FormationType = Object.freeze({
+    Line: 0, "0": "Line",
+    Wedge: 1, "1": "Wedge",
+    Box: 2, "2": "Box",
+    Scatter: 3, "3": "Scatter",
+    Circle: 4, "4": "Circle",
+    Column: 5, "5": "Column",
+});
+
+/**
  * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7}
  */
 export const Team = Object.freeze({

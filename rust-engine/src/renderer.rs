@@ -1305,11 +1305,20 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
             x + 15.0,
             y + 75.0,
         );
+        ctx.set_font("bold 11px monospace");
+        ctx.set_fill_style_str("#38bdf8");
+        let active_form = engine.team_formation(Team::Player);
+        let _ = ctx.fill_text(
+            &format!("📐 ĐỘI HÌNH: {}", active_form.display_name()),
+            x + 15.0,
+            y + 98.0,
+        );
+        ctx.set_font("10px monospace");
         ctx.set_fill_style_str("#64748b");
         let _ = ctx.fill_text(
-            "Phím A: Attack-Move  | Chuột Phải: Điều động",
+            "Phím F / Command Card: Đổi đội hình  |  Phím A: Attack-Move",
             x + 15.0,
-            y + 105.0,
+            y + 118.0,
         );
         return;
     }
@@ -1429,6 +1438,18 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
         draw_hud_button(ctx, x + 72.0, y + 50.0, 62.0, 40.0, "HQ CC", &cc_cost);
         draw_hud_button(ctx, x + 139.0, y + 50.0, 62.0, 40.0, "CONVERT", &conv_cost);
 
+        // Hàng 3: Nút đổi đội hình kế tiếp (phím F)
+        let cur_form = engine.team_formation(Team::Player);
+        draw_hud_button(
+            ctx,
+            x + 5.0,
+            y + 94.0,
+            200.0,
+            38.0,
+            &format!("ĐỘI HÌNH [F]: {}", cur_form.button_label()),
+            "Bấm để đổi kiểu đội hình",
+        );
+
         if let Some(hover_idx) = engine.hovered_command_button {
             tooltip = match hover_idx {
                 0 => Some((
@@ -1474,8 +1495,64 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
                         conv_cost, engine.config.economy.converter_threshold
                     ),
                 )),
+                6 | 7 | 8 => Some((
+                    format!("ĐỘI HÌNH: {}", cur_form.display_name()),
+                    format!("{} (Nhấn F hoặc Click để chuyển đổi)", cur_form.description()),
+                )),
                 _ => None,
             };
+        }
+    } else if !engine.selected_unit_ids.is_empty() {
+        // Đang chọn lính chiến đấu: Hiển thị 6 nút chọn trực tiếp Đội Hình Chiến Thuật (Formation Cards)
+        let active_form = engine.team_formation(Team::Player);
+        let forms = FormationType::ALL;
+
+        for (idx, &form) in forms.iter().enumerate() {
+            let row = idx / 3;
+            let col = idx % 3;
+            let bx = x + 5.0 + (col as f64) * 67.0;
+            let by = y + 6.0 + (row as f64) * 44.0;
+            let is_active = form == active_form;
+            let is_hovered = engine.hovered_command_button == Some(idx);
+
+            // Nền nút
+            ctx.set_fill_style_str(if is_active {
+                "#0c334f"
+            } else if is_hovered {
+                "#153859"
+            } else {
+                "#0a1c2e"
+            });
+            ctx.fill_rect(bx, by, 62.0, 40.0);
+
+            // Viền nút
+            ctx.set_stroke_style_str(if is_active {
+                "#00e5ff"
+            } else if is_hovered {
+                "#38bdf8"
+            } else {
+                "#1e3a5f"
+            });
+            ctx.set_line_width(if is_active { 2.0 } else { 1.0 });
+            ctx.stroke_rect(bx, by, 62.0, 40.0);
+
+            // Icon / Sơ đồ chấm đội hình nhỏ
+            draw_formation_mini_icon(ctx, bx + 31.0, by + 12.0, form, is_active);
+
+            // Nhãn nút
+            ctx.set_font(if is_active { "bold 10px monospace" } else { "9px monospace" });
+            ctx.set_fill_style_str(if is_active { "#00e5ff" } else { "#94a3b8" });
+            let _ = ctx.fill_text(form.button_label(), bx + 6.0, by + 34.0);
+        }
+
+        if let Some(hover_idx) = engine.hovered_command_button {
+            if hover_idx < 6 {
+                let hovered_form = FormationType::from_index(hover_idx);
+                tooltip = Some((
+                    format!("ĐỘI HÌNH: {}", hovered_form.display_name()),
+                    hovered_form.description().to_string(),
+                ));
+            }
         }
     } else if let Some(bid) = engine.selected_building_id {
         if let Some(b) = engine
@@ -1757,6 +1834,75 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
         ctx.set_font("10px monospace");
         ctx.set_fill_style_str("#cbd5e1");
         let _ = ctx.fill_text(&desc, tt_x + 8.0, tt_y + 34.0);
+    }
+}
+
+fn draw_formation_mini_icon(
+    ctx: &CanvasRenderingContext2d,
+    cx: f64,
+    cy: f64,
+    form: FormationType,
+    is_active: bool,
+) {
+    let dot_color = if is_active { "#00e5ff" } else { "#64748b" };
+    ctx.set_fill_style_str(dot_color);
+
+    let draw_dot = |x: f64, y: f64| {
+        ctx.begin_path();
+        let _ = ctx.arc(x, y, 1.8, 0.0, std::f64::consts::PI * 2.0);
+        ctx.fill();
+    };
+
+    match form {
+        FormationType::Line => {
+            // 2 hàng ngang
+            draw_dot(cx - 10.0, cy - 3.0);
+            draw_dot(cx, cy - 3.0);
+            draw_dot(cx + 10.0, cy - 3.0);
+            draw_dot(cx - 6.0, cy + 4.0);
+            draw_dot(cx + 6.0, cy + 4.0);
+        }
+        FormationType::Wedge => {
+            // Mũi tên chữ V
+            draw_dot(cx, cy - 5.0);
+            draw_dot(cx - 6.0, cy);
+            draw_dot(cx + 6.0, cy);
+            draw_dot(cx - 12.0, cy + 5.0);
+            draw_dot(cx + 12.0, cy + 5.0);
+        }
+        FormationType::Box => {
+            // Ô vuông viền
+            draw_dot(cx - 8.0, cy - 5.0);
+            draw_dot(cx + 8.0, cy - 5.0);
+            draw_dot(cx - 8.0, cy + 5.0);
+            draw_dot(cx + 8.0, cy + 5.0);
+            draw_dot(cx, cy); // Lõi
+        }
+        FormationType::Scatter => {
+            // So le tản rộng
+            draw_dot(cx - 10.0, cy - 5.0);
+            draw_dot(cx + 4.0, cy - 5.0);
+            draw_dot(cx - 3.0, cy);
+            draw_dot(cx + 10.0, cy + 4.0);
+            draw_dot(cx - 9.0, cy + 5.0);
+        }
+        FormationType::Circle => {
+            // Cung bán nguyệt
+            draw_dot(cx - 11.0, cy + 4.0);
+            draw_dot(cx - 6.0, cy - 2.0);
+            draw_dot(cx, cy - 5.0);
+            draw_dot(cx + 6.0, cy - 2.0);
+            draw_dot(cx + 11.0, cy + 4.0);
+        }
+        FormationType::Column => {
+            // 2 hàng dọc
+            draw_dot(cx - 4.0, cy - 5.0);
+            draw_dot(cx + 4.0, cy - 5.0);
+            draw_dot(cx - 4.0, cy);
+            draw_dot(cx + 4.0, cy);
+            draw_dot(cx - 4.0, cy + 5.0);
+            draw_dot(cx + 4.0, cy + 5.0);
+        }
     }
 }
 

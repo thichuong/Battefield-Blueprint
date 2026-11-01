@@ -2,7 +2,7 @@ use rust_engine::ai::extract_state_vector_for_team;
 use rust_engine::autoplay::{
     adapt_training_autoplay_mid_match, create_training_autoplay_config, AutoTrainingArchetype,
 };
-use rust_engine::components::{BuildingType, PlayerSlotConfig, Team, UnitType, MAX_PLAYERS};
+use rust_engine::components::{BuildingType, FormationType, PlayerSlotConfig, Team, UnitType, MAX_PLAYERS};
 use rust_engine::rl::{BotStrategicAction, RlBrain};
 use rust_engine::GameEngine;
 use std::env;
@@ -153,6 +153,7 @@ fn main() {
 
     let mut champion_pool: Vec<RlBrain> = Vec::new();
     let mut action_counts = [0usize; 11];
+    let mut formation_counts = [0usize; 6];
 
     let mut engine = GameEngine::new_headless();
     engine.ai_state.training_enabled = true;
@@ -258,10 +259,43 @@ fn main() {
 
             let cur_state = extract_state_vector_for_team(&engine, learner_team);
             let action = engine.team_ai(learner_team).current_action;
+            let formation = engine.team_ai(learner_team).current_formation;
             action_counts[action.to_index()] += 1;
+            formation_counts[formation.to_index()] += 1;
 
             // --- REWARD CALCULATION FOR MULTI-PLAYER/FACTION ---
             let mut step_reward = 0.0_f32;
+
+            // Formation Tactical Reward Shaping:
+            // 1) Khi đối phương có đe dọa AoE cao (state[22]): Scatter được thưởng cao để tránh sát thương lan
+            let opp_aoe_threat = prev_state[22];
+            if opp_aoe_threat > 0.15 {
+                if formation == FormationType::Scatter {
+                    step_reward += 1.2;
+                } else if formation == FormationType::Line || formation == FormationType::Box {
+                    step_reward -= 0.6;
+                }
+            }
+
+            // 2) Tùy biến đội hình theo hành động chiến lược:
+            match action {
+                BotStrategicAction::AllOutAssault => {
+                    if formation == FormationType::Wedge || formation == FormationType::Circle || formation == FormationType::Line {
+                        step_reward += 0.6;
+                    }
+                }
+                BotStrategicAction::HarassEconomy => {
+                    if formation == FormationType::Column || formation == FormationType::Wedge {
+                        step_reward += 0.8;
+                    }
+                }
+                BotStrategicAction::DefendAndCounter | BotStrategicAction::RegroupAndConsolidate => {
+                    if formation == FormationType::Circle || formation == FormationType::Box {
+                        step_reward += 0.6;
+                    }
+                }
+                _ => {}
+            }
 
             // 1. Phá hủy công trình thù địch
             let cur_opp_bldgs = count_hostile_buildings(&engine, learner_team);
@@ -309,7 +343,7 @@ fn main() {
             }
 
             ep_reward += step_reward;
-            engine.team_ai_mut(learner_team).rl_brain.train_step(&prev_state, action, step_reward, &cur_state, is_done);
+            engine.team_ai_mut(learner_team).rl_brain.train_step_with_formation(&prev_state, action, formation, step_reward, &cur_state, is_done);
 
             if is_done {
                 break;
@@ -366,6 +400,11 @@ fn main() {
     for a_idx in 0..11 {
         let act = BotStrategicAction::from_index(a_idx);
         println!("   - {:<32}: {:6} decisions", act.name(), action_counts[a_idx]);
+    }
+    println!("🛡️  TỔNG KẾT ĐỘI HÌNH (TACTICAL FORMATIONS) BOT ĐÃ RA QUYẾT ĐỊNH:");
+    for f_idx in 0..6 {
+        let form = FormationType::from_index(f_idx);
+        println!("   - {:<32}: {:6} uses ({})", form.display_name(), formation_counts[f_idx], form.description());
     }
 
     let model_json = serde_json::to_string_pretty(&engine.team_ai(learner_team).rl_brain).expect("Serialize RL Brain failed");

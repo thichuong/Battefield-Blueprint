@@ -163,6 +163,76 @@ fn process_commands(engine: &mut GameEngine) {
                 }
                 send_sync_event(engine);
             }
+            ReactToEngineCommand::SetFormation { formation } => {
+                let form = match formation.to_lowercase().as_str() {
+                    "wedge" => FormationType::Wedge,
+                    "box" => FormationType::Box,
+                    "scatter" => FormationType::Scatter,
+                    "circle" => FormationType::Circle,
+                    "column" => FormationType::Column,
+                    _ => FormationType::Line,
+                };
+                set_player_formation_and_reform(engine, form);
+                send_sync_event(engine);
+            }
+        }
+    }
+}
+
+pub fn set_player_formation_and_reform(engine: &mut GameEngine, form: FormationType) {
+    engine.set_team_formation(Team::Player, form);
+
+    if engine.selected_unit_ids.is_empty() {
+        return;
+    }
+
+    let selected_pairs: Vec<(u32, UnitType)> = engine
+        .selected_unit_ids
+        .iter()
+        .filter_map(|uid| {
+            engine
+                .units
+                .iter()
+                .find(|u| u.id == *uid && u.team == Team::Player)
+                .map(|u| (u.id, u.unit_type))
+        })
+        .collect();
+
+    if selected_pairs.is_empty() {
+        return;
+    }
+
+    // Tâm và hướng nhìn hiện tại của cụm quân
+    let mut sum_x = 0.0;
+    let mut sum_y = 0.0;
+    let mut facing_sum = 0.0;
+    for (uid, _) in &selected_pairs {
+        if let Some(u) = engine.units.iter().find(|u| u.id == *uid) {
+            sum_x += u.x;
+            sum_y += u.y;
+            facing_sum += if u.facing_right { 1.0 } else { -1.0 };
+        }
+    }
+    let center_x = sum_x / (selected_pairs.len() as f32);
+    let center_y = sum_y / (selected_pairs.len() as f32);
+    let fwd_dir = if facing_sum >= 0.0 { 1.0 } else { -1.0 };
+    let target_ref = (center_x + fwd_dir * 100.0, center_y);
+
+    let form_positions = crate::formation::compute_formation_positions(
+        &selected_pairs,
+        (center_x, center_y),
+        target_ref,
+        form,
+    );
+
+    for (uid, target_x, target_y, off_x, off_y) in form_positions {
+        if let Some(u) = engine.units.iter_mut().find(|u| u.id == uid) {
+            u.formation_offset = (off_x, off_y);
+            // Dàn lại vị trí ngay tại chỗ
+            u.order = UnitOrder::MoveTo {
+                x: target_x,
+                y: target_y,
+            };
         }
     }
 }
@@ -1008,14 +1078,14 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                             });
 
                         let (tx, ty) = if let Some((_, ex, ey)) = nearest_enemy_cc {
-                            (*ex, *ey)
+                            (*ex + unit.formation_offset.0, *ey + unit.formation_offset.1)
                         } else {
-                            (MAP_WIDTH * 0.5, MAP_HEIGHT * 0.5)
+                            (MAP_WIDTH * 0.5 + unit.formation_offset.0, MAP_HEIGHT * 0.5 + unit.formation_offset.1)
                         };
 
                         unit.order = UnitOrder::AttackMove {
-                            x: tx,
-                            y: ty,
+                            x: tx.clamp(60.0, MAP_WIDTH - 60.0),
+                            y: ty.clamp(60.0, MAP_HEIGHT - 60.0),
                         };
                     } else {
                         unit.order = UnitOrder::Idle;
@@ -1555,6 +1625,7 @@ fn check_game_over(engine: &mut GameEngine) {
 pub fn send_sync_event(engine: &mut GameEngine) {
     let tech_json = serde_json::to_string(&engine.player_tech).unwrap_or_default();
     let autoplay_json = serde_json::to_string(&engine.autoplay.config).unwrap_or_default();
+    let current_form = engine.team_formation(Team::Player).button_label().to_string();
     engine.outgoing_events.push(EngineToReactEvent::SyncState {
         player_minerals: engine.player_eco.minerals,
         player_energy: engine.player_eco.energy,
@@ -1562,6 +1633,7 @@ pub fn send_sync_event(engine: &mut GameEngine) {
         player_max_supply: engine.player_eco.max_supply,
         tech_state: tech_json,
         autoplay_state: autoplay_json,
+        player_formation: current_form,
         game_time: engine.game_time,
         is_paused: engine.is_paused,
     });
@@ -1586,19 +1658,49 @@ pub fn handle_mouse_down(engine: &mut GameEngine, button: i32, cx: f32, cy: f32)
         if engine.is_attack_move_mode {
             engine.is_attack_move_mode = false;
             let (wx, wy) = engine.screen_to_world(cx, cy);
-            let count = engine.selected_unit_ids.len();
-            for (i, uid) in engine.selected_unit_ids.iter().enumerate() {
-                if let Some(u) = engine
-                    .units
-                    .iter_mut()
-                    .find(|u| u.id == *uid && u.team == Team::Player)
-                {
-                    let offset_x = ((i % 5) as f32 - (count.min(5) as f32 * 0.5)) * 20.0;
-                    let offset_y = ((i / 5) as f32) * 20.0;
-                    u.order = UnitOrder::AttackMove {
-                        x: wx + offset_x,
-                        y: wy + offset_y,
-                    };
+            let selected_pairs: Vec<(u32, UnitType)> = engine
+                .selected_unit_ids
+                .iter()
+                .filter_map(|uid| {
+                    engine
+                        .units
+                        .iter()
+                        .find(|u| u.id == *uid && u.team == Team::Player)
+                        .map(|u| (u.id, u.unit_type))
+                })
+                .collect();
+
+            if !selected_pairs.is_empty() {
+                let start_center = {
+                    let mut sum_x = 0.0;
+                    let mut sum_y = 0.0;
+                    let mut count = 0.0;
+                    for uid in &engine.selected_unit_ids {
+                        if let Some(u) = engine.units.iter().find(|u| u.id == *uid && u.team == Team::Player) {
+                            sum_x += u.x;
+                            sum_y += u.y;
+                            count += 1.0;
+                        }
+                    }
+                    if count > 0.0 { (sum_x / count, sum_y / count) } else { (wx, wy) }
+                };
+
+                let form = engine.team_formation(Team::Player);
+                let form_positions = crate::formation::compute_formation_positions(
+                    &selected_pairs,
+                    start_center,
+                    (wx, wy),
+                    form,
+                );
+
+                for (uid, target_x, target_y, off_x, off_y) in form_positions {
+                    if let Some(u) = engine.units.iter_mut().find(|u| u.id == uid) {
+                        u.formation_offset = (off_x, off_y);
+                        u.order = UnitOrder::AttackMove {
+                            x: target_x,
+                            y: target_y,
+                        };
+                    }
                 }
             }
             engine.outgoing_events.push(EngineToReactEvent::PlaySound {
@@ -1738,6 +1840,15 @@ pub fn handle_hotkeys(engine: &mut GameEngine, key: &str) {
             engine
                 .outgoing_events
                 .push(EngineToReactEvent::OpenAutoPlayModal);
+            send_sync_event(engine);
+        }
+        "KeyF" => {
+            // Chuyển đổi nhanh Đội hình chiến thuật kế tiếp
+            let next_form = engine.team_formation(Team::Player).next();
+            set_player_formation_and_reform(engine, next_form);
+            engine.outgoing_events.push(EngineToReactEvent::PlaySound {
+                sound: "click".to_string(),
+            });
             send_sync_event(engine);
         }
         "KeyC" | "KeyH" => {
@@ -1964,20 +2075,50 @@ fn issue_right_click_order(engine: &mut GameEngine, wx: f32, wy: f32) {
         return;
     }
 
-    // 5. Di chuyển thông thường tới điểm bấm (dàn đội hình thông minh)
-    let count = engine.selected_unit_ids.len();
-    for (i, uid) in engine.selected_unit_ids.iter().enumerate() {
-        if let Some(u) = engine
-            .units
-            .iter_mut()
-            .find(|u| u.id == *uid && u.team == Team::Player)
-        {
-            let offset_x = ((i % 5) as f32 - (count.min(5) as f32 * 0.5)) * 22.0;
-            let offset_y = ((i / 5) as f32) * 22.0;
-            u.order = UnitOrder::MoveTo {
-                x: wx + offset_x,
-                y: wy + offset_y,
-            };
+    // 5. Di chuyển thông thường tới điểm bấm (dàn đội hình chiến thuật thông minh)
+    let selected_pairs: Vec<(u32, UnitType)> = engine
+        .selected_unit_ids
+        .iter()
+        .filter_map(|uid| {
+            engine
+                .units
+                .iter()
+                .find(|u| u.id == *uid && u.team == Team::Player)
+                .map(|u| (u.id, u.unit_type))
+        })
+        .collect();
+
+    if !selected_pairs.is_empty() {
+        let start_center = {
+            let mut sum_x = 0.0;
+            let mut sum_y = 0.0;
+            let mut count = 0.0;
+            for uid in &engine.selected_unit_ids {
+                if let Some(u) = engine.units.iter().find(|u| u.id == *uid && u.team == Team::Player) {
+                    sum_x += u.x;
+                    sum_y += u.y;
+                    count += 1.0;
+                }
+            }
+            if count > 0.0 { (sum_x / count, sum_y / count) } else { (wx, wy) }
+        };
+
+        let form = engine.team_formation(Team::Player);
+        let form_positions = crate::formation::compute_formation_positions(
+            &selected_pairs,
+            start_center,
+            (wx, wy),
+            form,
+        );
+
+        for (uid, target_x, target_y, off_x, off_y) in form_positions {
+            if let Some(u) = engine.units.iter_mut().find(|u| u.id == uid) {
+                u.formation_offset = (off_x, off_y);
+                u.order = UnitOrder::MoveTo {
+                    x: target_x,
+                    y: target_y,
+                };
+            }
         }
     }
     engine.outgoing_events.push(EngineToReactEvent::PlaySound {
@@ -2117,9 +2258,30 @@ fn handle_command_card_click(engine: &mut GameEngine, rel_x: f32, rel_y: f32) {
             3 => engine.build_mode = Some(BuildingType::TurretTower),
             4 => engine.build_mode = Some(BuildingType::CommandCenter),
             5 => engine.build_mode = Some(BuildingType::EnergyConverter),
+            6 => {
+                let next_form = engine.team_formation(Team::Player).next();
+                set_player_formation_and_reform(engine, next_form);
+                engine.outgoing_events.push(EngineToReactEvent::PlaySound {
+                    sound: "click".to_string(),
+                });
+                send_sync_event(engine);
+            }
             _ => {}
         }
         return;
+    }
+
+    // Nếu đang chọn Lính chiến đấu (không có Worker) -> 6 nút chọn trực tiếp đội hình
+    if !engine.selected_unit_ids.is_empty() {
+        if btn_idx < 6 {
+            let target_form = FormationType::from_index(btn_idx);
+            set_player_formation_and_reform(engine, target_form);
+            engine.outgoing_events.push(EngineToReactEvent::PlaySound {
+                sound: "click".to_string(),
+            });
+            send_sync_event(engine);
+            return;
+        }
     }
 
     // Nếu đang chọn Nhà -> Mua lính

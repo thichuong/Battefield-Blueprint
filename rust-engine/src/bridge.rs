@@ -27,6 +27,9 @@ pub enum ReactToEngineCommand {
     TogglePriorityTech {
         tech_id: String,
     },
+    SetFormation {
+        formation: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -39,6 +42,7 @@ pub enum EngineToReactEvent {
         player_max_supply: u32,
         tech_state: String, // serialized json
         autoplay_state: String, // serialized json
+        player_formation: String,
         game_time: f32,
         is_paused: bool,
     },

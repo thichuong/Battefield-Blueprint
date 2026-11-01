@@ -194,6 +194,92 @@ impl UnitType {
             UnitType::AcidBaneling => "SWARM // ACID BANELING",
         }
     }
+
+    pub fn formation_role_tier(&self) -> u8 {
+        match self {
+            // Tier 0: Tuyến đầu / Chống chịu / Tiên phong / Cảm tử
+            UnitType::Vanguard | UnitType::BehemothTitan | UnitType::ShockTrooper | UnitType::AcidBaneling => 0,
+            // Tier 1: Trung tuyến / Cận chiến tầm trung / Xạ thủ
+            UnitType::Rifleman | UnitType::TaoistSwordmaster => 1,
+            // Tier 2: Hậu tuyến / Pháo binh / Pháp sư / Thợ mỏ
+            UnitType::LaserMarksman | UnitType::DarkRocketeer | UnitType::VoidWarlock | UnitType::Engineer => 2,
+        }
+    }
+}
+
+#[wasm_bindgen]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub enum FormationType {
+    #[default]
+    Line = 0,    // Hàng Ngang (Phalanx)
+    Wedge = 1,   // Mũi Tên (Spearhead V)
+    Box = 2,     // Ô Vuông Hộ Vệ (Protect Square)
+    Scatter = 3, // Phân Tán (Chống AoE)
+    Circle = 4,  // Vòng Cung Vây Bọc (Crescent Arc)
+    Column = 5,  // Cột Dọc Đột Kích (Blitz Column)
+}
+
+impl FormationType {
+    pub const ALL: [FormationType; 6] = [
+        FormationType::Line,
+        FormationType::Wedge,
+        FormationType::Box,
+        FormationType::Scatter,
+        FormationType::Circle,
+        FormationType::Column,
+    ];
+
+    pub fn from_index(idx: usize) -> Self {
+        match idx % 6 {
+            0 => FormationType::Line,
+            1 => FormationType::Wedge,
+            2 => FormationType::Box,
+            3 => FormationType::Scatter,
+            4 => FormationType::Circle,
+            _ => FormationType::Column,
+        }
+    }
+
+    pub fn to_index(&self) -> usize {
+        *self as usize
+    }
+
+    pub fn next(&self) -> Self {
+        Self::from_index(self.to_index() + 1)
+    }
+
+    pub fn button_label(&self) -> &'static str {
+        match self {
+            FormationType::Line => "LINE",
+            FormationType::Wedge => "WEDGE",
+            FormationType::Box => "BOX",
+            FormationType::Scatter => "SCATTER",
+            FormationType::Circle => "CIRCLE",
+            FormationType::Column => "COLUMN",
+        }
+    }
+
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            FormationType::Line => "HÀNG NGANG (PHALANX)",
+            FormationType::Wedge => "MŨI TÊN (SPEARHEAD)",
+            FormationType::Box => "Ô VUÔNG (PROTECT BOX)",
+            FormationType::Scatter => "PHÂN TÁN (ANTI-AOE)",
+            FormationType::Circle => "VÒNG CUNG (CRESCENT)",
+            FormationType::Column => "CỘT DỌC (BLITZ COLUMN)",
+        }
+    }
+
+    pub fn description(&self) -> &'static str {
+        match self {
+            FormationType::Line => "Dàn hàng ngang 2-3 lớp: Tiên phong đi trước, Xạ thủ tối đa góc hỏa lực.",
+            FormationType::Wedge => "Hình nêm mũi tên V: Đột phá xuyên tâm, tập trung xung lực cận chiến.",
+            FormationType::Box => "Khung vuông hộ vệ: Lính khiên bọc ngoài, pháo binh Laser/Rocket an toàn ở lõi.",
+            FormationType::Scatter => "Đội hình phân tán so le: Tản rộng >50px, giảm thiểu tối đa sát thương nổ AoE.",
+            FormationType::Circle => "Vòng cung bán nguyệt: Bao vây mục tiêu, hội tụ toàn bộ hỏa lực vào tâm.",
+            FormationType::Column => "Hai hàng dọc cơ động: Luồn lách chokepoint, luồn sâu đột kích mỏ quặng.",
+        }
+    }
 }
 
 #[wasm_bindgen]
@@ -261,6 +347,8 @@ pub struct Unit {
     pub facing_right: bool,
     pub order: UnitOrder,
     pub carried_minerals: f32,
+    #[serde(default)]
+    pub formation_offset: (f32, f32),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

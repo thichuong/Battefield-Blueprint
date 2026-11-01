@@ -1030,9 +1030,32 @@ export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
                         )}
 
                         {card.action.type === 'AttackWave' && (
-                          <span className="text-[11px] text-rose-400 font-bold">
-                            Tập kết lính và tổng tấn công căn cứ địch
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-rose-400 font-bold">
+                              Tập kết lính và tổng tấn công
+                            </span>
+                            <div className="flex items-center gap-1 text-[11px] text-slate-300">
+                              <span className="text-slate-400">Đội hình:</span>
+                              <select
+                                value={card.action.formation || 'Default'}
+                                onChange={(e) =>
+                                  handleUpdateCardAction(cardIdx, {
+                                    ...card.action,
+                                    formation: e.target.value === 'Default' ? undefined : e.target.value,
+                                  })
+                                }
+                                className="bg-slate-900 border border-slate-700 text-amber-300 text-xs rounded px-1.5 py-0.5 outline-none"
+                              >
+                                <option value="Default">Mặc định (Line)</option>
+                                <option value="Line">Hàng Ngang (Line)</option>
+                                <option value="Wedge">Mũi Tên (Wedge)</option>
+                                <option value="Box">Khối Vuông (Box)</option>
+                                <option value="Scatter">Phân Tán (Scatter)</option>
+                                <option value="Circle">Vòng Tròn (Circle)</option>
+                                <option value="Column">Hàng Dọc (Column)</option>
+                              </select>
+                            </div>
+                          </div>
                         )}
                       </div>
                     </div>

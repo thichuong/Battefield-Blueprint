@@ -17,6 +17,15 @@ export enum DamageType {
     Arcane = 3,
 }
 
+export enum FormationType {
+    Line = 0,
+    Wedge = 1,
+    Box = 2,
+    Scatter = 3,
+    Circle = 4,
+    Column = 5,
+}
+
 export enum Team {
     Player = 0,
     Enemy = 1,

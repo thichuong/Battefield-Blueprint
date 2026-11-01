@@ -56,6 +56,8 @@ export interface ActiveResearch {
   total_time: number;
 }
 
+export type FormationType = 'Line' | 'Wedge' | 'Box' | 'Scatter' | 'Circle' | 'Column';
+
 export interface AutoCondition {
   type:
     | 'Always'
@@ -80,6 +82,7 @@ export interface AutoAction {
   use_priority_queue?: boolean;
   count?: number;
   seconds?: number;
+  formation?: FormationType | string;
 }
 
 export interface AutoCard {
@@ -112,6 +115,7 @@ export interface TurretDefenseLine {
 export interface AutoPlayConfig {
   enabled: boolean;
   priority_techs: string[];
+  preferred_formation?: FormationType | string;
   turret_defense: TurretDefenseLine;
   loops: AutoLoop[];
 }
@@ -128,6 +132,7 @@ export interface EngineSyncState {
   player_energy: number;
   player_supply: number;
   player_max_supply: number;
+  player_formation?: FormationType | string;
   tech_state: TechState;
   autoplay_state: AutoPlayConfig;
   game_time: number;
@@ -187,6 +192,13 @@ class WasmBridge {
   public sendCommand(cmd: any) {
     if (!this.isInitialized) return;
     send_command_to_engine(JSON.stringify(cmd));
+  }
+
+  public setFormation(formation: FormationType | string) {
+    this.sendCommand({
+      type: 'SetFormation',
+      formation,
+    });
   }
 
   public subscribe(cb: EngineEventCallback) {

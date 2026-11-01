@@ -9,6 +9,7 @@ pub mod bridge;
 pub mod components;
 pub mod config;
 pub mod fog;
+pub mod formation;
 pub mod map;
 pub mod renderer;
 pub mod resources;
@@ -59,6 +60,7 @@ pub struct GameEngine {
     pub extra_techs: Vec<TechTreeState>, // Slot 2..7
     pub extra_autoplays: Vec<crate::autoplay::AutoPlayState>, // Slot 2..7
     pub extra_ai_states: Vec<crate::ai::AiState>, // Slot 2..7
+    pub team_formations: [crate::components::FormationType; 8],
 
     // Đang chọn & Thao tác
     pub selected_unit_ids: Vec<u32>,
@@ -160,6 +162,7 @@ impl GameEngine {
             extra_techs,
             extra_autoplays,
             extra_ai_states,
+            team_formations: [crate::components::FormationType::Line; 8],
 
             selected_unit_ids: Vec::new(),
             selected_building_id: None,
@@ -247,6 +250,7 @@ impl GameEngine {
             extra_techs,
             extra_autoplays,
             extra_ai_states,
+            team_formations: [crate::components::FormationType::Line; 8],
 
             selected_unit_ids: Vec::new(),
             selected_building_id: None,
@@ -435,6 +439,16 @@ impl GameEngine {
         }
     }
 
+    #[inline]
+    pub fn team_formation(&self, team: Team) -> crate::components::FormationType {
+        self.team_formations[team.index() % 8]
+    }
+
+    #[inline]
+    pub fn set_team_formation(&mut self, team: Team, formation: crate::components::FormationType) {
+        self.team_formations[team.index() % 8] = formation;
+    }
+
     /// Dọn sạch toàn bộ thực thể và tài nguyên của màn chơi cũ, chuẩn bị cho màn chơi mới
     pub fn reset_game(&mut self) {
         // 1. Khởi tạo lại tài nguyên khoáng sản & chướng ngại vật mới tinh
@@ -497,6 +511,8 @@ impl GameEngine {
         self.is_mouse_down = false;
         self.mouse_down_start = (0.0, 0.0);
         self.keys_down.clear();
+
+        self.team_formations = [crate::components::FormationType::Line; 8];
 
         // 7. Reset bộ đếm thời gian và ID, nhưng BẢO TỒN não bộ RL (rl_brain) đã học
         self.next_id = 100;
