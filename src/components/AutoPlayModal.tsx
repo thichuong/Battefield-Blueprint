@@ -590,16 +590,59 @@ export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
                               handleUpdateCardCondition(cardIdx, {
                                 type: 'ReactorPerConverterRatio',
                               });
+                            } else if (t === 'BuildingCountLessThan') {
+                              handleUpdateCardCondition(cardIdx, {
+                                type: 'BuildingCountLessThan',
+                                building_type: 'PowerReactor',
+                                count: 6,
+                              });
                             }
                           }}
                           className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1 outline-none"
                         >
                           <option value="Always">Luôn thực hiện (Tuần tự)</option>
+                          <option value="BuildingCountLessThan">Số lượng công trình &lt; X</option>
                           <option value="UnitCountLessThan">Số đơn vị &lt; X</option>
                           <option value="UnitCountGreaterThan">Số đơn vị &gt; X</option>
                           <option value="MineralsGreaterThan">Khoáng sản &gt; X</option>
                           <option value="ReactorPerConverterRatio">PowerReactor // 4 &gt; EnergyConverter</option>
                         </select>
+
+                        {card.condition.type === 'BuildingCountLessThan' && (
+                          <div className="flex items-center gap-1">
+                            <select
+                              value={card.condition.building_type || 'PowerReactor'}
+                              onChange={(e) =>
+                                handleUpdateCardCondition(cardIdx, {
+                                  ...card.condition,
+                                  building_type: e.target.value,
+                                })
+                              }
+                              className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-1.5 py-1 outline-none"
+                            >
+                              <option value="CommandCenter">Nhà Chính (CommandCenter)</option>
+                              <option value="PowerReactor">PowerReactor</option>
+                              <option value="TurretTower">TurretTower</option>
+                              <option value="Barracks">Barracks</option>
+                              <option value="EnergyConverter">EnergyConverter</option>
+                              <option value="SupplyDepot">SupplyDepot</option>
+                            </select>
+                            <span>&lt;</span>
+                            <input
+                              type="number"
+                              min="1"
+                              max="100"
+                              value={card.condition.count ?? 6}
+                              onChange={(e) =>
+                                handleUpdateCardCondition(cardIdx, {
+                                  ...card.condition,
+                                  count: parseInt(e.target.value) || 1,
+                                })
+                              }
+                              className="w-14 bg-slate-900 border border-slate-700 px-1.5 py-1 text-xs rounded"
+                            />
+                          </div>
+                        )}
 
                         {card.condition.type === 'UnitCountLessThan' && (
                           <div className="flex items-center gap-1">
@@ -762,6 +805,7 @@ export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
                               }
                               className="bg-slate-900 border border-slate-700 text-xs rounded px-2 py-1"
                             >
+                              <option value="CommandCenter">Nhà Chính (CommandCenter)</option>
                               <option value="PowerReactor">PowerReactor</option>
                               <option value="TurretTower">TurretTower</option>
                               <option value="Barracks">Barracks</option>

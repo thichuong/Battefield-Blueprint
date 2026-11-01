@@ -284,21 +284,7 @@ fn check_and_build_supply(engine: &mut GameEngine) {
         && engine.player_eco.minerals >= cost_m
         && engine.player_eco.energy >= cost_e
     {
-        let p_cc_pos = engine
-            .buildings
-            .iter()
-            .find(|b| b.team == Team::Player && b.building_type == BuildingType::CommandCenter)
-            .map(|b| (b.x, b.y))
-            .unwrap_or((250.0, 2050.0));
-
-        if let Some((bx, by)) = crate::ai::find_ai_build_spot(
-            engine,
-            BuildingType::SupplyDepot,
-            p_cc_pos.0,
-            p_cc_pos.1,
-            550.0,
-            Some(-0.8), // hướng Đông Bắc từ căn cứ người chơi
-        ) {
+        if let Some((bx, by)) = find_player_build_spot(engine, BuildingType::SupplyDepot) {
             try_player_auto_build(engine, BuildingType::SupplyDepot, bx, by);
         }
     }
@@ -460,35 +446,7 @@ fn execute_action(engine: &mut GameEngine, loop_idx: usize, action: &AutoAction)
                 return false; // Chờ đủ tiền
             }
 
-            let p_cc_pos = engine
-                .buildings
-                .iter()
-                .find(|b| b.team == Team::Player && b.building_type == BuildingType::CommandCenter)
-                .map(|b| (b.x, b.y))
-                .unwrap_or((250.0, 2050.0));
-
-            let angle_bias = match b_type {
-                BuildingType::TurretTower => Some(-0.4), // Hướng Đông Bắc phòng thủ
-                BuildingType::PowerReactor => Some(-1.2),
-                BuildingType::Barracks => Some(-0.6),
-                _ => None,
-            };
-
-            let mut spot = None;
-            if b_type == BuildingType::TurretTower && engine.autoplay.config.turret_defense.enabled {
-                spot = find_defense_line_spot(engine, &engine.autoplay.config.turret_defense);
-            }
-
-            if spot.is_none() {
-                spot = crate::ai::find_ai_build_spot(
-                    engine,
-                    b_type,
-                    p_cc_pos.0,
-                    p_cc_pos.1,
-                    550.0,
-                    angle_bias,
-                );
-            }
+            let spot = find_player_build_spot(engine, b_type);
 
             if let Some((bx, by)) = spot {
                 if try_player_auto_build(engine, b_type, bx, by) {
@@ -499,8 +457,14 @@ fn execute_action(engine: &mut GameEngine, loop_idx: usize, action: &AutoAction)
                         return true;
                     }
                 }
+                false
+            } else {
+                // Không tìm được vị trí xây trống sau khi đã quét mở rộng toàn bộ căn cứ
+                // Để tránh treo/đóng băng toàn bộ vòng lặp, bỏ qua thẻ này và chuyển tiếp
+                engine.autoplay.last_action_msg =
+                    format!("Khu vực đã kín chỗ xây {}", building_type);
+                true // Chuyển sang thẻ tiếp theo trong vòng lặp!
             }
-            false
         }
         AutoAction::ResearchTech {
             tech_id,
@@ -856,6 +820,216 @@ pub fn find_defense_line_spot(
     None
 }
 
+/// Thuật toán tìm vị trí xây dựng mở rộng động cho Player:
+/// 1. Nếu là TurretTower và có bật hàng rào: ưu tiên tìm điểm trên hàng rào, nếu kín thì mở rộng thêm hàng (layer)
+/// 2. Hỗ trợ đa tâm neo (Multi-Anchor): Quét từ CC và mở rộng sang các công trình đã có khác (PowerReactor, Barracks, SupplyDepot)
+/// 3. Bán kính quét mở rộng linh hoạt từ 80px lên đến 1400px hướng về phía trung tâm bản đồ
+pub fn find_player_build_spot(
+    engine: &GameEngine,
+    b_type: BuildingType,
+) -> Option<(f32, f32)> {
+    let (bw, bh) = engine
+        .config
+        .get_building(b_type)
+        .map(|c| (c.width, c.height))
+        .unwrap_or((70.0, 70.0));
+
+    // 1. Trường hợp xây Nhà Chính CommandCenter mới (Base Expansion):
+    // Tự động tìm mỏ quặng chưa có CommandCenter và đặt móng gần mỏ quặng
+    if b_type == BuildingType::CommandCenter {
+        let mut candidate_minerals: Vec<(f32, f32)> = Vec::new();
+        for m in &engine.minerals {
+            let has_cc_nearby = engine.buildings.iter().any(|b| {
+                b.building_type == BuildingType::CommandCenter
+                    && (b.x - m.x).powi(2) + (b.y - m.y).powi(2) < 380.0_f32.powi(2)
+            });
+            if !has_cc_nearby {
+                candidate_minerals.push((m.x, m.y));
+            }
+        }
+
+        // Ưu tiên mỏ quặng gần căn cứ mình nhất để mở rộng an toàn
+        let base_ref = (250.0, 2050.0);
+        candidate_minerals.sort_by(|a, b| {
+            let da = (a.0 - base_ref.0).powi(2) + (a.1 - base_ref.1).powi(2);
+            let db = (b.0 - base_ref.0).powi(2) + (b.1 - base_ref.1).powi(2);
+            da.partial_cmp(&db).unwrap()
+        });
+
+        for (mx, my) in candidate_minerals {
+            for ang_deg in [0, 45, 90, 135, 180, 225, 270, 315] {
+                let rad = (ang_deg as f32).to_radians();
+                let cand_x = mx + 115.0 * rad.cos();
+                let cand_y = my + 115.0 * rad.sin();
+
+                if !(120.0..=2280.0).contains(&cand_x) || !(120.0..=2280.0).contains(&cand_y) {
+                    continue;
+                }
+                let collides_b = engine.buildings.iter().any(|b| {
+                    (cand_x - b.x).abs() < (bw + b.width) * 0.5 + 20.0
+                        && (cand_y - b.y).abs() < (bh + b.height) * 0.5 + 20.0
+                });
+                if collides_b {
+                    continue;
+                }
+                let collides_m = engine.minerals.iter().any(|m| {
+                    ((cand_x - m.x).powi(2) + (cand_y - m.y).powi(2)).sqrt() < 85.0
+                });
+                if collides_m {
+                    continue;
+                }
+                let collides_obs = engine.obstacles.iter().any(|obs| {
+                    let obs_cx = obs.x + obs.width * 0.5;
+                    let obs_cy = obs.y + obs.height * 0.5;
+                    (cand_x - obs_cx).abs() < (bw + obs.width) * 0.5 + 15.0
+                        && (cand_y - obs_cy).abs() < (bh + obs.height) * 0.5 + 15.0
+                });
+                if collides_obs {
+                    continue;
+                }
+
+                return Some((cand_x, cand_y));
+            }
+        }
+    }
+
+    // 2. Tháp phòng ngự TurretTower và tuyến phòng thủ TurretDefenseLine
+    if b_type == BuildingType::TurretTower && engine.autoplay.config.turret_defense.enabled {
+        if let Some(spot) = find_defense_line_spot(engine, &engine.autoplay.config.turret_defense) {
+            return Some(spot);
+        }
+
+        let mut extended_line = engine.autoplay.config.turret_defense.clone();
+        if extended_line.rows < 3 {
+            extended_line.rows = (extended_line.rows + 1).min(3);
+            if let Some(spot) = find_defense_line_spot(engine, &extended_line) {
+                return Some(spot);
+            }
+        }
+    }
+
+    // 3. Thu thập danh sách các tâm neo mở rộng (Multi-Anchor Base Expansion):
+    // ƯU TIÊN SỐ 1: Nhà Chính (CommandCenter) MỚI NHẤT!
+    // Khi người chơi xây Nhà Chính mới, hệ thống tự động tìm xung quanh Nhà Chính mới trước.
+    let mut player_ccs: Vec<&crate::components::Building> = engine
+        .buildings
+        .iter()
+        .filter(|b| b.team == Team::Player && b.building_type == BuildingType::CommandCenter)
+        .collect();
+
+    // Sắp xếp theo ID giảm dần (Nhà Chính mới xây nhất sẽ đứng đầu danh sách)
+    player_ccs.sort_by(|a, b| b.id.cmp(&a.id));
+
+    let newest_cc_pos = player_ccs
+        .first()
+        .map(|b| (b.x, b.y))
+        .unwrap_or((250.0, 2050.0));
+
+    let mut anchors = Vec::new();
+    // 3.1. Tâm neo số 1: Nhà Chính mới nhất
+    anchors.push(newest_cc_pos);
+
+    // 3.2. Các công trình vệ tinh gần Nhà Chính mới nhất (< 600px)
+    for b in &engine.buildings {
+        if b.team == Team::Player && b.building_type != BuildingType::CommandCenter {
+            let dist_sq = (b.x - newest_cc_pos.0).powi(2) + (b.y - newest_cc_pos.1).powi(2);
+            if dist_sq < 600.0_f32.powi(2) {
+                anchors.push((b.x, b.y));
+            }
+        }
+    }
+
+    // 3.3. Các Nhà Chính cũ hơn (nếu có)
+    for cc in player_ccs.iter().skip(1) {
+        anchors.push((cc.x, cc.y));
+    }
+
+    // 3.4. Các công trình còn lại của Player
+    for b in &engine.buildings {
+        if b.team == Team::Player && !anchors.contains(&(b.x, b.y)) {
+            anchors.push((b.x, b.y));
+        }
+    }
+
+    // 4. Quét lần lượt qua các tâm neo:
+    for (a_idx, anchor) in anchors.iter().enumerate() {
+        // Hướng mở rộng từ tâm neo: Ưu tiên mở rộng hướng về trung tâm bản đồ (1200, 1200)
+        let dy: f32 = 1200.0 - anchor.1;
+        let dx: f32 = 1200.0 - anchor.0;
+        let to_center_ang = dy.atan2(dx);
+        let angle_bias = match b_type {
+            BuildingType::TurretTower => Some(to_center_ang + 0.1),
+            BuildingType::PowerReactor => Some(to_center_ang - 0.5),
+            BuildingType::Barracks => Some(to_center_ang),
+            _ => Some(to_center_ang),
+        };
+
+        let mut current_radius = 80.0;
+        let max_radius = if a_idx == 0 { 1400.0 } else { 550.0 };
+        let radius_step = 65.0;
+
+        while current_radius <= max_radius {
+            let num_angles = ((2.0 * std::f32::consts::PI * current_radius) / 70.0).max(8.0) as usize;
+            for i in 0..num_angles {
+                let angle = if let Some(base_ang) = angle_bias {
+                    let offset = if i % 2 == 0 {
+                        (i / 2) as f32
+                    } else {
+                        -(i.div_ceil(2) as f32)
+                    };
+                    base_ang + offset * (std::f32::consts::PI * 2.0 / num_angles as f32)
+                } else {
+                    (i as f32) * (std::f32::consts::PI * 2.0 / num_angles as f32)
+                };
+
+                let cand_x = anchor.0 + current_radius * angle.cos();
+                let cand_y = anchor.1 + current_radius * angle.sin();
+
+                // Kiểm tra giới hạn map an toàn
+                if !(120.0..=2280.0).contains(&cand_x) || !(120.0..=2280.0).contains(&cand_y) {
+                    continue;
+                }
+
+                // Kiểm tra va chạm với các công trình khác
+                let collides_building = engine.buildings.iter().any(|b| {
+                    let clearance_x = (bw + b.width) * 0.5 + 16.0;
+                    let clearance_y = (bh + b.height) * 0.5 + 16.0;
+                    (cand_x - b.x).abs() < clearance_x && (cand_y - b.y).abs() < clearance_y
+                });
+                if collides_building {
+                    continue;
+                }
+
+                // Kiểm tra khoảng cách an toàn với mỏ quặng để không cản thợ mỏ
+                let collides_minerals = engine.minerals.iter().any(|m| {
+                    let dist = ((cand_x - m.x).powi(2) + (cand_y - m.y).powi(2)).sqrt();
+                    dist < 75.0
+                });
+                if collides_minerals {
+                    continue;
+                }
+
+                // Kiểm tra va chạm với chướng ngại vật
+                let collides_obstacles = engine.obstacles.iter().any(|obs| {
+                    let obs_cx = obs.x + obs.width * 0.5;
+                    let obs_cy = obs.y + obs.height * 0.5;
+                    let clearance_x = (bw + obs.width) * 0.5 + 12.0;
+                    let clearance_y = (bh + obs.height) * 0.5 + 12.0;
+                    (cand_x - obs_cx).abs() < clearance_x && (cand_y - obs_cy).abs() < clearance_y
+                });
+                if collides_obstacles {
+                    continue;
+                }
+
+                return Some((cand_x, cand_y));
+            }
+            current_radius += radius_step;
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -897,5 +1071,14 @@ mod tests {
         assert_eq!(spots[1], (100.0, 0.0));
         assert_eq!(spots[2], (200.0, 0.0));
         assert_eq!(spots[3], (300.0, 0.0));
+    }
+
+    #[test]
+    fn test_parse_building_and_tech_prerequisite() {
+        assert_eq!(parse_building_type("PowerReactor"), Some(BuildingType::PowerReactor));
+        assert_eq!(parse_building_type("TurretTower"), Some(BuildingType::TurretTower));
+        assert_eq!(parse_building_type("Barracks"), Some(BuildingType::Barracks));
+        assert_eq!(parse_building_type("EnergyConverter"), Some(BuildingType::EnergyConverter));
+        assert_eq!(get_tech_prerequisite("titan_alloy_plating"), Some("dark_matter_rockets".to_string()));
     }
 }

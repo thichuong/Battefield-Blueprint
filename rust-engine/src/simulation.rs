@@ -568,6 +568,12 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
         .collect();
     let mineral_nodes: Vec<(u32, f32, f32)> =
         engine.minerals.iter().map(|m| (m.id, m.x, m.y)).collect();
+    let cc_targets: Vec<(Team, f32, f32)> = engine
+        .buildings
+        .iter()
+        .filter(|b| b.building_type == BuildingType::CommandCenter)
+        .map(|b| (b.team, b.x, b.y))
+        .collect();
 
     for unit in engine.units.iter_mut() {
         if unit.current_cooldown > 0.0 {
@@ -713,19 +719,19 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                         }
                     }
                     HarvestPhase::ReturningToBase => {
-                        // Tìm Command Center gần nhất của phe mình
-                        let my_cc = building_targets
+                        // Tìm Command Center gần nhất của phe mình để giao khoáng sản
+                        let my_cc = cc_targets
                             .iter()
-                            .filter(|(_, t, _, _, _, _)| *t == unit.team)
+                            .filter(|(t, _, _)| *t == unit.team)
                             .min_by(|a, b| {
-                                let da = (a.2 - unit.x).powi(2) + (a.3 - unit.y).powi(2);
-                                let db = (b.2 - unit.x).powi(2) + (b.3 - unit.y).powi(2);
+                                let da = (a.1 - unit.x).powi(2) + (a.2 - unit.y).powi(2);
+                                let db = (b.1 - unit.x).powi(2) + (b.2 - unit.y).powi(2);
                                 da.partial_cmp(&db).unwrap()
                             });
 
-                        if let Some((_, _, cx, cy, _, _)) = my_cc {
-                            let dx = cx - unit.x;
-                            let dy = cy - unit.y;
+                        if let Some((_, cx, cy)) = my_cc {
+                            let dx = *cx - unit.x;
+                            let dy = *cy - unit.y;
                             let dist = (dx * dx + dy * dy).sqrt();
                             if dist > 55.0 {
                                 let move_dist = (cur_speed * dt).min(dist);
@@ -1592,6 +1598,21 @@ pub fn handle_hotkeys(engine: &mut GameEngine, key: &str) {
                 .outgoing_events
                 .push(EngineToReactEvent::OpenAutoPlayModal);
             send_sync_event(engine);
+        }
+        "KeyC" | "KeyH" => {
+            // Xây Nhà Chính CommandCenter nếu đang chọn Engineer
+            let has_worker = engine.selected_unit_ids.iter().any(|uid| {
+                engine
+                    .units
+                    .iter()
+                    .any(|u| u.id == *uid && u.unit_type == UnitType::Engineer && u.team == Team::Player)
+            });
+            if has_worker {
+                engine.build_mode = Some(BuildingType::CommandCenter);
+                engine.outgoing_events.push(EngineToReactEvent::PlaySound {
+                    sound: "click".to_string(),
+                });
+            }
         }
         "Escape" => {
             if engine.is_attack_move_mode {
