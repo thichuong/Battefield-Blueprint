@@ -4,6 +4,24 @@ use crate::map::{MAP_HEIGHT, MAP_WIDTH};
 use crate::GameEngine;
 use web_sys::CanvasRenderingContext2d;
 
+
+pub fn get_team_color(engine: &GameEngine, team: Team) -> (&'static str, &'static str) {
+    if team == Team::Player {
+        ("#00e5ff", "rgba(0, 229, 255, 0.12)")
+    } else if engine.are_allies(Team::Player, team) {
+        ("#10b981", "rgba(16, 185, 129, 0.12)")
+    } else {
+        match team.index() % 6 {
+            1 => ("#f43f5e", "rgba(244, 63, 94, 0.12)"),   // Đỏ hồng
+            2 => ("#f59e0b", "rgba(245, 158, 11, 0.12)"),  // Cam hổ phách
+            3 => ("#a855f7", "rgba(168, 85, 247, 0.12)"),  // Tím arcane
+            4 => ("#eab308", "rgba(234, 179, 8, 0.12)"),   // Vàng gold
+            5 => ("#ec4899", "rgba(236, 72, 153, 0.12)"),  // Hồng magenta
+            _ => ("#f97316", "rgba(249, 115, 22, 0.12)"),  // Cam đậm
+        }
+    }
+}
+
 pub fn render(engine: &mut GameEngine) {
     if engine.is_headless || engine.context.is_none() {
         return;
@@ -192,22 +210,14 @@ fn render_buildings(engine: &GameEngine) {
             continue;
         }
 
-        let is_visible = b.team == Team::Player || engine.fog.is_visible(b.x, b.y);
+
+        let is_visible = engine.are_allies(Team::Player, b.team) || engine.fog.is_visible(b.x, b.y);
         if !is_visible {
             continue;
         }
 
         let is_selected = engine.selected_building_id == Some(b.id);
-        let color_neon = if b.team == Team::Player {
-            "#00e5ff"
-        } else {
-            "#f43f5e"
-        };
-        let color_fill = if b.team == Team::Player {
-            "rgba(0, 229, 255, 0.12)"
-        } else {
-            "rgba(244, 63, 94, 0.12)"
-        };
+        let (color_neon, color_fill) = get_team_color(engine, b.team);
 
         let bx = (b.x - b.width * 0.5) as f64;
         let by = (b.y - b.height * 0.5) as f64;
@@ -408,17 +418,13 @@ fn render_units(engine: &GameEngine) {
             continue;
         }
 
-        let is_visible = u.team == Team::Player || engine.fog.is_visible(u.x, u.y);
+        let is_visible = engine.are_allies(Team::Player, u.team) || engine.fog.is_visible(u.x, u.y);
         if !is_visible {
             continue;
         }
 
         let is_selected = engine.selected_unit_ids.contains(&u.id);
-        let color = if u.team == Team::Player {
-            "#00e5ff"
-        } else {
-            "#f43f5e"
-        };
+        let color = get_team_color(engine, u.team).0;
 
         // 1. Vòng tròn chọn dưới chân
         if is_selected {
@@ -937,24 +943,18 @@ fn render_in_game_hud(engine: &GameEngine) {
     for b in &engine.buildings {
         let mx = mm_x + (b.x / MAP_WIDTH) as f64 * mm_s;
         let my = mm_y + (b.y / MAP_HEIGHT) as f64 * mm_s;
-        ctx.set_fill_style_str(if b.team == Team::Player {
-            "#00e5ff"
-        } else {
-            "#f43f5e"
-        });
+        let color = get_team_color(engine, b.team).0;
+        ctx.set_fill_style_str(color);
         ctx.fill_rect(mx - 2.5, my - 2.5, 5.0, 5.0);
     }
 
     // Vẽ lính trên Minimap
     for u in &engine.units {
-        if u.team == Team::Player || engine.fog.is_visible(u.x, u.y) {
+        if engine.are_allies(Team::Player, u.team) || engine.fog.is_visible(u.x, u.y) {
             let mx = mm_x + (u.x / MAP_WIDTH) as f64 * mm_s;
             let my = mm_y + (u.y / MAP_HEIGHT) as f64 * mm_s;
-            ctx.set_fill_style_str(if u.team == Team::Player {
-                "#38bdf8"
-            } else {
-                "#ef4444"
-            });
+            let color = get_team_color(engine, u.team).0;
+            ctx.set_fill_style_str(color);
             ctx.fill_rect(mx - 1.5, my - 1.5, 3.0, 3.0);
         }
     }

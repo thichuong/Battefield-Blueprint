@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { wasmBridge, EngineSyncState, AutoPlayConfig } from './bridge/wasmBridge';
+import { wasmBridge, EngineSyncState, AutoPlayConfig, PlayerSlotConfig } from './bridge/wasmBridge';
 import { MainMenu } from './components/MainMenu';
 import { TechTreeModal } from './components/TechTreeModal';
 import { SettingsModal } from './components/SettingsModal';
@@ -403,7 +403,7 @@ export const App: React.FC = () => {
     };
   }, [isTechTreeOpen, handleCloseTechTree, handleOpenTechTree]);
 
-  const handleStartGame = (difficulty: string) => {
+  const handleStartGame = (difficulty: string, slots?: PlayerSlotConfig[]) => {
     setIsInGame(true);
     setGameOverState({ isOpen: false, playerWon: false });
     setIsTechTreeOpen(false);
@@ -412,6 +412,7 @@ export const App: React.FC = () => {
     wasmBridge.sendCommand({
       type: 'StartGame',
       difficulty,
+      slots,
     });
     soundEngine.playSound('order');
   };

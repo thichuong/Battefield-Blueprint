@@ -23,11 +23,17 @@ export const DamageType = Object.freeze({
 });
 
 /**
- * @enum {0 | 1}
+ * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7}
  */
 export const Team = Object.freeze({
     Player: 0, "0": "Player",
     Enemy: 1, "1": "Enemy",
+    Player2: 2, "2": "Player2",
+    Player3: 3, "3": "Player3",
+    Player4: 4, "4": "Player4",
+    Player5: 5, "5": "Player5",
+    Player6: 6, "6": "Player6",
+    Player7: 7, "7": "Player7",
 });
 
 /**

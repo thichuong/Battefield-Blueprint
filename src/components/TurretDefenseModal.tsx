@@ -9,7 +9,7 @@ interface TurretDefenseModalProps {
   onSave: (newLine: TurretDefenseLine) => void;
 }
 
-const MAP_SIZE = 2400.0;
+const MAP_SIZE = 4800.0;
 const CANVAS_SIZE = 480; // Kích thước mini-map 480x480px
 
 export const TurretDefenseModal: React.FC<TurretDefenseModalProps> = ({
@@ -107,8 +107,8 @@ export const TurretDefenseModal: React.FC<TurretDefenseModalProps> = ({
       ctx.stroke();
     }
 
-    // 2. Căn cứ Player HQ (Tây-Nam: 250, 2050)
-    const [pccX, pccY] = worldToCanvas(250, 2050);
+    // 2. Căn cứ Player HQ (Tây-Nam: 550, 4250)
+    const [pccX, pccY] = worldToCanvas(550, 4250);
     ctx.fillStyle = 'rgba(0, 229, 255, 0.2)';
     ctx.strokeStyle = '#00e5ff';
     ctx.lineWidth = 1.5;
@@ -120,9 +120,9 @@ export const TurretDefenseModal: React.FC<TurretDefenseModalProps> = ({
 
     // Mỏ khoáng sản Player
     const minerals = [
-      [220, 1920],
-      [260, 1900],
-      [300, 1920],
+      [500, 4050],
+      [550, 4020],
+      [600, 4050],
     ];
     minerals.forEach(([mx, my]) => {
       const [mcx, mcy] = worldToCanvas(mx, my);
@@ -132,8 +132,8 @@ export const TurretDefenseModal: React.FC<TurretDefenseModalProps> = ({
       ctx.fill();
     });
 
-    // 3. Căn cứ Enemy HQ (Đông-Bắc: 2150, 350)
-    const [eccX, eccY] = worldToCanvas(2150, 350);
+    // 3. Căn cứ Enemy HQ (Đông-Bắc: 4250, 550)
+    const [eccX, eccY] = worldToCanvas(4250, 550);
     ctx.fillStyle = 'rgba(244, 63, 94, 0.2)';
     ctx.strokeStyle = '#f43f5e';
     ctx.lineWidth = 1.5;
@@ -345,8 +345,8 @@ export const TurretDefenseModal: React.FC<TurretDefenseModalProps> = ({
   const handleResetDefault = () => {
     setLineState({
       enabled: true,
-      p1: [520, 1680],
-      p2: [860, 1980],
+      p1: [850, 3800],
+      p2: [1300, 4250],
       spacing: 90,
       rows: 1,
       row_spacing: 80,
@@ -480,11 +480,11 @@ export const TurretDefenseModal: React.FC<TurretDefenseModalProps> = ({
                       <input
                         type="number"
                         min="50"
-                        max="2350"
+                        max="4750"
                         step="10"
                         value={lineState.p1[0]}
                         onChange={(e) => {
-                          const val = Math.max(50, Math.min(2350, parseInt(e.target.value) || 0));
+                          const val = Math.max(50, Math.min(4750, parseInt(e.target.value) || 0));
                           setLineState((prev) => ({
                             ...prev,
                             p1: [val, prev.p1[1]],
@@ -498,11 +498,11 @@ export const TurretDefenseModal: React.FC<TurretDefenseModalProps> = ({
                       <input
                         type="number"
                         min="50"
-                        max="2350"
+                        max="4750"
                         step="10"
                         value={lineState.p1[1]}
                         onChange={(e) => {
-                          const val = Math.max(50, Math.min(2350, parseInt(e.target.value) || 0));
+                          const val = Math.max(50, Math.min(4750, parseInt(e.target.value) || 0));
                           setLineState((prev) => ({
                             ...prev,
                             p1: [prev.p1[0], val],
@@ -545,11 +545,11 @@ export const TurretDefenseModal: React.FC<TurretDefenseModalProps> = ({
                       <input
                         type="number"
                         min="50"
-                        max="2350"
+                        max="4750"
                         step="10"
                         value={lineState.p2[0]}
                         onChange={(e) => {
-                          const val = Math.max(50, Math.min(2350, parseInt(e.target.value) || 0));
+                          const val = Math.max(50, Math.min(4750, parseInt(e.target.value) || 0));
                           setLineState((prev) => ({
                             ...prev,
                             p2: [val, prev.p2[1]],
@@ -563,11 +563,11 @@ export const TurretDefenseModal: React.FC<TurretDefenseModalProps> = ({
                       <input
                         type="number"
                         min="50"
-                        max="2350"
+                        max="4750"
                         step="10"
                         value={lineState.p2[1]}
                         onChange={(e) => {
-                          const val = Math.max(50, Math.min(2350, parseInt(e.target.value) || 0));
+                          const val = Math.max(50, Math.min(4750, parseInt(e.target.value) || 0));
                           setLineState((prev) => ({
                             ...prev,
                             p2: [prev.p2[0], val],

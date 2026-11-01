@@ -116,6 +116,13 @@ export interface AutoPlayConfig {
   loops: AutoLoop[];
 }
 
+export interface PlayerSlotConfig {
+  slot_index: number;
+  active: boolean;
+  faction: number;
+  is_human: boolean;
+}
+
 export interface EngineSyncState {
   player_minerals: number;
   player_energy: number;

@@ -1,11 +1,59 @@
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
+pub const MAX_PLAYERS: usize = 8;
+
 #[wasm_bindgen]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Team {
     Player = 0,
     Enemy = 1,
+    Player2 = 2,
+    Player3 = 3,
+    Player4 = 4,
+    Player5 = 5,
+    Player6 = 6,
+    Player7 = 7,
+}
+
+impl Team {
+    pub const ALL: [Team; MAX_PLAYERS] = [
+        Team::Player,
+        Team::Enemy,
+        Team::Player2,
+        Team::Player3,
+        Team::Player4,
+        Team::Player5,
+        Team::Player6,
+        Team::Player7,
+    ];
+
+    #[inline]
+    pub fn index(self) -> usize {
+        self as usize
+    }
+
+    #[inline]
+    pub fn from_index(index: usize) -> Self {
+        match index {
+            0 => Team::Player,
+            1 => Team::Enemy,
+            2 => Team::Player2,
+            3 => Team::Player3,
+            4 => Team::Player4,
+            5 => Team::Player5,
+            6 => Team::Player6,
+            _ => Team::Player7,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct PlayerSlotConfig {
+    pub slot_index: usize, // 0..7
+    pub active: bool,      // Có tham gia trận đấu không
+    pub faction: u8,       // ID Phe (0 = Phe Player/Đồng minh, 1..7 = Các phe khác)
+    pub is_human: bool,    // true cho slot 0
 }
 
 #[wasm_bindgen]

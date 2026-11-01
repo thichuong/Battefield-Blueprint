@@ -105,8 +105,8 @@ pub struct CameraState {
 impl Default for CameraState {
     fn default() -> Self {
         Self {
-            x: 200.0,
-            y: 1800.0, // Nhìn vào căn cứ Player góc Tây-Nam
+            x: 550.0,
+            y: 4250.0, // Nhìn vào căn cứ Player góc Tây-Nam trên bản đồ 4800x4800
             zoom: 1.0,
             viewport_w: 1280.0,
             viewport_h: 720.0,

@@ -34,6 +34,29 @@ impl Default for AiState {
     }
 }
 
+pub fn find_primary_hostile_team(engine: &GameEngine, team: Team) -> Team {
+    let my_faction = engine.get_faction(team);
+    // Tìm team thù địch có công trình hoặc lính đang hoạt động
+    for i in 0..crate::components::MAX_PLAYERS {
+        let candidate = Team::from_index(i);
+        if engine.is_slot_active(candidate) && engine.get_faction(candidate) != my_faction {
+            let has_presence = engine.buildings.iter().any(|b| b.team == candidate)
+                || engine.units.iter().any(|u| u.team == candidate);
+            if has_presence {
+                return candidate;
+            }
+        }
+    }
+    // Dự phòng: trả về bất kỳ slot thù địch nào
+    for i in 0..crate::components::MAX_PLAYERS {
+        let candidate = Team::from_index(i);
+        if engine.is_slot_active(candidate) && engine.get_faction(candidate) != my_faction {
+            return candidate;
+        }
+    }
+    if team == Team::Player { Team::Enemy } else { Team::Player }
+}
+
 pub fn extract_state_vector(engine: &GameEngine) -> Vec<f32> {
     extract_state_vector_for_team(engine, Team::Enemy)
 }
@@ -41,20 +64,15 @@ pub fn extract_state_vector(engine: &GameEngine) -> Vec<f32> {
 pub fn extract_state_vector_for_team(engine: &GameEngine, team: Team) -> Vec<f32> {
     let mut s = Vec::with_capacity(STATE_DIM);
 
-    let (my_eco, _opp_eco, my_tech, opp_tech) = match team {
-        Team::Player => (&engine.player_eco, &engine.enemy_eco, &engine.player_tech, &engine.enemy_tech),
-        Team::Enemy => (&engine.enemy_eco, &engine.player_eco, &engine.enemy_tech, &engine.player_tech),
-    };
+    let my_eco = engine.team_eco(team);
+    let my_tech = engine.team_tech(team);
 
-    let opp_team = match team {
-        Team::Player => Team::Enemy,
-        Team::Enemy => Team::Player,
-    };
+    let opp_team = find_primary_hostile_team(engine, team);
+    let _opp_eco = engine.team_eco(opp_team);
+    let opp_tech = engine.team_tech(opp_team);
 
-    let (my_base_pos, _opp_base_pos) = match team {
-        Team::Player => ((250.0, 2050.0), (2150.0, 350.0)),
-        Team::Enemy => ((2150.0, 350.0), (250.0, 2050.0)),
-    };
+    let my_base_pos = engine.base_pos(team);
+    let _opp_base_pos = engine.base_pos(opp_team);
 
     // 1. Tiến độ thời gian trận đấu (chuẩn hóa 0-600s)
     let time_norm = (engine.game_time / 600.0).clamp(0.0, 1.0);
@@ -102,9 +120,9 @@ pub fn extract_state_vector_for_team(engine: &GameEngine, team: Team) -> Vec<f32
     s.push((barracks as f32 / 6.0).clamp(0.0, 1.5));
     s.push((turrets as f32 / 8.0).clamp(0.0, 1.5));
 
-    // 14-16. Quân sự: Số lính chiến đấu phe mình vs đối thủ
+    // 14-16. Quân sự: Số lính chiến đấu phe mình vs đối thủ (hoặc các phe thù địch)
     let my_combat = engine.units.iter().filter(|u| u.team == team && u.unit_type != UnitType::Engineer).count();
-    let opp_combat = engine.units.iter().filter(|u| u.team == opp_team && u.unit_type != UnitType::Engineer).count();
+    let opp_combat = engine.units.iter().filter(|u| engine.are_hostile(team, u.team) && u.unit_type != UnitType::Engineer).count();
     s.push((my_combat as f32 / 35.0).clamp(0.0, 2.0));
     s.push((opp_combat as f32 / 35.0).clamp(0.0, 2.0));
     let mil_ratio = ((my_combat as f32 + 1.0) / (opp_combat as f32 + 1.0)).clamp(0.1, 5.0) / 2.5 - 1.0;
@@ -118,24 +136,24 @@ pub fn extract_state_vector_for_team(engine: &GameEngine, team: Team) -> Vec<f32
 
     // 19. Căn cứ phe mình có đang bị đe dọa trực tiếp (lính đối thủ tiếp cận <700px)
     let base_threat = engine.units.iter().any(|u| {
-        u.team == opp_team && ((u.x - my_base_pos.0).powi(2) + (u.y - my_base_pos.1).powi(2)) < 700.0_f32.powi(2)
+        engine.are_hostile(team, u.team) && ((u.x - my_base_pos.0).powi(2) + (u.y - my_base_pos.1).powi(2)) < 700.0_f32.powi(2)
     });
     s.push(if base_threat { 1.0 } else { 0.0 });
 
     // 20. Khoảng cách gần nhất từ cánh quân đối thủ tới căn cứ phe mình
     let nearest_enemy_dist = engine.units.iter()
-        .filter(|u| u.team == opp_team)
+        .filter(|u| engine.are_hostile(team, u.team))
         .map(|u| ((u.x - my_base_pos.0).powi(2) + (u.y - my_base_pos.1).powi(2)).sqrt())
         .min_by(|a, b| a.partial_cmp(b).unwrap())
-        .unwrap_or(2400.0);
-    s.push((nearest_enemy_dist / 2400.0).clamp(0.0, 1.0));
+        .unwrap_or(crate::map::MAP_WIDTH);
+    s.push((nearest_enemy_dist / crate::map::MAP_WIDTH).clamp(0.0, 1.0));
 
     // 21. Thợ mỏ của đối thủ (để quyết định Harass)
-    let opp_workers = engine.units.iter().filter(|u| u.team == opp_team && u.unit_type == UnitType::Engineer).count();
+    let opp_workers = engine.units.iter().filter(|u| engine.are_hostile(team, u.team) && u.unit_type == UnitType::Engineer).count();
     s.push((opp_workers as f32 / 16.0).clamp(0.0, 1.5));
 
     // 22. Tình trạng nhà chính của đối thủ
-    let opp_ccs = engine.buildings.iter().filter(|b| b.team == opp_team && b.building_type == BuildingType::CommandCenter).count();
+    let opp_ccs = engine.buildings.iter().filter(|b| engine.are_hostile(team, b.team) && b.building_type == BuildingType::CommandCenter).count();
     s.push((opp_ccs as f32 / 2.0).clamp(0.0, 1.0));
 
     // Đảm bảo đủ 24 chiều
@@ -171,9 +189,14 @@ pub fn count_unlocked_techs(tech: &crate::resources::TechTreeState) -> usize {
 }
 
 pub fn update_ai(engine: &mut GameEngine) {
-    let mut ai_state = engine.ai_state.clone();
-    update_ai_for_team(engine, Team::Enemy, &mut ai_state);
-    engine.ai_state = ai_state;
+    for i in 1..crate::components::MAX_PLAYERS {
+        let team = Team::from_index(i);
+        if engine.is_slot_active(team) && !engine.player_slots[i].is_human {
+            let mut ai_state = engine.team_ai(team).clone();
+            update_ai_for_team(engine, team, &mut ai_state);
+            *engine.team_ai_mut(team) = ai_state;
+        }
+    }
 }
 
 pub fn update_ai_for_team(engine: &mut GameEngine, team: Team, ai_state: &mut AiState) {
@@ -303,31 +326,28 @@ pub fn maintain_continuous_ai_reflexes(engine: &mut GameEngine) {
 }
 
 pub fn maintain_continuous_ai_reflexes_for_team(engine: &mut GameEngine, team: Team) {
-    let (base_pos, opp_team) = match team {
-        Team::Player => ((250.0, 2050.0), Team::Enemy),
-        Team::Enemy => ((2150.0, 350.0), Team::Player),
-    };
+    let _opp_team = find_primary_hostile_team(engine, team);
+    let base_pos = engine.base_pos(team);
 
     let team_workers = engine.units.iter().filter(|u| u.team == team && u.unit_type == UnitType::Engineer).count();
     let team_ccs = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::CommandCenter).count();
     let worker_target = if team_ccs > 1 { 22 } else { 14 };
 
-    let eco = match team {
-        Team::Player => &mut engine.player_eco,
-        Team::Enemy => &mut engine.enemy_eco,
+    // 1. Duy trì sản xuất thợ mỏ cơ bản
+    let (eco_supply, eco_max_supply, eco_minerals) = {
+        let eco = engine.team_eco(team);
+        (eco.supply, eco.max_supply, eco.minerals)
     };
 
-    // 1. Duy trì sản xuất thợ mỏ cơ bản
-    if team_workers < worker_target && eco.supply < eco.max_supply && eco.minerals >= 50.0 {
-        if let Some(cc) = engine.buildings.iter_mut().find(|b| {
+    if team_workers < worker_target && eco_supply < eco_max_supply && eco_minerals >= 50.0 {
+        let cc_id = engine.buildings.iter().find(|b| {
             b.team == team && b.building_type == BuildingType::CommandCenter && b.build_progress >= 1.0 && b.training_queue.len() < 2
-        }) {
-            let eco = match team {
-                Team::Player => &mut engine.player_eco,
-                Team::Enemy => &mut engine.enemy_eco,
-            };
-            eco.minerals -= 50.0;
-            cc.training_queue.push(UnitType::Engineer);
+        }).map(|b| b.id);
+        if let Some(bid) = cc_id {
+            engine.team_eco_mut(team).minerals -= 50.0;
+            if let Some(cc) = engine.buildings.iter_mut().find(|b| b.id == bid) {
+                cc.training_queue.push(UnitType::Engineer);
+            }
         }
     }
 
@@ -337,10 +357,7 @@ pub fn maintain_continuous_ai_reflexes_for_team(engine: &mut GameEngine, team: T
     }).count();
 
     let (eco_supply, eco_max_supply, eco_minerals) = {
-        let eco = match team {
-            Team::Player => &engine.player_eco,
-            Team::Enemy => &engine.enemy_eco,
-        };
+        let eco = engine.team_eco(team);
         (eco.supply, eco.max_supply, eco.minerals)
     };
 
@@ -356,10 +373,7 @@ pub fn maintain_continuous_ai_reflexes_for_team(engine: &mut GameEngine, team: T
 
     // 3. Xây Power Reactor
     let reactors = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::PowerReactor).count();
-    let eco_minerals = match team {
-        Team::Player => engine.player_eco.minerals,
-        Team::Enemy => engine.enemy_eco.minerals,
-    };
+    let eco_minerals = engine.team_eco(team).minerals;
     if reactors < 3 && eco_minerals >= 100.0 {
         let under_construction = engine.buildings.iter().any(|b| {
             b.team == team && b.building_type == BuildingType::PowerReactor && b.build_progress < 1.0
@@ -385,10 +399,7 @@ pub fn maintain_continuous_ai_reflexes_for_team(engine: &mut GameEngine, team: T
     let under_construction_conv = engine.buildings.iter().any(|b| {
         b.team == team && b.building_type == BuildingType::EnergyConverter && b.build_progress < 1.0
     });
-    let (eco_min, eco_en) = match team {
-        Team::Player => (engine.player_eco.minerals, engine.player_eco.energy),
-        Team::Enemy => (engine.enemy_eco.minerals, engine.enemy_eco.energy),
-    };
+    let (eco_min, eco_en) = (engine.team_eco(team).minerals, engine.team_eco(team).energy);
     if !under_construction_conv && eco_min >= 150.0 && eco_en >= 50.0 {
         if converters < (reactors / 2).min(6).max(1) && (reactors >= 2 || eco_en >= 250.0) {
             if let Some((bx, by)) = crate::autoplay::find_team_build_spot(engine, team, BuildingType::EnergyConverter) {
@@ -435,10 +446,7 @@ pub fn maintain_continuous_ai_reflexes_for_team(engine: &mut GameEngine, team: T
     }
 
     // 4.8. Chủ động nâng cấp công nghệ khi thừa năng lượng
-    let (active_res_len, tech_en) = match team {
-        Team::Player => (engine.player_tech.active_researches.len(), engine.player_eco.energy),
-        Team::Enemy => (engine.enemy_tech.active_researches.len(), engine.enemy_eco.energy),
-    };
+    let (active_res_len, tech_en) = (engine.team_tech(team).active_researches.len(), engine.team_eco(team).energy);
     if active_res_len < 2 && tech_en >= 100.0 {
         let tech_priorities = [
             "dark_matter_rockets",
@@ -452,9 +460,13 @@ pub fn maintain_continuous_ai_reflexes_for_team(engine: &mut GameEngine, team: T
             "hive_proliferation",
         ];
         for &t in &tech_priorities {
-            let (team_tech, team_eco) = match team {
-                Team::Player => (&mut engine.player_tech, &mut engine.player_eco),
-                Team::Enemy => (&mut engine.enemy_tech, &mut engine.enemy_eco),
+            let (team_tech, team_eco, cfg) = match team {
+                Team::Player => (&mut engine.player_tech, &mut engine.player_eco, &engine.config),
+                Team::Enemy => (&mut engine.enemy_tech, &mut engine.enemy_eco, &engine.config),
+                _ => {
+                    let idx = team.index() - 2;
+                    (&mut engine.extra_techs[idx], &mut engine.extra_ecos[idx], &engine.config)
+                }
             };
             if !crate::simulation::is_tech_unlocked(team_tech, t)
                 && !team_tech.active_researches.iter().any(|r| r.tech_id == t)
@@ -462,7 +474,7 @@ pub fn maintain_continuous_ai_reflexes_for_team(engine: &mut GameEngine, team: T
                 if crate::simulation::process_start_research(
                     team_tech,
                     team_eco,
-                    &engine.config,
+                    cfg,
                     t,
                 ) {
                     break;
@@ -477,9 +489,9 @@ pub fn maintain_continuous_ai_reflexes_for_team(engine: &mut GameEngine, team: T
     // 6. Điều phối tác chiến
     let my_combat = engine.units.iter().filter(|u| u.team == team && u.unit_type != UnitType::Engineer).count();
 
-    // 6.1. Nếu căn cứ bị đe dọa trực tiếp (<750px), phòng thủ
+    // 6.1. Nếu căn cứ phe mình hoặc đồng minh bị đe dọa trực tiếp (<750px), phòng thủ
     let has_threat = engine.units.iter().any(|u| {
-        u.team == opp_team && ((u.x - base_pos.0).powi(2) + (u.y - base_pos.1).powi(2)) < 750.0_f32.powi(2)
+        engine.are_hostile(team, u.team) && ((u.x - base_pos.0).powi(2) + (u.y - base_pos.1).powi(2)) < 750.0_f32.powi(2)
     });
     if has_threat {
         command_team_military(engine, team, MilitaryCommand::DefendBase);
@@ -487,22 +499,12 @@ pub fn maintain_continuous_ai_reflexes_for_team(engine: &mut GameEngine, team: T
     }
 
     // 6.2. Tiến công
-    let tech = match team {
-        Team::Player => &engine.player_tech,
-        Team::Enemy => &engine.enemy_tech,
-    };
+    let tech = engine.team_tech(team);
     let has_siege_tech = tech.dark_matter_rockets || tech.focused_laser;
     let assault_threshold = if has_siege_tech { 16 } else { 22 };
 
     let is_on_offensive = my_combat >= assault_threshold || engine.units.iter().any(|u| {
-        if u.team != team || u.unit_type == UnitType::Engineer {
-            false
-        } else {
-            match team {
-                Team::Player => u.x > 1000.0 || u.y < 1300.0,
-                Team::Enemy => u.x < 1400.0 || u.y > 1100.0,
-            }
-        }
+        u.team == team && u.unit_type != UnitType::Engineer && ((u.x - base_pos.0).powi(2) + (u.y - base_pos.1).powi(2)) > 1000.0_f32.powi(2)
     });
 
     if is_on_offensive {
@@ -511,20 +513,16 @@ pub fn maintain_continuous_ai_reflexes_for_team(engine: &mut GameEngine, team: T
     }
 
     // 6.3. Tập kết quân mới sinh
-    let rally_pos = match team {
-        Team::Player => (650.0, 1750.0),
-        Team::Enemy => (1750.0, 650.0),
-    };
+    let center = (crate::map::MAP_WIDTH * 0.5, crate::map::MAP_HEIGHT * 0.5);
+    let dx = center.0 - base_pos.0;
+    let dy = center.1 - base_pos.1;
+    let len = (dx * dx + dy * dy).sqrt().max(1.0);
+    let rally_pos = (base_pos.0 + dx / len * 400.0, base_pos.1 + dy / len * 400.0);
+
     let idle_combat_units: Vec<u32> = engine.units.iter()
         .filter(|u| {
-            if u.team != team || u.unit_type == UnitType::Engineer || u.order != UnitOrder::Idle {
-                false
-            } else {
-                match team {
-                    Team::Player => u.x < 800.0 && u.y > 1600.0,
-                    Team::Enemy => u.x > 1600.0 && u.y < 800.0,
-                }
-            }
+            u.team == team && u.unit_type != UnitType::Engineer && u.order == UnitOrder::Idle
+                && ((u.x - base_pos.0).powi(2) + (u.y - base_pos.1).powi(2)) < 650.0_f32.powi(2)
         })
         .map(|u| u.id)
         .collect();
@@ -542,19 +540,16 @@ pub fn maintain_continuous_ai_reflexes_for_team(engine: &mut GameEngine, team: T
 }
 
 pub fn execute_team_continuous_recruitment(engine: &mut GameEngine, team: Team) {
-    let (supply, max_supply) = match team {
-        Team::Player => (engine.player_eco.supply, engine.player_eco.max_supply),
-        Team::Enemy => (engine.enemy_eco.supply, engine.enemy_eco.max_supply),
+    let (supply, max_supply) = {
+        let eco = engine.team_eco(team);
+        (eco.supply, eco.max_supply)
     };
     if supply >= max_supply {
         return;
     }
 
     let team_combat = engine.units.iter().filter(|u| u.team == team && u.unit_type != UnitType::Engineer).count();
-    let (tech, _eco) = match team {
-        Team::Player => (&engine.player_tech, &engine.player_eco),
-        Team::Enemy => (&engine.enemy_tech, &engine.enemy_eco),
-    };
+    let tech = engine.team_tech(team);
 
     let needs_tech = !tech.dark_matter_rockets || !tech.energy_shielding;
     let mineral_reserve = if needs_tech && team_combat >= 6 { 230.0 } else if team_combat >= 6 { 100.0 } else { 0.0 };
@@ -565,9 +560,9 @@ pub fn execute_team_continuous_recruitment(engine: &mut GameEngine, team: Team) 
         .collect();
 
     for bid in completed_barracks {
-        let (cur_supply, cur_max_supply) = match team {
-            Team::Player => (engine.player_eco.supply, engine.player_eco.max_supply),
-            Team::Enemy => (engine.enemy_eco.supply, engine.enemy_eco.max_supply),
+        let (cur_supply, cur_max_supply) = {
+            let eco = engine.team_eco(team);
+            (eco.supply, eco.max_supply)
         };
         if cur_supply >= cur_max_supply {
             break;
@@ -584,13 +579,10 @@ pub fn execute_team_continuous_recruitment(engine: &mut GameEngine, team: Team) 
             UnitType::AcidBaneling,
         ];
 
-        let tech = match team {
-            Team::Player => &engine.player_tech,
-            Team::Enemy => &engine.enemy_tech,
-        };
+        let tech = engine.team_tech(team).clone();
 
         for &u_type in &priority_units {
-            if !crate::autoplay::can_train_unit(tech, u_type) {
+            if !crate::autoplay::can_train_unit(&tech, u_type) {
                 continue;
             }
             let (mut min_cost, mut en_cost) = engine.config.get_unit_cost(u_type);
@@ -599,11 +591,7 @@ pub fn execute_team_continuous_recruitment(engine: &mut GameEngine, team: Team) 
                 en_cost *= 0.65;
             }
 
-            let eco = match team {
-                Team::Player => &mut engine.player_eco,
-                Team::Enemy => &mut engine.enemy_eco,
-            };
-
+            let eco = engine.team_eco_mut(team);
             if eco.minerals >= mineral_reserve + min_cost && eco.energy >= en_cost {
                 eco.minerals -= min_cost;
                 eco.energy -= en_cost;
@@ -620,17 +608,10 @@ pub fn execute_team_continuous_recruitment(engine: &mut GameEngine, team: Team) 
             let basic_units = [UnitType::ShockTrooper, UnitType::Rifleman];
             for &u_type in &basic_units {
                 let (mut min_cost, _) = engine.config.get_unit_cost(u_type);
-                let tech = match team {
-                    Team::Player => &engine.player_tech,
-                    Team::Enemy => &engine.enemy_tech,
-                };
                 if tech.hive_proliferation {
                     min_cost *= 0.65;
                 }
-                let eco = match team {
-                    Team::Player => &mut engine.player_eco,
-                    Team::Enemy => &mut engine.enemy_eco,
-                };
+                let eco = engine.team_eco_mut(team);
                 if eco.minerals >= mineral_reserve + min_cost {
                     eco.minerals -= min_cost;
                     if let Some(b) = engine.buildings.iter_mut().find(|b| b.id == bid) {
@@ -647,23 +628,23 @@ pub fn execute_team_eco(engine: &mut GameEngine, team: Team, try_expansion: bool
     let team_workers = engine.units.iter().filter(|u| u.team == team && u.unit_type == UnitType::Engineer).count();
     let team_ccs = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::CommandCenter).count();
 
-    let (supply, max_supply, minerals) = match team {
-        Team::Player => (engine.player_eco.supply, engine.player_eco.max_supply, engine.player_eco.minerals),
-        Team::Enemy => (engine.enemy_eco.supply, engine.enemy_eco.max_supply, engine.enemy_eco.minerals),
+    let (supply, max_supply, minerals) = {
+        let eco = engine.team_eco(team);
+        (eco.supply, eco.max_supply, eco.minerals)
     };
 
     if team_workers < 16 && supply < max_supply {
         let (w_cost, _) = engine.config.get_unit_cost(UnitType::Engineer);
         if minerals >= w_cost {
-            if let Some(cc) = engine.buildings.iter_mut().find(|b| {
+            let cc_id = engine.buildings.iter().find(|b| {
                 b.team == team && b.building_type == BuildingType::CommandCenter && b.build_progress >= 1.0 && b.training_queue.len() < 2
-            }) {
-                let eco = match team {
-                    Team::Player => &mut engine.player_eco,
-                    Team::Enemy => &mut engine.enemy_eco,
-                };
+            }).map(|b| b.id);
+            if let Some(bid) = cc_id {
+                let eco = engine.team_eco_mut(team);
                 eco.minerals -= w_cost;
-                cc.training_queue.push(UnitType::Engineer);
+                if let Some(cc) = engine.buildings.iter_mut().find(|b| b.id == bid) {
+                    cc.training_queue.push(UnitType::Engineer);
+                }
             }
         }
     }
@@ -680,9 +661,9 @@ pub fn execute_team_infrastructure(engine: &mut GameEngine, team: Team) {
     let converters = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::EnergyConverter).count();
     let barracks = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::Barracks).count();
 
-    let (minerals, energy) = match team {
-        Team::Player => (engine.player_eco.minerals, engine.player_eco.energy),
-        Team::Enemy => (engine.enemy_eco.minerals, engine.enemy_eco.energy),
+    let (minerals, energy) = {
+        let eco = engine.team_eco(team);
+        (eco.minerals, eco.energy)
     };
 
     if barracks < 4 {
@@ -730,9 +711,9 @@ pub fn execute_team_infrastructure(engine: &mut GameEngine, team: Team) {
 
 pub fn execute_team_defense(engine: &mut GameEngine, team: Team) {
     let turrets = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::TurretTower).count();
-    let (minerals, energy) = match team {
-        Team::Player => (engine.player_eco.minerals, engine.player_eco.energy),
-        Team::Enemy => (engine.enemy_eco.minerals, engine.enemy_eco.energy),
+    let (minerals, energy) = {
+        let eco = engine.team_eco(team);
+        (eco.minerals, eco.energy)
     };
     if turrets < 6 {
         let (turret_m, turret_e) = engine.config.get_building_cost(BuildingType::TurretTower);
@@ -746,9 +727,13 @@ pub fn execute_team_defense(engine: &mut GameEngine, team: Team) {
 
 pub fn try_team_research(engine: &mut GameEngine, team: Team, tech_chain: &[&str]) {
     for &tech_id in tech_chain {
-        let (tech, eco) = match team {
-            Team::Player => (&mut engine.player_tech, &mut engine.player_eco),
-            Team::Enemy => (&mut engine.enemy_tech, &mut engine.enemy_eco),
+        let (tech, eco, cfg) = match team {
+            Team::Player => (&mut engine.player_tech, &mut engine.player_eco, &engine.config),
+            Team::Enemy => (&mut engine.enemy_tech, &mut engine.enemy_eco, &engine.config),
+            _ => {
+                let idx = team.index() - 2;
+                (&mut engine.extra_techs[idx], &mut engine.extra_ecos[idx], &engine.config)
+            }
         };
         if !crate::simulation::is_tech_unlocked(tech, tech_id)
             && !tech.active_researches.iter().any(|r| r.tech_id == tech_id)
@@ -756,7 +741,7 @@ pub fn try_team_research(engine: &mut GameEngine, team: Team, tech_chain: &[&str
             crate::simulation::process_start_research(
                 tech,
                 eco,
-                &engine.config,
+                cfg,
                 tech_id,
             );
             break;
@@ -765,9 +750,9 @@ pub fn try_team_research(engine: &mut GameEngine, team: Team, tech_chain: &[&str
 }
 
 pub fn execute_team_training(engine: &mut GameEngine, team: Team, candidate_units: &[UnitType]) {
-    let (supply, max_supply) = match team {
-        Team::Player => (engine.player_eco.supply, engine.player_eco.max_supply),
-        Team::Enemy => (engine.enemy_eco.supply, engine.enemy_eco.max_supply),
+    let (supply, max_supply) = {
+        let eco = engine.team_eco(team);
+        (eco.supply, eco.max_supply)
     };
     if supply >= max_supply {
         return;
@@ -779,19 +764,16 @@ pub fn execute_team_training(engine: &mut GameEngine, team: Team, candidate_unit
         .collect();
 
     for bid in completed_barracks {
-        let (cur_supply, cur_max_supply) = match team {
-            Team::Player => (engine.player_eco.supply, engine.player_eco.max_supply),
-            Team::Enemy => (engine.enemy_eco.supply, engine.enemy_eco.max_supply),
+        let (cur_supply, cur_max_supply) = {
+            let eco = engine.team_eco(team);
+            (eco.supply, eco.max_supply)
         };
         if cur_supply >= cur_max_supply {
             break;
         }
 
         for &u_type in candidate_units {
-            let tech = match team {
-                Team::Player => &engine.player_tech,
-                Team::Enemy => &engine.enemy_tech,
-            };
+            let tech = engine.team_tech(team);
             if u_type == UnitType::Engineer || !crate::autoplay::can_train_unit(tech, u_type) {
                 continue;
             }
@@ -802,11 +784,7 @@ pub fn execute_team_training(engine: &mut GameEngine, team: Team, candidate_unit
                 en_cost *= 0.65;
             }
 
-            let eco = match team {
-                Team::Player => &mut engine.player_eco,
-                Team::Enemy => &mut engine.enemy_eco,
-            };
-
+            let eco = engine.team_eco_mut(team);
             if eco.minerals >= min_cost && eco.energy >= en_cost {
                 eco.minerals -= min_cost;
                 eco.energy -= en_cost;
@@ -828,10 +806,7 @@ pub enum MilitaryCommand {
 }
 
 pub fn command_team_military(engine: &mut GameEngine, team: Team, cmd: MilitaryCommand) {
-    let opp_team = match team {
-        Team::Player => Team::Enemy,
-        Team::Enemy => Team::Player,
-    };
+    let opp_team = find_primary_hostile_team(engine, team);
 
     let combat_unit_ids: Vec<u32> = engine.units.iter()
         .filter(|u| u.team == team && u.unit_type != UnitType::Engineer)
@@ -842,15 +817,20 @@ pub fn command_team_military(engine: &mut GameEngine, team: Team, cmd: MilitaryC
         return;
     }
 
-    let (base_pos, default_opp_base, default_opp_worker_pos, default_rally) = match team {
-        Team::Player => ((250.0, 2050.0), (2150.0, 350.0), (2100.0, 450.0), (650.0, 1750.0)),
-        Team::Enemy => ((2150.0, 350.0), (250.0, 2050.0), (300.0, 1950.0), (1750.0, 650.0)),
-    };
+    let base_pos = engine.base_pos(team);
+    let default_opp_base = engine.base_pos(opp_team);
+    let default_opp_worker_pos = (default_opp_base.0 + 50.0, default_opp_base.1 + 50.0);
+
+    let center = (crate::map::MAP_WIDTH * 0.5, crate::map::MAP_HEIGHT * 0.5);
+    let dx = center.0 - base_pos.0;
+    let dy = center.1 - base_pos.1;
+    let len = (dx * dx + dy * dy).sqrt().max(1.0);
+    let default_rally = (base_pos.0 + dx / len * 350.0, base_pos.1 + dy / len * 350.0);
 
     match cmd {
         MilitaryCommand::DefendBase => {
             let nearest_threat = engine.units.iter()
-                .filter(|u| u.team == opp_team)
+                .filter(|u| engine.are_hostile(team, u.team))
                 .min_by(|a, b| {
                     let da = (a.x - base_pos.0).powi(2) + (a.y - base_pos.1).powi(2);
                     let db = (b.x - base_pos.0).powi(2) + (b.y - base_pos.1).powi(2);
@@ -867,7 +847,7 @@ pub fn command_team_military(engine: &mut GameEngine, team: Team, cmd: MilitaryC
         }
         MilitaryCommand::HarassWorkers => {
             let opp_worker_pos = engine.units.iter()
-                .find(|u| u.team == opp_team && u.unit_type == UnitType::Engineer)
+                .find(|u| engine.are_hostile(team, u.team) && u.unit_type == UnitType::Engineer)
                 .map(|u| (u.x, u.y))
                 .unwrap_or(default_opp_worker_pos);
 
@@ -884,7 +864,7 @@ pub fn command_team_military(engine: &mut GameEngine, team: Team, cmd: MilitaryC
         }
         MilitaryCommand::HarassOrAttack | MilitaryCommand::AllOutAssault => {
             let target = engine.buildings.iter()
-                .find(|b| b.team == opp_team && b.building_type == BuildingType::CommandCenter)
+                .find(|b| engine.are_hostile(team, b.team) && b.building_type == BuildingType::CommandCenter)
                 .map(|b| (b.x, b.y))
                 .unwrap_or(default_opp_base);
 
@@ -902,8 +882,8 @@ pub fn command_team_military(engine: &mut GameEngine, team: Team, cmd: MilitaryC
 
                     let angle = (i as f32) * 0.45;
                     let radius = 40.0 + ((i % 4) as f32) * 15.0;
-                    let target_x = (target.0 + angle.cos() * radius).clamp(60.0, 2340.0);
-                    let target_y = (target.1 + angle.sin() * radius).clamp(60.0, 2340.0);
+                    let target_x = (target.0 + angle.cos() * radius).clamp(60.0, crate::map::MAP_WIDTH - 60.0);
+                    let target_y = (target.1 + angle.sin() * radius).clamp(60.0, crate::map::MAP_HEIGHT - 60.0);
 
                     u.order = UnitOrder::AttackMove {
                         x: target_x,

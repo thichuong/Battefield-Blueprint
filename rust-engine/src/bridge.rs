@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 pub enum ReactToEngineCommand {
     StartGame {
         difficulty: String,
+        #[serde(default)]
+        slots: Vec<crate::components::PlayerSlotConfig>,
     },
     SetPaused {
         paused: bool,

@@ -45,13 +45,20 @@ pub struct GameEngine {
     pub floating_texts: Vec<FloatingText>,
     pub spatial_grid: SpatialGrid,
 
-    // Trạng thái kinh tế & công nghệ 2 phe
+    // Trạng thái kinh tế & công nghệ 2 phe chính (giữ nguyên để tương thích ngược)
     pub player_eco: PlayerEconomy,
     pub enemy_eco: PlayerEconomy,
     pub player_tech: TechTreeState,
     pub enemy_tech: TechTreeState,
     pub autoplay: crate::autoplay::AutoPlayState,
     pub enemy_autoplay: crate::autoplay::AutoPlayState,
+
+    // Trạng thái mở rộng cho tối đa 8 Player & Đa Phe
+    pub player_slots: [crate::components::PlayerSlotConfig; 8],
+    pub extra_ecos: Vec<PlayerEconomy>, // Slot 2..7
+    pub extra_techs: Vec<TechTreeState>, // Slot 2..7
+    pub extra_autoplays: Vec<crate::autoplay::AutoPlayState>, // Slot 2..7
+    pub extra_ai_states: Vec<crate::ai::AiState>, // Slot 2..7
 
     // Đang chọn & Thao tác
     pub selected_unit_ids: Vec<u32>,
@@ -86,6 +93,19 @@ pub struct GameEngine {
     pub outgoing_events: Vec<EngineToReactEvent>,
 }
 
+fn default_player_slots() -> [crate::components::PlayerSlotConfig; 8] {
+    [
+        crate::components::PlayerSlotConfig { slot_index: 0, active: true, faction: 0, is_human: true },
+        crate::components::PlayerSlotConfig { slot_index: 1, active: true, faction: 1, is_human: false },
+        crate::components::PlayerSlotConfig { slot_index: 2, active: false, faction: 1, is_human: false },
+        crate::components::PlayerSlotConfig { slot_index: 3, active: false, faction: 1, is_human: false },
+        crate::components::PlayerSlotConfig { slot_index: 4, active: false, faction: 1, is_human: false },
+        crate::components::PlayerSlotConfig { slot_index: 5, active: false, faction: 1, is_human: false },
+        crate::components::PlayerSlotConfig { slot_index: 6, active: false, faction: 1, is_human: false },
+        crate::components::PlayerSlotConfig { slot_index: 7, active: false, faction: 1, is_human: false },
+    ]
+}
+
 impl GameEngine {
     pub fn new(canvas: HtmlCanvasElement, ctx: CanvasRenderingContext2d) -> Self {
         let (minerals, obstacles) = map::generate_map_elements();
@@ -99,6 +119,17 @@ impl GameEngine {
             energy_per_sec: config.economy.base_energy_per_sec,
         };
         let enemy_eco = player_eco.clone();
+
+        let mut extra_ecos = Vec::with_capacity(6);
+        let mut extra_techs = Vec::with_capacity(6);
+        let mut extra_autoplays = Vec::with_capacity(6);
+        let mut extra_ai_states = Vec::with_capacity(6);
+        for _ in 2..8 {
+            extra_ecos.push(player_eco.clone());
+            extra_techs.push(TechTreeState::default());
+            extra_autoplays.push(crate::autoplay::AutoPlayState::default_for_enemy());
+            extra_ai_states.push(crate::ai::AiState::default());
+        }
 
         let mut engine = Self {
             context: Some(ctx),
@@ -123,6 +154,12 @@ impl GameEngine {
             enemy_tech: TechTreeState::default(),
             autoplay: crate::autoplay::AutoPlayState::default(),
             enemy_autoplay: crate::autoplay::AutoPlayState::default_for_enemy(),
+
+            player_slots: default_player_slots(),
+            extra_ecos,
+            extra_techs,
+            extra_autoplays,
+            extra_ai_states,
 
             selected_unit_ids: Vec::new(),
             selected_building_id: None,
@@ -170,6 +207,17 @@ impl GameEngine {
         };
         let enemy_eco = player_eco.clone();
 
+        let mut extra_ecos = Vec::with_capacity(6);
+        let mut extra_techs = Vec::with_capacity(6);
+        let mut extra_autoplays = Vec::with_capacity(6);
+        let mut extra_ai_states = Vec::with_capacity(6);
+        for _ in 2..8 {
+            extra_ecos.push(player_eco.clone());
+            extra_techs.push(TechTreeState::default());
+            extra_autoplays.push(crate::autoplay::AutoPlayState::default_for_enemy());
+            extra_ai_states.push(crate::ai::AiState::default());
+        }
+
         let mut engine = Self {
             context: None,
             canvas: None,
@@ -193,6 +241,12 @@ impl GameEngine {
             enemy_tech: TechTreeState::default(),
             autoplay: crate::autoplay::AutoPlayState::default(),
             enemy_autoplay: crate::autoplay::AutoPlayState::default_for_enemy(),
+
+            player_slots: default_player_slots(),
+            extra_ecos,
+            extra_techs,
+            extra_autoplays,
+            extra_ai_states,
 
             selected_unit_ids: Vec::new(),
             selected_building_id: None,
@@ -226,6 +280,161 @@ impl GameEngine {
         engine
     }
 
+    #[inline]
+    pub fn get_faction(&self, team: Team) -> u8 {
+        self.player_slots[team.index() % 8].faction
+    }
+
+    #[inline]
+    pub fn are_allies(&self, a: Team, b: Team) -> bool {
+        a == b || self.get_faction(a) == self.get_faction(b)
+    }
+
+    #[inline]
+    pub fn are_hostile(&self, a: Team, b: Team) -> bool {
+        !self.are_allies(a, b)
+    }
+
+    #[inline]
+    pub fn is_slot_active(&self, team: Team) -> bool {
+        self.player_slots[team.index() % 8].active
+    }
+
+    #[inline]
+    pub fn base_pos(&self, team: Team) -> (f32, f32) {
+        let spawns = map::get_spawn_positions();
+        spawns[team.index() % 8]
+    }
+
+    #[inline]
+    pub fn team_factions(&self) -> [u8; 8] {
+        let mut factions = [0u8; 8];
+        for i in 0..8 {
+            factions[i] = self.player_slots[i].faction;
+        }
+        factions
+    }
+
+    pub fn team_eco(&self, team: Team) -> &PlayerEconomy {
+        match team {
+            Team::Player => &self.player_eco,
+            Team::Enemy => &self.enemy_eco,
+            _ => {
+                let idx = team.index().saturating_sub(2);
+                if idx < self.extra_ecos.len() {
+                    &self.extra_ecos[idx]
+                } else {
+                    &self.enemy_eco
+                }
+            }
+        }
+    }
+
+    pub fn team_eco_mut(&mut self, team: Team) -> &mut PlayerEconomy {
+        match team {
+            Team::Player => &mut self.player_eco,
+            Team::Enemy => &mut self.enemy_eco,
+            _ => {
+                let idx = team.index().saturating_sub(2);
+                if idx < self.extra_ecos.len() {
+                    &mut self.extra_ecos[idx]
+                } else {
+                    &mut self.enemy_eco
+                }
+            }
+        }
+    }
+
+    pub fn team_tech(&self, team: Team) -> &TechTreeState {
+        match team {
+            Team::Player => &self.player_tech,
+            Team::Enemy => &self.enemy_tech,
+            _ => {
+                let idx = team.index().saturating_sub(2);
+                if idx < self.extra_techs.len() {
+                    &self.extra_techs[idx]
+                } else {
+                    &self.enemy_tech
+                }
+            }
+        }
+    }
+
+    pub fn team_tech_mut(&mut self, team: Team) -> &mut TechTreeState {
+        match team {
+            Team::Player => &mut self.player_tech,
+            Team::Enemy => &mut self.enemy_tech,
+            _ => {
+                let idx = team.index().saturating_sub(2);
+                if idx < self.extra_techs.len() {
+                    &mut self.extra_techs[idx]
+                } else {
+                    &mut self.enemy_tech
+                }
+            }
+        }
+    }
+
+    pub fn team_autoplay(&self, team: Team) -> &crate::autoplay::AutoPlayState {
+        match team {
+            Team::Player => &self.autoplay,
+            Team::Enemy => &self.enemy_autoplay,
+            _ => {
+                let idx = team.index().saturating_sub(2);
+                if idx < self.extra_autoplays.len() {
+                    &self.extra_autoplays[idx]
+                } else {
+                    &self.enemy_autoplay
+                }
+            }
+        }
+    }
+
+    pub fn team_autoplay_mut(&mut self, team: Team) -> &mut crate::autoplay::AutoPlayState {
+        match team {
+            Team::Player => &mut self.autoplay,
+            Team::Enemy => &mut self.enemy_autoplay,
+            _ => {
+                let idx = team.index().saturating_sub(2);
+                if idx < self.extra_autoplays.len() {
+                    &mut self.extra_autoplays[idx]
+                } else {
+                    &mut self.enemy_autoplay
+                }
+            }
+        }
+    }
+
+    pub fn team_ai(&self, team: Team) -> &crate::ai::AiState {
+        match team {
+            Team::Player => &self.ai_state,
+            Team::Enemy => &self.ai_state,
+            _ => {
+                let idx = team.index().saturating_sub(2);
+                if idx < self.extra_ai_states.len() {
+                    &self.extra_ai_states[idx]
+                } else {
+                    &self.ai_state
+                }
+            }
+        }
+    }
+
+    pub fn team_ai_mut(&mut self, team: Team) -> &mut crate::ai::AiState {
+        match team {
+            Team::Player => &mut self.ai_state,
+            Team::Enemy => &mut self.ai_state,
+            _ => {
+                let idx = team.index().saturating_sub(2);
+                if idx < self.extra_ai_states.len() {
+                    &mut self.extra_ai_states[idx]
+                } else {
+                    &mut self.ai_state
+                }
+            }
+        }
+    }
+
     /// Dọn sạch toàn bộ thực thể và tài nguyên của màn chơi cũ, chuẩn bị cho màn chơi mới
     pub fn reset_game(&mut self) {
         // 1. Khởi tạo lại tài nguyên khoáng sản & chướng ngại vật mới tinh
@@ -244,7 +453,7 @@ impl GameEngine {
         self.fog = FogOfWar::new();
 
         // 4. Reset tài nguyên kinh tế & cây công nghệ về ban đầu
-        self.player_eco = PlayerEconomy {
+        let default_eco = PlayerEconomy {
             minerals: self.config.economy.starting_minerals,
             energy: self.config.economy.starting_energy,
             supply: self.config.economy.starting_supply,
@@ -252,9 +461,21 @@ impl GameEngine {
             minerals_per_sec: 0.0,
             energy_per_sec: self.config.economy.base_energy_per_sec,
         };
-        self.enemy_eco = self.player_eco.clone();
+        self.player_eco = default_eco.clone();
+        self.enemy_eco = default_eco.clone();
+        for eco in self.extra_ecos.iter_mut() {
+            *eco = default_eco.clone();
+        }
+
         self.player_tech = TechTreeState::default();
         self.enemy_tech = TechTreeState::default();
+        for tech in self.extra_techs.iter_mut() {
+            *tech = TechTreeState::default();
+        }
+
+        for ap in self.extra_autoplays.iter_mut() {
+            *ap = crate::autoplay::AutoPlayState::default_for_enemy();
+        }
 
         // 5. Reset camera về góc căn cứ Player nhưng giữ nguyên kích thước viewport màn hình hiện tại
         let current_viewport_w = self.camera.viewport_w;
@@ -286,8 +507,15 @@ impl GameEngine {
         let preserved_brain = self.ai_state.rl_brain.clone();
         let training_enabled = self.ai_state.training_enabled;
         self.ai_state = crate::ai::AiState::default();
-        self.ai_state.rl_brain = preserved_brain;
+        self.ai_state.rl_brain = preserved_brain.clone();
         self.ai_state.training_enabled = training_enabled;
+
+        for ai in self.extra_ai_states.iter_mut() {
+            *ai = crate::ai::AiState::default();
+            ai.rl_brain = preserved_brain.clone();
+            ai.training_enabled = training_enabled;
+        }
+
         self.minerals_mined_accumulator = 0.0;
         self.income_calc_timer = 0.0;
         self.enemy_autoplay = crate::autoplay::AutoPlayState::default_for_enemy();
@@ -295,7 +523,7 @@ impl GameEngine {
         // 8. Dọn dẹp sự kiện cũ còn sót lại trong hàng đợi
         self.outgoing_events.clear();
 
-        // 9. Sinh lại Căn cứ chính và 3 Thợ mỏ khởi đầu cho Player & AI
+        // 9. Sinh lại Căn cứ chính và 3 Thợ mỏ khởi đầu cho tất cả slot active
         self.init_base();
 
         // 10. Cập nhật lại sương mù cho căn cứ ban đầu ngay tức thì
@@ -303,66 +531,57 @@ impl GameEngine {
     }
 
     pub fn init_base(&mut self) {
-        // Căn cứ Player (Góc Tây-Nam)
-        let p_cc_id = self.alloc_id();
-        let mut p_cc = self.config.create_building(
-            p_cc_id,
-            Team::Player,
-            BuildingType::CommandCenter,
-            250.0,
-            2050.0,
-            true,
-        );
-        p_cc.rally_x = 360.0;
-        p_cc.rally_y = 2050.0;
-        self.buildings.push(p_cc);
+        let spawns = map::get_spawn_positions();
 
-        // 3 Thợ mỏ khởi đầu cho Player (Tự động đi đào mỏ ngay khi vào trận)
-        for i in 0..3 {
-            let u_id = self.alloc_id();
-            let mineral_target_id = (i as u32 % 3) + 1;
-            let mut u = self.config.create_unit(
-                u_id,
-                Team::Player,
-                UnitType::Engineer,
-                230.0 + (i as f32 * 35.0),
-                1980.0,
+        for i in 0..8 {
+            if !self.player_slots[i].active {
+                continue;
+            }
+            let team = Team::from_index(i);
+            let (sx, sy) = spawns[i];
+            let rally = map::get_default_rally_point(i);
+
+            // Sinh CommandCenter
+            let cc_id = self.alloc_id();
+            let mut cc = self.config.create_building(
+                cc_id,
+                team,
+                BuildingType::CommandCenter,
+                sx,
+                sy,
+                true,
             );
-            u.facing_right = true;
-            u.order = UnitOrder::Harvest {
-                target_mineral_id: mineral_target_id,
-                phase: HarvestPhase::MovingToNode,
-            };
-            self.units.push(u);
-        }
+            cc.rally_x = rally.0;
+            cc.rally_y = rally.1;
+            self.buildings.push(cc);
 
-        // Căn cứ Enemy (Góc Đông-Bắc)
-        let e_cc_id = self.alloc_id();
-        let mut e_cc = self.config.create_building(
-            e_cc_id,
-            Team::Enemy,
-            BuildingType::CommandCenter,
-            2150.0,
-            350.0,
-            true,
-        );
-        e_cc.rally_x = 2050.0;
-        e_cc.rally_y = 350.0;
-        self.buildings.push(e_cc);
+            // Sinh 3 Thợ mỏ khởi đầu
+            let mineral_base_id = (i as u32 + 1) * 10;
+            for k in 0..3 {
+                let u_id = self.alloc_id();
+                let offset_x = ((k as f32) - 1.0) * 35.0;
+                let offset_y = -35.0;
+                let mut u = self.config.create_unit(
+                    u_id,
+                    team,
+                    UnitType::Engineer,
+                    sx + offset_x,
+                    sy + offset_y,
+                );
+                u.facing_right = rally.0 >= sx;
 
-        // 3 Thợ mỏ cho Enemy
-        for i in 0..3 {
-            let u_id = self.alloc_id();
-            let mut u = self.config.create_unit(
-                u_id,
-                Team::Enemy,
-                UnitType::Engineer,
-                2120.0 - (i as f32 * 35.0),
-                420.0,
-            );
-            u.facing_right = false;
-            u.order = UnitOrder::Idle;
-            self.units.push(u);
+                if team == Team::Player {
+                    // Thợ mỏ của Player chính tự động đào mỏ ngay
+                    let target_mineral_id = mineral_base_id + (k as u32 % 3) + 1;
+                    u.order = UnitOrder::Harvest {
+                        target_mineral_id,
+                        phase: HarvestPhase::MovingToNode,
+                    };
+                } else {
+                    u.order = UnitOrder::Idle;
+                }
+                self.units.push(u);
+            }
         }
     }
 

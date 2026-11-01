@@ -9,7 +9,7 @@ pub enum Visibility {
 }
 
 pub struct FogOfWar {
-    pub grid: [Visibility; FOG_COLS * FOG_ROWS],
+    pub grid: Vec<Visibility>,
 }
 
 impl Default for FogOfWar {
@@ -21,7 +21,7 @@ impl Default for FogOfWar {
 impl FogOfWar {
     pub fn new() -> Self {
         Self {
-            grid: [Visibility::Hidden; FOG_COLS * FOG_ROWS],
+            grid: vec![Visibility::Hidden; FOG_COLS * FOG_ROWS],
         }
     }
 

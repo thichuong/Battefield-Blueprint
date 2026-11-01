@@ -68,18 +68,35 @@ pub struct TurretDefenseLine {
     pub row_spacing: f32, // Khoảng cách giữa các hàng (mặc định 80.0)
 }
 
-impl Default for TurretDefenseLine {
-    fn default() -> Self {
-        // Vị trí mặc định: Tuyến phòng thủ xéo chắn giữa căn cứ Player (250, 2050) và Enemy (2150, 350)
-        // Cắt vuông góc trục Tây Nam -> Đông Bắc
+impl TurretDefenseLine {
+    pub fn for_team_base(base: (f32, f32)) -> Self {
+        let center_x = crate::map::MAP_WIDTH * 0.5;
+        let center_y = crate::map::MAP_HEIGHT * 0.5;
+        let dx = center_x - base.0;
+        let dy = center_y - base.1;
+        let len = (dx * dx + dy * dy).sqrt().max(1.0);
+        let dir_x = dx / len;
+        let dir_y = dy / len;
+        // Điểm giữa tuyến phòng thủ cách base 400px hướng về tâm map
+        let mid_x = base.0 + dir_x * 400.0;
+        let mid_y = base.1 + dir_y * 400.0;
+        // Vector vuông góc
+        let perp_x = -dir_y;
+        let perp_y = dir_x;
         Self {
             enabled: true,
-            p1: (520.0, 1680.0),
-            p2: (860.0, 1980.0),
+            p1: (mid_x - perp_x * 200.0, mid_y - perp_y * 200.0),
+            p2: (mid_x + perp_x * 200.0, mid_y + perp_y * 200.0),
             spacing: 90.0,
             rows: 1,
             row_spacing: 80.0,
         }
+    }
+}
+
+impl Default for TurretDefenseLine {
+    fn default() -> Self {
+        Self::for_team_base((550.0, 4250.0))
     }
 }
 
@@ -104,18 +121,8 @@ impl AutoPlayConfig {
     }
 
     pub fn default_for_team(team: Team) -> Self {
-        let turret_defense = if team == Team::Enemy {
-            TurretDefenseLine {
-                enabled: true,
-                p1: (1540.0, 420.0),
-                p2: (1880.0, 720.0),
-                spacing: 90.0,
-                rows: 1,
-                row_spacing: 80.0,
-            }
-        } else {
-            TurretDefenseLine::default()
-        };
+        let base = crate::map::get_spawn_positions().get(team.index()).copied().unwrap_or((550.0, 4250.0));
+        let turret_defense = TurretDefenseLine::for_team_base(base);
         // Loop 1: Sản xuất (Production)
         let production_loop = AutoLoop {
             id: "loop_production".to_string(),
@@ -300,18 +307,12 @@ pub fn update_autoplay(engine: &mut GameEngine, dt: f32) {
 }
 
 pub fn update_team_autoplay(engine: &mut GameEngine, team: Team, dt: f32) {
-    let enabled = match team {
-        Team::Player => engine.autoplay.config.enabled,
-        Team::Enemy => engine.enemy_autoplay.config.enabled,
-    };
+    let enabled = engine.team_autoplay(team).config.enabled;
     if !enabled {
         return;
     }
 
-    let timer = match team {
-        Team::Player => &mut engine.autoplay.timer,
-        Team::Enemy => &mut engine.enemy_autoplay.timer,
-    };
+    let timer = &mut engine.team_autoplay_mut(team).timer;
     *timer += dt;
     if *timer < 0.25 {
         return;
@@ -319,16 +320,10 @@ pub fn update_team_autoplay(engine: &mut GameEngine, team: Team, dt: f32) {
     let elapsed = *timer;
     *timer = 0.0;
 
-    let num_loops = match team {
-        Team::Player => engine.autoplay.config.loops.len(),
-        Team::Enemy => engine.enemy_autoplay.config.loops.len(),
-    };
+    let num_loops = engine.team_autoplay(team).config.loops.len();
 
     for loop_idx in 0..num_loops {
-        let loop_enabled = match team {
-            Team::Player => engine.autoplay.config.loops[loop_idx].enabled,
-            Team::Enemy => engine.enemy_autoplay.config.loops[loop_idx].enabled,
-        };
+        let loop_enabled = engine.team_autoplay(team).config.loops[loop_idx].enabled;
         if !loop_enabled {
             continue;
         }
@@ -337,10 +332,7 @@ pub fn update_team_autoplay(engine: &mut GameEngine, team: Team, dt: f32) {
 }
 
 fn step_team_loop(engine: &mut GameEngine, team: Team, loop_idx: usize, dt: f32) {
-    let loop_data = match team {
-        Team::Player => &engine.autoplay.config.loops[loop_idx],
-        Team::Enemy => &engine.enemy_autoplay.config.loops[loop_idx],
-    };
+    let loop_data = &engine.team_autoplay(team).config.loops[loop_idx];
     if loop_data.cards.is_empty() {
         return;
     }
@@ -371,10 +363,7 @@ fn step_team_loop(engine: &mut GameEngine, team: Team, loop_idx: usize, dt: f32)
 }
 
 fn advance_team_loop_card(engine: &mut GameEngine, team: Team, loop_idx: usize) {
-    let loop_data = match team {
-        Team::Player => &mut engine.autoplay.config.loops[loop_idx],
-        Team::Enemy => &mut engine.enemy_autoplay.config.loops[loop_idx],
-    };
+    let loop_data = &mut engine.team_autoplay_mut(team).config.loops[loop_idx];
     loop_data.current_card_progress = 0;
     loop_data.card_timer = 0.0;
     if !loop_data.cards.is_empty() {
@@ -383,10 +372,7 @@ fn advance_team_loop_card(engine: &mut GameEngine, team: Team, loop_idx: usize) 
 }
 
 fn evaluate_condition_for_team(engine: &GameEngine, team: Team, condition: &AutoCondition) -> bool {
-    let eco = match team {
-        Team::Player => &engine.player_eco,
-        Team::Enemy => &engine.enemy_eco,
-    };
+    let eco = engine.team_eco(team);
     match condition {
         AutoCondition::Always => true,
         AutoCondition::SupplyNearCap => {
@@ -485,10 +471,7 @@ fn execute_action_for_team(
 ) -> bool {
     match action {
         AutoAction::Delay { seconds } => {
-            let loop_data = match team {
-                Team::Player => &mut engine.autoplay.config.loops[loop_idx],
-                Team::Enemy => &mut engine.enemy_autoplay.config.loops[loop_idx],
-            };
+            let loop_data = &mut engine.team_autoplay_mut(team).config.loops[loop_idx];
             let timer = loop_data.card_timer + dt;
             loop_data.card_timer = timer;
             if timer >= *seconds {
@@ -503,26 +486,20 @@ fn execute_action_for_team(
                 None => return true,
             };
 
-            let tech = match team {
-                Team::Player => &engine.player_tech,
-                Team::Enemy => &engine.enemy_tech,
-            };
+            let tech = engine.team_tech(team);
             if !can_train_unit(tech, u_type) {
                 return true;
-            }
-
-            let eco = match team {
-                Team::Player => &mut engine.player_eco,
-                Team::Enemy => &mut engine.enemy_eco,
-            };
-            if eco.supply >= eco.max_supply {
-                return false;
             }
 
             let (mut min_cost, mut en_cost) = engine.config.get_unit_cost(u_type);
             if tech.hive_proliferation {
                 min_cost *= 0.65;
                 en_cost *= 0.65;
+            }
+
+            let eco = engine.team_eco(team);
+            if eco.supply >= eco.max_supply {
+                return false;
             }
             if eco.minerals < min_cost || eco.energy < en_cost {
                 return false;
@@ -554,19 +531,13 @@ fn execute_action_for_team(
                 .map(|b| b.id);
 
             if let Some(bid) = maybe_b_id {
-                let eco = match team {
-                    Team::Player => &mut engine.player_eco,
-                    Team::Enemy => &mut engine.enemy_eco,
-                };
+                let eco = engine.team_eco_mut(team);
                 eco.minerals -= min_cost;
                 eco.energy -= en_cost;
 
                 if let Some(b) = engine.buildings.iter_mut().find(|b| b.id == bid) {
                     b.training_queue.push(u_type);
-                    let loop_data = match team {
-                        Team::Player => &mut engine.autoplay.config.loops[loop_idx],
-                        Team::Enemy => &mut engine.enemy_autoplay.config.loops[loop_idx],
-                    };
+                    let loop_data = &mut engine.team_autoplay_mut(team).config.loops[loop_idx];
                     let progress = loop_data.current_card_progress + 1;
                     loop_data.current_card_progress = progress;
                     if progress >= *count {
@@ -587,10 +558,7 @@ fn execute_action_for_team(
             };
 
             let (min_cost, en_cost) = engine.config.get_building_cost(b_type);
-            let eco = match team {
-                Team::Player => &engine.player_eco,
-                Team::Enemy => &engine.enemy_eco,
-            };
+            let eco = engine.team_eco(team);
             if eco.minerals < min_cost || eco.energy < en_cost {
                 return false;
             }
@@ -599,10 +567,7 @@ fn execute_action_for_team(
 
             if let Some((bx, by)) = spot {
                 if try_team_auto_build(engine, team, b_type, bx, by) {
-                    let loop_data = match team {
-                        Team::Player => &mut engine.autoplay.config.loops[loop_idx],
-                        Team::Enemy => &mut engine.enemy_autoplay.config.loops[loop_idx],
-                    };
+                    let loop_data = &mut engine.team_autoplay_mut(team).config.loops[loop_idx];
                     let progress = loop_data.current_card_progress + 1;
                     loop_data.current_card_progress = progress;
                     if progress >= *count {
@@ -612,10 +577,7 @@ fn execute_action_for_team(
                 false
             } else {
                 let msg = format!("Khu vực đã kín chỗ xây {}", building_type);
-                match team {
-                    Team::Player => engine.autoplay.last_action_msg = msg,
-                    Team::Enemy => engine.enemy_autoplay.last_action_msg = msg,
-                }
+                engine.team_autoplay_mut(team).last_action_msg = msg;
                 true
             }
         }
@@ -624,10 +586,8 @@ fn execute_action_for_team(
             use_priority_queue,
         } => {
             let mut target_tech = tech_id.clone();
-            let (team_tech, priority_list) = match team {
-                Team::Player => (&engine.player_tech, engine.autoplay.config.priority_techs.clone()),
-                Team::Enemy => (&engine.enemy_tech, engine.enemy_autoplay.config.priority_techs.clone()),
-            };
+            let priority_list = engine.team_autoplay(team).config.priority_techs.clone();
+            let team_tech = engine.team_tech(team);
 
             if *use_priority_queue {
                 for p_tech in priority_list {
@@ -646,10 +606,7 @@ fn execute_action_for_team(
                 }
             }
 
-            let team_tech = match team {
-                Team::Player => &engine.player_tech,
-                Team::Enemy => &engine.enemy_tech,
-            };
+            let team_tech = engine.team_tech(team);
             if crate::simulation::is_tech_unlocked(team_tech, &target_tech) {
                 return true;
             }
@@ -657,15 +614,19 @@ fn execute_action_for_team(
                 return true;
             }
 
-            let (tech_state, eco_state) = match team {
-                Team::Player => (&mut engine.player_tech, &mut engine.player_eco),
-                Team::Enemy => (&mut engine.enemy_tech, &mut engine.enemy_eco),
+            let (tech_state, eco_state, cfg) = match team {
+                Team::Player => (&mut engine.player_tech, &mut engine.player_eco, &engine.config),
+                Team::Enemy => (&mut engine.enemy_tech, &mut engine.enemy_eco, &engine.config),
+                _ => {
+                    let idx = team.index() - 2;
+                    (&mut engine.extra_techs[idx], &mut engine.extra_ecos[idx], &engine.config)
+                }
             };
 
             if crate::simulation::process_start_research(
                 tech_state,
                 eco_state,
-                &engine.config,
+                cfg,
                 &target_tech,
             ) {
                 if team == Team::Player {
@@ -682,28 +643,24 @@ fn execute_action_for_team(
             let target_pos = engine
                 .buildings
                 .iter()
-                .find(|b| b.team != team && b.building_type == BuildingType::CommandCenter)
+                .find(|b| engine.are_hostile(team, b.team) && b.building_type == BuildingType::CommandCenter)
                 .map(|b| (b.x, b.y))
                 .or_else(|| {
                     engine
                         .buildings
                         .iter()
-                        .find(|b| b.team != team)
+                        .find(|b| engine.are_hostile(team, b.team))
                         .map(|b| (b.x, b.y))
                 })
                 .or_else(|| {
                     engine
                         .units
                         .iter()
-                        .find(|u| u.team != team)
+                        .find(|u| engine.are_hostile(team, u.team))
                         .map(|u| (u.x, u.y))
                 })
                 .unwrap_or_else(|| {
-                    if team == Team::Player {
-                        (2150.0, 350.0)
-                    } else {
-                        (250.0, 2050.0)
-                    }
+                    (crate::map::MAP_WIDTH * 0.5, crate::map::MAP_HEIGHT * 0.5)
                 });
 
             let combat_units: Vec<u32> = engine
@@ -751,10 +708,7 @@ pub fn try_team_auto_build(
     wy: f32,
 ) -> bool {
     let (cost_min, cost_en) = engine.config.get_building_cost(b_type);
-    let eco = match team {
-        Team::Player => &mut engine.player_eco,
-        Team::Enemy => &mut engine.enemy_eco,
-    };
+    let eco = engine.team_eco_mut(team);
     if eco.minerals < cost_min || eco.energy < cost_en {
         return false;
     }
@@ -771,10 +725,7 @@ pub fn try_team_auto_build(
     building.rally_x = if team == Team::Player { wx + 40.0 } else { wx - 40.0 };
     building.rally_y = if team == Team::Player { wy + 40.0 } else { wy - 40.0 };
 
-    let tech = match team {
-        Team::Player => &engine.player_tech,
-        Team::Enemy => &engine.enemy_tech,
-    };
+    let tech = engine.team_tech(team);
 
     if tech.titan_alloy_plating {
         building.resistances.physical = (building.resistances.physical + 0.20).min(0.80);
@@ -1049,10 +1000,7 @@ pub fn find_team_build_spot(
         .map(|c| (c.width, c.height))
         .unwrap_or((70.0, 70.0));
 
-    let defense_line = match team {
-        Team::Player => &engine.autoplay.config.turret_defense,
-        Team::Enemy => &engine.enemy_autoplay.config.turret_defense,
-    };
+    let defense_line = &engine.team_autoplay(team).config.turret_defense;
 
     if b_type == BuildingType::TurretTower && defense_line.enabled {
         if let Some(spot) = find_defense_line_spot_for_team(engine, team, defense_line) {
@@ -1080,7 +1028,7 @@ pub fn find_team_build_spot(
             }
         }
 
-        let base_ref = if team == Team::Player { (250.0, 2050.0) } else { (2150.0, 350.0) };
+        let base_ref = engine.base_pos(team);
         candidate_minerals.sort_by(|a, b| {
             let da = (a.0 - base_ref.0).powi(2) + (a.1 - base_ref.1).powi(2);
             let db = (b.0 - base_ref.0).powi(2) + (b.1 - base_ref.1).powi(2);
@@ -1093,7 +1041,9 @@ pub fn find_team_build_spot(
                 let cand_x = mx + 115.0 * rad.cos();
                 let cand_y = my + 115.0 * rad.sin();
 
-                if !(120.0..=2280.0).contains(&cand_x) || !(120.0..=2280.0).contains(&cand_y) {
+                if !(120.0..=(crate::map::MAP_WIDTH - 120.0)).contains(&cand_x)
+                    || !(120.0..=(crate::map::MAP_HEIGHT - 120.0)).contains(&cand_y)
+                {
                     continue;
                 }
                 let collides_b = engine.buildings.iter().any(|b| {
@@ -1132,7 +1082,7 @@ pub fn find_team_build_spot(
 
     team_ccs.sort_by(|a, b| b.id.cmp(&a.id));
 
-    let default_pos = if team == Team::Player { (250.0, 2050.0) } else { (2150.0, 350.0) };
+    let default_pos = engine.base_pos(team);
     let newest_cc_pos = team_ccs.first().map(|b| (b.x, b.y)).unwrap_or(default_pos);
 
     let mut anchors = Vec::new();
@@ -1158,8 +1108,8 @@ pub fn find_team_build_spot(
     }
 
     for (a_idx, anchor) in anchors.iter().enumerate() {
-        let dy: f32 = 1200.0 - anchor.1;
-        let dx: f32 = 1200.0 - anchor.0;
+        let dy: f32 = (crate::map::MAP_HEIGHT * 0.5) - anchor.1;
+        let dx: f32 = (crate::map::MAP_WIDTH * 0.5) - anchor.0;
         let to_center_ang = dy.atan2(dx);
         let angle_bias = match b_type {
             BuildingType::TurretTower => Some(to_center_ang + 0.1),
@@ -1189,7 +1139,9 @@ pub fn find_team_build_spot(
                 let cand_x = anchor.0 + current_radius * angle.cos();
                 let cand_y = anchor.1 + current_radius * angle.sin();
 
-                if !(120.0..=2280.0).contains(&cand_x) || !(120.0..=2280.0).contains(&cand_y) {
+                if !(120.0..=(crate::map::MAP_WIDTH - 120.0)).contains(&cand_x)
+                    || !(120.0..=(crate::map::MAP_HEIGHT - 120.0)).contains(&cand_y)
+                {
                     continue;
                 }
 
@@ -1334,15 +1286,12 @@ pub fn create_training_autoplay_config(team: Team, archetype: AutoTrainingArchet
 /// Dựa theo công nghệ đã nghiên cứu xong, binh chủng mới mở khóa, thời gian trận đấu,
 /// và tình hình quân địch để tự động cập nhật hoặc thêm thẻ bài vào vòng lặp Auto.
 pub fn adapt_training_autoplay_mid_match(engine: &mut GameEngine, team: Team) {
-    let (tech, eco) = match team {
-        Team::Player => (&engine.player_tech, &engine.player_eco),
-        Team::Enemy => (&engine.enemy_tech, &engine.enemy_eco),
-    };
+    let tech = engine.team_tech(team).clone();
 
     let enemy_combat_count = engine
         .units
         .iter()
-        .filter(|u| u.team != team && u.unit_type != UnitType::Engineer)
+        .filter(|u| engine.are_hostile(team, u.team) && u.unit_type != UnitType::Engineer)
         .count();
 
     let my_combat_count = engine
@@ -1352,11 +1301,9 @@ pub fn adapt_training_autoplay_mid_match(engine: &mut GameEngine, team: Team) {
         .count();
 
     let game_time = engine.game_time;
+    let eco_minerals = engine.team_eco(team).minerals;
 
-    let config = match team {
-        Team::Player => &mut engine.autoplay.config,
-        Team::Enemy => &mut engine.enemy_autoplay.config,
-    };
+    let config = &mut engine.team_autoplay_mut(team).config;
 
     // 1. Tùy biến Vòng Lặp Sản Xuất (Loop Production)
     if let Some(prod_loop) = config.loops.iter_mut().find(|l| l.id == "loop_production") {
@@ -1377,7 +1324,7 @@ pub fn adapt_training_autoplay_mid_match(engine: &mut GameEngine, team: Team) {
 
         // Tự động thêm thẻ mở rộng CommandCenter phụ nếu có nhiều khoáng sản và đủ phát triển
         let has_expand_card = prod_loop.cards.iter().any(|c| c.id == "card_prod_expand_cc");
-        if !has_expand_card && (game_time > 120.0 || eco.minerals >= 380.0) {
+        if !has_expand_card && (game_time > 120.0 || eco_minerals >= 380.0) {
             prod_loop.cards.insert(
                 1,
                 AutoCard {
