@@ -4,6 +4,7 @@ use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 pub mod ai;
+pub mod autoplay;
 pub mod bridge;
 pub mod components;
 pub mod config;
@@ -47,6 +48,7 @@ pub struct GameEngine {
     pub enemy_eco: PlayerEconomy,
     pub player_tech: TechTreeState,
     pub enemy_tech: TechTreeState,
+    pub autoplay: crate::autoplay::AutoPlayState,
 
     // Đang chọn & Thao tác
     pub selected_unit_ids: Vec<u32>,
@@ -115,6 +117,7 @@ impl GameEngine {
             enemy_eco,
             player_tech: TechTreeState::default(),
             enemy_tech: TechTreeState::default(),
+            autoplay: crate::autoplay::AutoPlayState::default(),
 
             selected_unit_ids: Vec::new(),
             selected_building_id: None,

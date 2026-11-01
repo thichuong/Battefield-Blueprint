@@ -19,6 +19,12 @@ pub enum ReactToEngineCommand {
         show_grid: bool,
     },
     RestartGame,
+    UpdateAutoPlayConfig {
+        config_json: String,
+    },
+    TogglePriorityTech {
+        tech_id: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -30,11 +36,13 @@ pub enum EngineToReactEvent {
         player_supply: u32,
         player_max_supply: u32,
         tech_state: String, // serialized json
+        autoplay_state: String, // serialized json
         game_time: f32,
         is_paused: bool,
     },
     OpenTechTreeModal,
     OpenSettingsModal,
+    OpenAutoPlayModal,
     PlaySound {
         sound: String,
     },

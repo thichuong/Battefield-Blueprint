@@ -868,6 +868,29 @@ fn render_in_game_hud(engine: &GameEngine) {
         );
     }
 
+    // Nút mở Chế độ Tự Động [B]
+    let auto_btn_x = vw - 295.0;
+    let auto_active = engine.autoplay.config.enabled;
+    if auto_active {
+        ctx.set_fill_style_str("#065f46");
+        ctx.fill_rect(auto_btn_x, 10.0, 95.0, 28.0);
+        ctx.set_stroke_style_str("#34d399");
+        ctx.set_line_width(1.5);
+        ctx.stroke_rect(auto_btn_x, 10.0, 95.0, 28.0);
+        ctx.set_fill_style_str("#6ee7b7");
+        ctx.set_font("bold 12px monospace");
+        let _ = ctx.fill_text("⚡AUTO:ON", auto_btn_x + 8.0, 28.0);
+    } else {
+        ctx.set_fill_style_str("#1e293b");
+        ctx.fill_rect(auto_btn_x, 10.0, 95.0, 28.0);
+        ctx.set_stroke_style_str("#475569");
+        ctx.set_line_width(1.0);
+        ctx.stroke_rect(auto_btn_x, 10.0, 95.0, 28.0);
+        ctx.set_fill_style_str("#94a3b8");
+        ctx.set_font("bold 12px monospace");
+        let _ = ctx.fill_text("AUTO [B]", auto_btn_x + 14.0, 28.0);
+    }
+
     // Nút mở Cây Công Nghệ [T]
     let tech_btn_x = vw - 190.0;
     ctx.set_fill_style_str("#0369a1");

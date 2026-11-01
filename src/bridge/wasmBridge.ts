@@ -56,12 +56,71 @@ export interface ActiveResearch {
   total_time: number;
 }
 
+export interface AutoCondition {
+  type:
+    | 'Always'
+    | 'UnitCountLessThan'
+    | 'UnitCountGreaterThan'
+    | 'MineralsGreaterThan'
+    | 'EnergyGreaterThan'
+    | 'ReactorPerConverterRatio'
+    | 'BuildingCountLessThan';
+  unit_type?: string;
+  count?: number;
+  amount?: number;
+  building_type?: string;
+}
+
+export interface AutoAction {
+  type: 'TrainUnit' | 'BuildStructure' | 'ResearchTech' | 'AttackWave';
+  unit_type?: string;
+  building_type?: string;
+  tech_id?: string;
+  use_priority_queue?: boolean;
+  count?: number;
+}
+
+export interface AutoCard {
+  id: string;
+  name: string;
+  enabled: boolean;
+  condition: AutoCondition;
+  action: AutoAction;
+}
+
+export interface AutoLoop {
+  id: string;
+  name: string;
+  enabled: boolean;
+  current_card_index: number;
+  current_card_progress: number;
+  cards: AutoCard[];
+}
+
+export interface TurretDefenseLine {
+  enabled: boolean;
+  p1: [number, number];
+  p2: [number, number];
+  spacing: number;
+  rows: number;
+  row_spacing: number;
+}
+
+export interface AutoPlayConfig {
+  enabled: boolean;
+  auto_supply: boolean;
+  priority_techs: string[];
+  turret_defense: TurretDefenseLine;
+  loops: AutoLoop[];
+}
+
 export interface EngineSyncState {
   player_minerals: number;
   player_energy: number;
   player_supply: number;
   player_max_supply: number;
   tech_state: TechState;
+  autoplay_state: AutoPlayConfig;
   game_time: number;
   is_paused: boolean;
 }

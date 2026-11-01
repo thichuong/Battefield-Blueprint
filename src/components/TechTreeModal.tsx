@@ -20,6 +20,8 @@ interface TechTreeModalProps {
   minerals: number;
   energy: number;
   onResearch: (techId: string) => void;
+  priorityTechs?: string[];
+  onTogglePriorityTech?: (techId: string) => void;
   autoPause?: boolean;
   onToggleAutoPause?: (val: boolean) => void;
 }
@@ -299,7 +301,10 @@ interface TechCardProps {
   isOtherResearching: boolean;
   canAfford: boolean;
   prerequisiteName?: string;
+  isPriority?: boolean;
+  priorityIndex?: number;
   onResearch: (techId: string) => void;
+  onTogglePriority?: (techId: string) => void;
 }
 
 const TechCard = React.memo<TechCardProps>(
@@ -310,7 +315,10 @@ const TechCard = React.memo<TechCardProps>(
     isOtherResearching,
     canAfford,
     prerequisiteName,
+    isPriority,
+    priorityIndex,
     onResearch,
+    onTogglePriority,
   }) => {
     const isUnlocked = status === 'unlocked';
     const isResearching = status === 'researching';
@@ -324,6 +332,8 @@ const TechCard = React.memo<TechCardProps>(
             ? 'bg-cyan-950/40 border-cyan-500/70 shadow-[0_0_14px_rgba(0,229,255,0.25)]'
             : isResearching
             ? 'bg-amber-950/40 border-amber-500/80 ring-1 ring-amber-500/50 shadow-[0_0_14px_rgba(245,158,11,0.25)]'
+            : isPriority
+            ? 'bg-amber-950/30 border-amber-400/90 shadow-[0_0_12px_rgba(245,158,11,0.2)]'
             : isLocked
             ? 'bg-slate-950/60 border-slate-800 opacity-60'
             : 'bg-slate-800/40 border-slate-700 hover:border-cyan-400/60'
@@ -335,11 +345,27 @@ const TechCard = React.memo<TechCardProps>(
               <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" />
             ) : isResearching ? (
               <Loader2 className="w-4 h-4 text-amber-400 animate-spin shrink-0" />
+            ) : isPriority ? (
+              <span className="text-amber-400 shrink-0 text-sm">⭐</span>
             ) : isLocked ? (
               <Lock className="w-4 h-4 text-slate-500 shrink-0" />
             ) : null}
             <span>{node.name}</span>
           </div>
+
+          {!isUnlocked && onTogglePriority && (
+            <button
+              onClick={() => onTogglePriority(node.id)}
+              className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                isPriority
+                  ? 'bg-amber-500 text-slate-950 shadow-[0_0_8px_rgba(245,158,11,0.5)]'
+                  : 'bg-slate-900/80 border border-slate-700 text-slate-400 hover:text-amber-300 hover:border-amber-400'
+              }`}
+              title="Đánh dấu ưu tiên tự động nâng cấp"
+            >
+              ⭐ {isPriority ? `ƯU TIÊN #${(priorityIndex ?? 0) + 1}` : 'ƯU TIÊN'}
+            </button>
+          )}
         </div>
 
         {/* Badges Phân loại Sát thương & Kháng */}
@@ -440,6 +466,8 @@ const TechCard = React.memo<TechCardProps>(
       if (prev.isOtherResearching !== next.isOtherResearching) return false;
       if (prev.prerequisiteName !== next.prerequisiteName) return false;
     }
+    if (prev.isPriority !== next.isPriority) return false;
+    if (prev.priorityIndex !== next.priorityIndex) return false;
     // 4. Các trường hợp còn lại (đặc biệt là 'unlocked'): BỎ QUA RE-RENDER HOÀN TOÀN
     return true;
   }
@@ -455,6 +483,8 @@ export const TechTreeModal: React.FC<TechTreeModalProps> = ({
   minerals,
   energy,
   onResearch,
+  priorityTechs = [],
+  onTogglePriorityTech,
   autoPause = true,
   onToggleAutoPause,
 }) => {
@@ -643,19 +673,26 @@ export const TechTreeModal: React.FC<TechTreeModalProps> = ({
             </div>
             <div className="text-[11px] text-slate-400 mt-0.5">{headerInfo.desc}</div>
           </div>
-          <div className="flex items-center gap-2 text-[10px] font-mono text-slate-400">
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-slate-200 inline-block"></span> Vật lý
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 inline-block"></span> Năng lượng
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-orange-400 inline-block"></span> Nổ AoE
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-purple-400 inline-block"></span> Ma thuật
-            </span>
+          <div className="flex items-center gap-3 text-[10px] font-mono">
+            {priorityTechs.length > 0 && (
+              <span className="text-amber-400 bg-amber-950/60 border border-amber-500/50 px-2 py-0.5 rounded font-bold">
+                ⭐ {priorityTechs.length} Tech Ưu Tiên Tự Động
+              </span>
+            )}
+            <div className="flex items-center gap-2 text-slate-400">
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-slate-200 inline-block"></span> Vật lý
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-cyan-400 inline-block"></span> Năng lượng
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-orange-400 inline-block"></span> Nổ AoE
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-purple-400 inline-block"></span> Ma thuật
+              </span>
+            </div>
           </div>
         </div>
 
@@ -696,6 +733,8 @@ export const TechTreeModal: React.FC<TechTreeModalProps> = ({
 
                     const reqNode = node.requires ? TECH_NODES.find((n) => n.id === node.requires) : undefined;
                     const prerequisiteName = reqNode ? reqNode.name : node.requires;
+                    const pIndex = priorityTechs.indexOf(node.id);
+                    const isPriority = pIndex !== -1;
 
                     return (
                       <TechCard
@@ -706,7 +745,10 @@ export const TechTreeModal: React.FC<TechTreeModalProps> = ({
                         isOtherResearching={isOtherResearchingInBranch}
                         canAfford={canAfford}
                         prerequisiteName={prerequisiteName}
+                        isPriority={isPriority}
+                        priorityIndex={pIndex}
                         onResearch={onResearch}
+                        onTogglePriority={onTogglePriorityTech}
                       />
                     );
                   })}

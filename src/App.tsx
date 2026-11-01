@@ -1,10 +1,113 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { wasmBridge, EngineSyncState } from './bridge/wasmBridge';
+import { wasmBridge, EngineSyncState, AutoPlayConfig } from './bridge/wasmBridge';
 import { MainMenu } from './components/MainMenu';
 import { TechTreeModal } from './components/TechTreeModal';
 import { SettingsModal } from './components/SettingsModal';
 import { GameOverModal } from './components/GameOverModal';
+import { AutoPlayModal } from './components/AutoPlayModal';
 import { soundEngine } from './audio/soundEngine';
+import { Bot } from 'lucide-react';
+
+const defaultAutoPlay: AutoPlayConfig = {
+  enabled: false,
+  auto_supply: true,
+  priority_techs: [],
+  turret_defense: {
+    enabled: true,
+    p1: [520, 1680],
+    p2: [860, 1980],
+    spacing: 90,
+    rows: 1,
+    row_spacing: 80,
+  },
+  loops: [
+    {
+      id: 'loop_production',
+      name: 'Sản Xuất',
+      enabled: true,
+      current_card_index: 0,
+      current_card_progress: 0,
+      cards: [
+        {
+          id: 'card_prod_worker',
+          name: 'Mua 2 Thợ Mỏ (Engineer)',
+          enabled: true,
+          condition: { type: 'UnitCountLessThan', unit_type: 'Engineer', count: 7 },
+          action: { type: 'TrainUnit', unit_type: 'Engineer', count: 2 },
+        },
+        {
+          id: 'card_prod_reactor',
+          name: 'Xây 2 PowerReactor',
+          enabled: true,
+          condition: { type: 'Always' },
+          action: { type: 'BuildStructure', building_type: 'PowerReactor', count: 2 },
+        },
+        {
+          id: 'card_prod_turret',
+          name: 'Xây 2 TurretTower',
+          enabled: true,
+          condition: { type: 'Always' },
+          action: { type: 'BuildStructure', building_type: 'TurretTower', count: 2 },
+        },
+        {
+          id: 'card_prod_tech',
+          name: 'Nâng cấp Cây Công Nghệ',
+          enabled: true,
+          condition: { type: 'Always' },
+          action: {
+            type: 'ResearchTech',
+            tech_id: 'dark_matter_rockets',
+            use_priority_queue: true,
+          },
+        },
+        {
+          id: 'card_prod_barracks',
+          name: 'Xây 1 Barracks',
+          enabled: true,
+          condition: { type: 'Always' },
+          action: { type: 'BuildStructure', building_type: 'Barracks', count: 1 },
+        },
+        {
+          id: 'card_prod_converter',
+          name: 'Xây EnergyConverter',
+          enabled: true,
+          condition: { type: 'ReactorPerConverterRatio' },
+          action: { type: 'BuildStructure', building_type: 'EnergyConverter', count: 1 },
+        },
+      ],
+    },
+    {
+      id: 'loop_military',
+      name: 'Quân Sự',
+      enabled: true,
+      current_card_index: 0,
+      current_card_progress: 0,
+      cards: [
+        {
+          id: 'card_mil_shock',
+          name: 'Tự động mua ShockTrooper',
+          enabled: true,
+          condition: { type: 'MineralsGreaterThan', amount: 500 },
+          action: { type: 'TrainUnit', unit_type: 'ShockTrooper', count: 1 },
+        },
+        {
+          id: 'card_mil_rifle',
+          name: 'Tự động mua Rifleman',
+          enabled: true,
+          condition: { type: 'MineralsGreaterThan', amount: 500 },
+          action: { type: 'TrainUnit', unit_type: 'Rifleman', count: 1 },
+        },
+        {
+          id: 'card_mil_attack',
+          name: 'Tự động tấn công (>40 lính)',
+          enabled: true,
+          condition: { type: 'UnitCountGreaterThan', unit_type: 'Combat', count: 40 },
+          action: { type: 'AttackWave' },
+        },
+      ],
+    },
+  ],
+};
 
 const initialGameState: EngineSyncState = {
   player_minerals: 200,
@@ -36,6 +139,7 @@ const initialGameState: EngineSyncState = {
     research_progress: 0,
     research_total_time: 0,
   },
+  autoplay_state: defaultAutoPlay,
   game_time: 0,
   is_paused: false,
 };
@@ -70,6 +174,7 @@ export const App: React.FC = () => {
   const [isInGame, setIsInGame] = useState<boolean>(false);
   const [isTechTreeOpen, setIsTechTreeOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [isAutoPlayOpen, setIsAutoPlayOpen] = useState<boolean>(false);
   const [gameOverState, setGameOverState] = useState<{
     isOpen: boolean;
     playerWon: boolean;
@@ -161,6 +266,13 @@ export const App: React.FC = () => {
             // ignore
           }
 
+          let parsedAutoPlay = null;
+          try {
+            parsedAutoPlay = JSON.parse(payload.autoplay_state);
+          } catch (e) {
+            // ignore
+          }
+
           setGameState((prev) => ({
             ...prev,
             player_minerals: payload.player_minerals,
@@ -168,6 +280,7 @@ export const App: React.FC = () => {
             player_supply: payload.player_supply,
             player_max_supply: payload.player_max_supply,
             tech_state: parsedTech || prev.tech_state,
+            autoplay_state: parsedAutoPlay || prev.autoplay_state,
             game_time: payload.game_time,
             is_paused: payload.is_paused,
           }));
@@ -179,6 +292,10 @@ export const App: React.FC = () => {
         }
         case 'OpenSettingsModal': {
           setIsSettingsOpen(true);
+          break;
+        }
+        case 'OpenAutoPlayModal': {
+          setIsAutoPlayOpen(true);
           break;
         }
         case 'GameOver': {
@@ -240,9 +357,15 @@ export const App: React.FC = () => {
           handleOpenTechTree();
         }
         return;
+      } else if (e.code === 'KeyB') {
+        setIsAutoPlayOpen((prev) => !prev);
+        return;
       } else if (e.code === 'Escape') {
         if (isTechTreeOpen) {
           handleCloseTechTree();
+          return;
+        } else if (isAutoPlayOpen) {
+          setIsAutoPlayOpen(false);
           return;
         } else {
           setIsSettingsOpen((prev) => !prev);
@@ -319,6 +442,24 @@ export const App: React.FC = () => {
     wasmBridge.sendCommand({ type: 'SetPaused', paused: true });
   };
 
+  const handleTogglePriorityTech = (techId: string) => {
+    wasmBridge.sendCommand({
+      type: 'TogglePriorityTech',
+      tech_id: techId,
+    });
+  };
+
+  const handleUpdateAutoPlayConfig = (newCfg: AutoPlayConfig) => {
+    setGameState((prev) => ({
+      ...prev,
+      autoplay_state: newCfg,
+    }));
+    wasmBridge.sendCommand({
+      type: 'UpdateAutoPlayConfig',
+      config_json: JSON.stringify(newCfg),
+    });
+  };
+
   return (
     <div className="relative w-full h-full overflow-hidden select-none bg-[#030d1a]">
       {/* Canvas Game hoàn toàn do Wasm vẽ */}
@@ -342,6 +483,8 @@ export const App: React.FC = () => {
         minerals={gameState.player_minerals}
         energy={gameState.player_energy}
         onResearch={handleResearchTech}
+        priorityTechs={gameState.autoplay_state.priority_techs}
+        onTogglePriorityTech={handleTogglePriorityTech}
         autoPause={settings.autoPause}
         onToggleAutoPause={(val) => {
           const newSettings = { ...settings, autoPause: val };
@@ -351,6 +494,38 @@ export const App: React.FC = () => {
           }
         }}
       />
+
+      <AutoPlayModal
+        isOpen={isAutoPlayOpen}
+        onClose={() => setIsAutoPlayOpen(false)}
+        autoPlayConfig={gameState.autoplay_state}
+        onUpdateConfig={handleUpdateAutoPlayConfig}
+      />
+
+      {/* Mini status badge khi đang trong trận */}
+      {isInGame && gameState.autoplay_state.enabled && (
+        <div
+          onClick={() => setIsAutoPlayOpen(true)}
+          className="fixed top-14 right-4 z-40 bg-slate-950/90 border border-emerald-500/80 rounded-xl px-3 py-1.5 shadow-[0_0_15px_rgba(16,185,129,0.3)] flex items-center gap-2.5 font-mono text-xs cursor-pointer hover:bg-slate-900 transition-colors"
+        >
+          <Bot className="w-4 h-4 text-emerald-400 animate-spin-slow" />
+          <span className="text-emerald-300 font-bold">AUTO RUNNING</span>
+          <div className="flex items-center gap-1.5 text-[10px] text-slate-300 border-l border-slate-700 pl-2">
+            {gameState.autoplay_state.loops.map((l, i) => (
+              <span
+                key={l.id}
+                className={`px-1.5 py-0.5 rounded ${
+                  l.enabled
+                    ? 'bg-emerald-950 text-emerald-300 border border-emerald-600'
+                    : 'bg-slate-900 text-slate-500'
+                }`}
+              >
+                {i === 0 ? 'SX' : i === 1 ? 'QS' : `L${i + 1}`}: #{l.current_card_index + 1}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       <SettingsModal
         isOpen={isSettingsOpen}

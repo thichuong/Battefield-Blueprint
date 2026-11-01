@@ -47,6 +47,9 @@ pub fn step(engine: &mut GameEngine, dt: f32) {
         crate::ai::update_ai(engine);
     }
 
+    // 10.5 Cập nhật Chế độ Tự Động (Auto-Play) cho Player
+    crate::autoplay::update_autoplay(engine, dt);
+
     // 11. Kiểm tra Điều kiện Thắng / Thua
     check_game_over(engine);
 
@@ -108,11 +111,31 @@ fn process_commands(engine: &mut GameEngine) {
                 engine.is_paused = false;
                 send_sync_event(engine);
             }
+            ReactToEngineCommand::UpdateAutoPlayConfig { config_json } => {
+                if let Ok(cfg) = serde_json::from_str::<crate::autoplay::AutoPlayConfig>(&config_json) {
+                    engine.autoplay.config = cfg;
+                }
+                send_sync_event(engine);
+            }
+            ReactToEngineCommand::TogglePriorityTech { tech_id } => {
+                if let Some(pos) = engine
+                    .autoplay
+                    .config
+                    .priority_techs
+                    .iter()
+                    .position(|t| t == &tech_id)
+                {
+                    engine.autoplay.config.priority_techs.remove(pos);
+                } else {
+                    engine.autoplay.config.priority_techs.push(tech_id);
+                }
+                send_sync_event(engine);
+            }
         }
     }
 }
 
-fn is_tech_unlocked(tech_state: &TechTreeState, tech_id: &str) -> bool {
+pub fn is_tech_unlocked(tech_state: &TechTreeState, tech_id: &str) -> bool {
     match tech_id {
         "focused_laser" => tech_state.focused_laser,
         "energy_shielding" => tech_state.energy_shielding,
@@ -522,12 +545,21 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
         .rebuild(&engine.units, &engine.buildings);
     let spatial_grid = &engine.spatial_grid;
 
-    // Snapshot vị trí công trình và lính để tra cứu mục tiêu
-    // (id, team, x, y, radius)
-    let building_targets: Vec<(u32, Team, f32, f32, f32)> = engine
+    // Snapshot vị trí công trình chưa xây xong và mỏ quặng
+    // (id, team, x, y, radius, build_progress)
+    let building_targets: Vec<(u32, Team, f32, f32, f32, f32)> = engine
         .buildings
         .iter()
-        .map(|b| (b.id, b.team, b.x, b.y, (b.width.max(b.height) * 0.5)))
+        .map(|b| {
+            (
+                b.id,
+                b.team,
+                b.x,
+                b.y,
+                (b.width.max(b.height) * 0.5),
+                b.build_progress,
+            )
+        })
         .collect();
     let unit_targets: Vec<(u32, Team, f32, f32)> = engine
         .units
@@ -684,14 +716,14 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                         // Tìm Command Center gần nhất của phe mình
                         let my_cc = building_targets
                             .iter()
-                            .filter(|(_, t, _, _, _)| *t == unit.team)
+                            .filter(|(_, t, _, _, _, _)| *t == unit.team)
                             .min_by(|a, b| {
                                 let da = (a.2 - unit.x).powi(2) + (a.3 - unit.y).powi(2);
                                 let db = (b.2 - unit.x).powi(2) + (b.3 - unit.y).powi(2);
                                 da.partial_cmp(&db).unwrap()
                             });
 
-                        if let Some((_, _, cx, cy, _)) = my_cc {
+                        if let Some((_, _, cx, cy, _, _)) = my_cc {
                             let dx = cx - unit.x;
                             let dy = cy - unit.y;
                             let dist = (dx * dx + dy * dy).sqrt();
@@ -729,22 +761,49 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                 }
             }
             UnitOrder::Build { target_building_id } => {
-                if let Some((_, _, bx, by, _)) = building_targets
+                let target_building = building_targets
                     .iter()
-                    .find(|(id, _, _, _, _)| *id == target_building_id)
-                {
-                    let dx = bx - unit.x;
-                    let dy = by - unit.y;
-                    let dist = (dx * dx + dy * dy).sqrt();
-                    if dist > 60.0 {
-                        let move_dist = (cur_speed * dt).min(dist);
-                        unit.x += (dx / dist) * move_dist;
-                        unit.y += (dy / dist) * move_dist;
-                        unit.walk_cycle += dt * 10.0;
-                        unit.facing_right = dx >= 0.0;
+                    .find(|(id, _, _, _, _, _)| *id == target_building_id);
+
+                let is_still_building = if let Some((_, _, bx, by, _, build_prog)) = target_building {
+                    if *build_prog < 1.0 {
+                        let dx = bx - unit.x;
+                        let dy = by - unit.y;
+                        let dist = (dx * dx + dy * dy).sqrt();
+                        if dist > 60.0 {
+                            let move_dist = (cur_speed * dt).min(dist);
+                            unit.x += (dx / dist) * move_dist;
+                            unit.y += (dy / dist) * move_dist;
+                            unit.walk_cycle += dt * 10.0;
+                            unit.facing_right = dx >= 0.0;
+                        }
+                        true
+                    } else {
+                        false // Công trình đã hoàn thành (build_prog >= 1.0)
                     }
                 } else {
-                    unit.order = UnitOrder::Idle;
+                    false // Công trình không tồn tại nữa
+                };
+
+                if !is_still_building {
+                    // Công trình đã xây xong! Engineer lập tức chuyển sang khai thác mỏ quặng gần nhất
+                    let nearest_mineral = mineral_nodes
+                        .iter()
+                        .min_by(|a, b| {
+                            let da = (a.1 - unit.x).powi(2) + (a.2 - unit.y).powi(2);
+                            let db = (b.1 - unit.x).powi(2) + (b.2 - unit.y).powi(2);
+                            da.partial_cmp(&db).unwrap()
+                        })
+                        .map(|m| m.0);
+
+                    if let Some(target_mineral_id) = nearest_mineral {
+                        unit.order = UnitOrder::Harvest {
+                            target_mineral_id,
+                            phase: HarvestPhase::MovingToNode,
+                        };
+                    } else {
+                        unit.order = UnitOrder::Idle;
+                    }
                 }
             }
             UnitOrder::AttackTarget {
@@ -754,8 +813,8 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                 let target_info = if is_building {
                     building_targets
                         .iter()
-                        .find(|(id, t, _, _, _)| *id == target_id && *t != unit.team)
-                        .map(|(_, _, x, y, r)| (*x, *y, *r))
+                        .find(|(id, t, _, _, _, _)| *id == target_id && *t != unit.team)
+                        .map(|(_, _, x, y, r, _)| (*x, *y, *r))
                 } else {
                     unit_targets
                         .iter()
@@ -1004,8 +1063,32 @@ fn update_buildings(engine: &mut GameEngine, dt: f32) {
         let mut unit = engine.config.create_unit(u_id, team, u_type, sx, sy);
         unit.target_x = rx;
         unit.target_y = ry;
-        unit.order = UnitOrder::MoveTo { x: rx, y: ry };
         unit.facing_right = rx >= sx;
+
+        // Nếu là Engineer, tự động tìm mỏ quặng gần nhất để khai thác ngay lập tức
+        if u_type == UnitType::Engineer {
+            let nearest_mineral = engine
+                .minerals
+                .iter()
+                .filter(|m| m.amount > 0.0)
+                .min_by(|a, b| {
+                    let da = (a.x - sx).powi(2) + (a.y - sy).powi(2);
+                    let db = (b.x - sx).powi(2) + (b.y - sy).powi(2);
+                    da.partial_cmp(&db).unwrap()
+                })
+                .map(|m| m.id);
+
+            if let Some(target_mineral_id) = nearest_mineral {
+                unit.order = UnitOrder::Harvest {
+                    target_mineral_id,
+                    phase: HarvestPhase::MovingToNode,
+                };
+            } else {
+                unit.order = UnitOrder::MoveTo { x: rx, y: ry };
+            }
+        } else {
+            unit.order = UnitOrder::MoveTo { x: rx, y: ry };
+        }
 
         // Áp dụng nâng cấp công nghệ (Player tech upgrades)
         if team == Team::Player {
@@ -1324,12 +1407,14 @@ fn check_game_over(engine: &mut GameEngine) {
 
 pub fn send_sync_event(engine: &mut GameEngine) {
     let tech_json = serde_json::to_string(&engine.player_tech).unwrap_or_default();
+    let autoplay_json = serde_json::to_string(&engine.autoplay.config).unwrap_or_default();
     engine.outgoing_events.push(EngineToReactEvent::SyncState {
         player_minerals: engine.player_eco.minerals,
         player_energy: engine.player_eco.energy,
         player_supply: engine.player_eco.supply,
         player_max_supply: engine.player_eco.max_supply,
         tech_state: tech_json,
+        autoplay_state: autoplay_json,
         game_time: engine.game_time,
         is_paused: engine.is_paused,
     });
@@ -1499,6 +1584,13 @@ pub fn handle_hotkeys(engine: &mut GameEngine, key: &str) {
             engine
                 .outgoing_events
                 .push(EngineToReactEvent::OpenTechTreeModal);
+            send_sync_event(engine);
+        }
+        "KeyB" => {
+            // Mở Bảng Chế độ Tự Động (Auto-Play)
+            engine
+                .outgoing_events
+                .push(EngineToReactEvent::OpenAutoPlayModal);
             send_sync_event(engine);
         }
         "Escape" => {
@@ -1794,6 +1886,15 @@ fn try_place_building(engine: &mut GameEngine, b_type: BuildingType, wx: f32, wy
 fn check_bevy_hud_click(engine: &mut GameEngine, sx: f32, sy: f32) -> bool {
     let vw = engine.camera.viewport_w;
     let vh = engine.camera.viewport_h;
+
+    // 0. Nút mở Auto-Play [B] ở thanh trên cùng (x ~ vw - 295, y: 10..42, w: 95)
+    if (vw - 295.0..=vw - 200.0).contains(&sx) && (10.0..=42.0).contains(&sy) {
+        engine
+            .outgoing_events
+            .push(EngineToReactEvent::OpenAutoPlayModal);
+        send_sync_event(engine);
+        return true;
+    }
 
     // 1. Nút mở Tech Tree [T] ở thanh trên cùng (x ~ vw - 190, y: 10..42, w: 90)
     if (vw - 190.0..=vw - 100.0).contains(&sx) && (10.0..=42.0).contains(&sy) {
