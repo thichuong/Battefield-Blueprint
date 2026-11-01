@@ -60,6 +60,212 @@ pub fn find_primary_hostile_team(engine: &GameEngine, team: Team) -> Team {
     if team == Team::Player { Team::Enemy } else { Team::Player }
 }
 
+pub fn find_weakest_hostile_team(engine: &GameEngine, team: Team) -> Team {
+    let my_faction = engine.get_faction(team);
+    let mut best_team = find_primary_hostile_team(engine, team);
+    let mut lowest_score = f32::INFINITY;
+
+    for i in 0..crate::components::MAX_PLAYERS {
+        let candidate = Team::from_index(i);
+        if engine.is_slot_active(candidate) && engine.get_faction(candidate) != my_faction {
+            let cc_hp: f32 = engine.buildings.iter()
+                .filter(|b| b.team == candidate && b.building_type == BuildingType::CommandCenter)
+                .map(|b| b.hp)
+                .sum();
+            let combat_count = engine.units.iter()
+                .filter(|u| u.team == candidate && u.unit_type != UnitType::Engineer)
+                .count() as f32;
+
+            if cc_hp > 0.0 {
+                let score = cc_hp + combat_count * 150.0;
+                if score < lowest_score {
+                    lowest_score = score;
+                    best_team = candidate;
+                }
+            }
+        }
+    }
+
+    best_team
+}
+
+pub fn find_threatened_ally_base(engine: &GameEngine, team: Team) -> Option<(f32, f32)> {
+    let my_faction = engine.get_faction(team);
+    for i in 0..crate::components::MAX_PLAYERS {
+        let ally_slot = Team::from_index(i);
+        if engine.is_slot_active(ally_slot) && engine.get_faction(ally_slot) == my_faction {
+            let base_pos = engine.base_pos(ally_slot);
+            let has_threat = engine.units.iter().any(|u| {
+                engine.are_hostile(team, u.team)
+                    && ((u.x - base_pos.0).powi(2) + (u.y - base_pos.1).powi(2)) < 800.0_f32.powi(2)
+            });
+            if has_threat {
+                return Some(base_pos);
+            }
+        }
+    }
+    None
+}
+
+pub struct TacticalSnapshot {
+    pub my_workers: usize,
+    pub my_combat: usize,
+    pub my_ccs: usize,
+    pub my_cc_total_hp: f32,
+    pub my_cc_max_hp: f32,
+    pub my_combat_total_hp: f32,
+    pub my_combat_max_hp: f32,
+    pub my_reactors: usize,
+    pub my_converters: usize,
+    pub my_barracks: usize,
+    pub my_turrets: usize,
+
+    pub my_frontline: usize,
+    pub my_artillery: usize,
+    pub my_magic: usize,
+
+    pub opp_workers: usize,
+    pub opp_combat: usize,
+    pub opp_ccs: usize,
+    pub opp_turrets: usize,
+    pub opp_heavy_tanks: usize,
+    pub opp_artillery: usize,
+    pub opp_aoe_threat: usize,
+
+    pub ally_combat: usize,
+    pub nearest_enemy_dist: f32,
+    pub base_threat: bool,
+    pub active_hostile_factions: usize,
+}
+
+pub fn create_tactical_snapshot(engine: &GameEngine, team: Team) -> TacticalSnapshot {
+    let _my_faction = engine.get_faction(team);
+    let my_base = engine.base_pos(team);
+
+    let mut snap = TacticalSnapshot {
+        my_workers: 0,
+        my_combat: 0,
+        my_ccs: 0,
+        my_cc_total_hp: 0.0,
+        my_cc_max_hp: 0.0,
+        my_combat_total_hp: 0.0,
+        my_combat_max_hp: 0.0,
+        my_reactors: 0,
+        my_converters: 0,
+        my_barracks: 0,
+        my_turrets: 0,
+
+        my_frontline: 0,
+        my_artillery: 0,
+        my_magic: 0,
+
+        opp_workers: 0,
+        opp_combat: 0,
+        opp_ccs: 0,
+        opp_turrets: 0,
+        opp_heavy_tanks: 0,
+        opp_artillery: 0,
+        opp_aoe_threat: 0,
+
+        ally_combat: 0,
+        nearest_enemy_dist: crate::map::MAP_WIDTH,
+        base_threat: false,
+        active_hostile_factions: 0,
+    };
+
+    let mut hostile_factions = std::collections::HashSet::new();
+
+    // 1 lượt quét duy nhất toàn bộ Units
+    for u in &engine.units {
+        let is_hostile = engine.are_hostile(team, u.team);
+        if u.team == team {
+            if u.unit_type == UnitType::Engineer {
+                snap.my_workers += 1;
+            } else {
+                snap.my_combat += 1;
+                snap.my_combat_total_hp += u.hp;
+                snap.my_combat_max_hp += u.max_hp;
+
+                match u.unit_type {
+                    UnitType::ShockTrooper | UnitType::Vanguard | UnitType::BehemothTitan => {
+                        snap.my_frontline += 1;
+                    }
+                    UnitType::Rifleman | UnitType::LaserMarksman | UnitType::DarkRocketeer => {
+                        snap.my_artillery += 1;
+                    }
+                    UnitType::TaoistSwordmaster | UnitType::VoidWarlock | UnitType::AcidBaneling => {
+                        snap.my_magic += 1;
+                    }
+                    _ => {}
+                }
+            }
+        } else if is_hostile {
+            hostile_factions.insert(engine.get_faction(u.team));
+            if u.unit_type == UnitType::Engineer {
+                snap.opp_workers += 1;
+            } else {
+                snap.opp_combat += 1;
+                match u.unit_type {
+                    UnitType::Vanguard | UnitType::BehemothTitan => {
+                        snap.opp_heavy_tanks += 1;
+                    }
+                    UnitType::LaserMarksman | UnitType::DarkRocketeer => {
+                        snap.opp_artillery += 1;
+                    }
+                    _ => {}
+                }
+                if matches!(u.unit_type, UnitType::DarkRocketeer | UnitType::VoidWarlock | UnitType::AcidBaneling | UnitType::BehemothTitan) {
+                    snap.opp_aoe_threat += 1;
+                }
+            }
+
+            let d = ((u.x - my_base.0).powi(2) + (u.y - my_base.1).powi(2)).sqrt();
+            if d < snap.nearest_enemy_dist {
+                snap.nearest_enemy_dist = d;
+            }
+            if d < 700.0 {
+                snap.base_threat = true;
+            }
+        } else if engine.are_allies(team, u.team) && u.team != team && u.unit_type != UnitType::Engineer {
+            snap.ally_combat += 1;
+        }
+    }
+
+    // 1 lượt quét duy nhất toàn bộ Buildings
+    for b in &engine.buildings {
+        let is_hostile = engine.are_hostile(team, b.team);
+        if u_or_b_is_my_team(b.team, team) {
+            match b.building_type {
+                BuildingType::CommandCenter => {
+                    snap.my_ccs += 1;
+                    snap.my_cc_total_hp += b.hp;
+                    snap.my_cc_max_hp += b.max_hp;
+                }
+                BuildingType::PowerReactor => snap.my_reactors += 1,
+                BuildingType::EnergyConverter => snap.my_converters += 1,
+                BuildingType::Barracks => snap.my_barracks += 1,
+                BuildingType::TurretTower => snap.my_turrets += 1,
+                _ => {}
+            }
+        } else if is_hostile {
+            hostile_factions.insert(engine.get_faction(b.team));
+            if b.building_type == BuildingType::CommandCenter {
+                snap.opp_ccs += 1;
+            } else if b.building_type == BuildingType::TurretTower {
+                snap.opp_turrets += 1;
+            }
+        }
+    }
+
+    snap.active_hostile_factions = hostile_factions.len();
+    snap
+}
+
+#[inline]
+fn u_or_b_is_my_team(a: Team, b: Team) -> bool {
+    a == b
+}
+
 pub fn extract_state_vector(engine: &GameEngine) -> Vec<f32> {
     extract_state_vector_for_team(engine, Team::Enemy)
 }
@@ -71,20 +277,18 @@ pub fn extract_state_vector_for_team(engine: &GameEngine, team: Team) -> Vec<f32
     let my_tech = engine.team_tech(team);
 
     let opp_team = find_primary_hostile_team(engine, team);
-    let _opp_eco = engine.team_eco(opp_team);
     let opp_tech = engine.team_tech(opp_team);
 
-    let my_base_pos = engine.base_pos(team);
-    let _opp_base_pos = engine.base_pos(opp_team);
+    let snap = create_tactical_snapshot(engine, team);
 
-    // 1. Tiến độ thời gian trận đấu (chuẩn hóa 0-600s)
-    let time_norm = (engine.game_time / 600.0).clamp(0.0, 1.0);
+    // 1. Tiến độ thời gian trận đấu (chuẩn hóa 0-1800s)
+    let time_norm = (engine.game_time / 1800.0).clamp(0.0, 1.0);
     s.push(time_norm);
 
     // 2. Giai đoạn trận đấu: Early (0.0), Mid (0.5), Late (1.0)
-    let game_phase = if engine.game_time < 100.0 {
+    let game_phase = if engine.game_time < 240.0 {
         0.0
-    } else if engine.game_time < 260.0 {
+    } else if engine.game_time < 720.0 {
         0.5
     } else {
         1.0
@@ -92,14 +296,14 @@ pub fn extract_state_vector_for_team(engine: &GameEngine, team: Team) -> Vec<f32
     s.push(game_phase);
 
     // 3-4. Kinh tế phe mình: Khoáng sản & Năng lượng hiện tại
-    s.push((my_eco.minerals / 800.0).clamp(0.0, 2.0));
-    s.push((my_eco.energy / 400.0).clamp(0.0, 2.0));
+    s.push((my_eco.minerals / 1000.0).clamp(0.0, 2.0));
+    s.push((my_eco.energy / 500.0).clamp(0.0, 2.0));
 
-    // 6. Tốc độ thu nhập khoáng sản / s
+    // 5. Tốc độ thu nhập khoáng sản / s
     let income_rate = (my_eco.minerals_per_sec / 50.0).clamp(0.0, 2.0);
     s.push(income_rate);
 
-    // 7. Tỷ lệ Supply
+    // 6. Tỷ lệ Supply
     let supply_ratio = if my_eco.max_supply > 0 {
         (my_eco.supply as f32 / my_eco.max_supply as f32).clamp(0.0, 1.0)
     } else {
@@ -107,78 +311,101 @@ pub fn extract_state_vector_for_team(engine: &GameEngine, team: Team) -> Vec<f32
     };
     s.push(supply_ratio);
 
-    // 8. Chênh lệch Supply so với trần (cảnh báo kẹt supply)
+    // 7. Chênh lệch Supply so với trần
     let supply_headroom = (my_eco.max_supply.saturating_sub(my_eco.supply)) as f32;
     s.push((supply_headroom / 10.0).clamp(0.0, 2.0));
 
-    // 9-10. Số thợ mỏ & Số nhà chính của phe mình
-    let my_workers = engine.units.iter().filter(|u| u.team == team && u.unit_type == UnitType::Engineer).count();
-    let my_ccs = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::CommandCenter).count();
-    s.push((my_workers as f32 / 18.0).clamp(0.0, 1.5));
-    s.push((my_ccs as f32 / 3.0).clamp(0.0, 1.0));
+    // 8-9. Số thợ mỏ & Số nhà chính của phe mình
+    s.push((snap.my_workers as f32 / 18.0).clamp(0.0, 1.5));
+    s.push((snap.my_ccs as f32 / 3.0).clamp(0.0, 1.0));
 
-    // 11-13. Số Reactor, Converter, Barracks, Turret
-    let reactors = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::PowerReactor).count();
-    let converters = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::EnergyConverter).count();
-    let barracks = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::Barracks).count();
-    let turrets = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::TurretTower).count();
-    s.push((reactors as f32 / 10.0).clamp(0.0, 1.5));
-    s.push((converters as f32 / 3.0).clamp(0.0, 1.0));
-    s.push((barracks as f32 / 6.0).clamp(0.0, 1.5));
-    s.push((turrets as f32 / 8.0).clamp(0.0, 1.5));
+    // 10-13. Số Reactor, Converter, Barracks, Turret
+    s.push((snap.my_reactors as f32 / 10.0).clamp(0.0, 1.5));
+    s.push((snap.my_converters as f32 / 3.0).clamp(0.0, 1.0));
+    s.push((snap.my_barracks as f32 / 6.0).clamp(0.0, 1.5));
+    s.push((snap.my_turrets as f32 / 8.0).clamp(0.0, 1.5));
 
-    // 14-16. Quân sự: Số lính chiến đấu phe mình vs đối thủ (hoặc các phe thù địch)
-    let my_combat = engine.units.iter().filter(|u| u.team == team && u.unit_type != UnitType::Engineer).count();
-    let opp_combat = engine.units.iter().filter(|u| engine.are_hostile(team, u.team) && u.unit_type != UnitType::Engineer).count();
-    s.push((my_combat as f32 / 35.0).clamp(0.0, 2.0));
-    s.push((opp_combat as f32 / 35.0).clamp(0.0, 2.0));
-    let mil_ratio = ((my_combat as f32 + 1.0) / (opp_combat as f32 + 1.0)).clamp(0.1, 5.0) / 2.5 - 1.0;
+    // 14-16. Quân sự: Số lính chiến đấu phe mình vs đối thủ
+    s.push((snap.my_combat as f32 / 35.0).clamp(0.0, 2.0));
+    s.push((snap.opp_combat as f32 / 35.0).clamp(0.0, 2.0));
+    let mil_ratio = ((snap.my_combat as f32 + 1.0) / (snap.opp_combat as f32 + 1.0)).clamp(0.1, 5.0) / 2.5 - 1.0;
     s.push(mil_ratio);
 
-    // 17-18. Số công nghệ đã mở khóa của phe mình vs đối thủ (chuẩn hóa trên toàn bộ 19 công nghệ)
+    // 17-18. Số công nghệ đã mở khóa của phe mình vs đối thủ (19 công nghệ)
     let my_unlocked = count_unlocked_techs(my_tech);
     let opp_unlocked = count_unlocked_techs(opp_tech);
     s.push((my_unlocked as f32 / 19.0).clamp(0.0, 1.0));
     s.push((opp_unlocked as f32 / 19.0).clamp(0.0, 1.0));
 
-    // 19. Căn cứ phe mình có đang bị đe dọa trực tiếp (lính đối thủ tiếp cận <700px)
-    let base_threat = engine.units.iter().any(|u| {
-        engine.are_hostile(team, u.team) && ((u.x - my_base_pos.0).powi(2) + (u.y - my_base_pos.1).powi(2)) < 700.0_f32.powi(2)
-    });
-    s.push(if base_threat { 1.0 } else { 0.0 });
+    // 19. Căn cứ phe mình có đang bị đe dọa trực tiếp
+    s.push(if snap.base_threat { 1.0 } else { 0.0 });
 
     // 20. Khoảng cách gần nhất từ cánh quân đối thủ tới căn cứ phe mình
-    let nearest_enemy_dist = engine.units.iter()
-        .filter(|u| engine.are_hostile(team, u.team))
-        .map(|u| ((u.x - my_base_pos.0).powi(2) + (u.y - my_base_pos.1).powi(2)).sqrt())
-        .min_by(|a, b| a.partial_cmp(b).unwrap())
-        .unwrap_or(crate::map::MAP_WIDTH);
-    s.push((nearest_enemy_dist / crate::map::MAP_WIDTH).clamp(0.0, 1.0));
+    s.push((snap.nearest_enemy_dist / crate::map::MAP_WIDTH).clamp(0.0, 1.0));
 
-    // 21. Thợ mỏ của đối thủ (để quyết định Harass)
-    let opp_workers = engine.units.iter().filter(|u| engine.are_hostile(team, u.team) && u.unit_type == UnitType::Engineer).count();
-    s.push((opp_workers as f32 / 16.0).clamp(0.0, 1.5));
+    // 21. Thợ mỏ của đối thủ
+    s.push((snap.opp_workers as f32 / 16.0).clamp(0.0, 1.5));
 
     // 22. Tình trạng nhà chính của đối thủ
-    let opp_ccs = engine.buildings.iter().filter(|b| engine.are_hostile(team, b.team) && b.building_type == BuildingType::CommandCenter).count();
-    s.push((opp_ccs as f32 / 2.0).clamp(0.0, 1.0));
+    s.push((snap.opp_ccs as f32 / 2.0).clamp(0.0, 1.0));
 
-    // 23. Mức độ đe dọa sát thương diện rộng AoE của đối phương (Rocket, Warlock, Baneling, Titan, v.v.)
-    let opp_aoe_threat = engine.units.iter().filter(|u| {
-        engine.are_hostile(team, u.team) && (
-            u.unit_type == UnitType::DarkRocketeer
-            || u.unit_type == UnitType::VoidWarlock
-            || u.unit_type == UnitType::AcidBaneling
-            || u.unit_type == UnitType::BehemothTitan
-        )
-    }).count();
-    s.push((opp_aoe_threat as f32 / 8.0).clamp(0.0, 2.0));
+    // 23. Mức độ đe dọa sát thương diện rộng AoE của đối phương
+    s.push((snap.opp_aoe_threat as f32 / 8.0).clamp(0.0, 2.0));
 
-    // 24. Đội hình hiện tại của phe mình (chuẩn hóa 0.0 -> 1.0)
+    // 24. Đội hình hiện tại của phe mình
     let cur_form = engine.team_formation(team).to_index() as f32 / 5.0;
     s.push(cur_form);
 
-    // Đảm bảo đúng 24 chiều
+    // --- MỞ RỘNG TỪ 24 LÊN 40 CHIỀU ---
+
+    // 25. Tốc độ thu nhập Năng lượng / s
+    s.push((my_eco.energy_per_sec / 100.0).clamp(0.0, 2.0));
+
+    // 26. Tỷ lệ hàng đợi nghiên cứu đang hoạt động (0..4)
+    s.push((my_tech.active_researches.len() as f32 / 4.0).clamp(0.0, 1.0));
+
+    // 27-30. Tiến độ 4 nhánh công nghệ riêng biệt
+    let (sci, mag, mon, log) = count_branch_techs(my_tech);
+    s.push((sci as f32 / 4.0).clamp(0.0, 1.0));
+    s.push((mag as f32 / 4.0).clamp(0.0, 1.0));
+    s.push((mon as f32 / 4.0).clamp(0.0, 1.0));
+    s.push((log as f32 / 7.0).clamp(0.0, 1.0));
+
+    // 31. Tỷ lệ % HP trung bình của các CommandCenter phe mình
+    let cc_hp_ratio = if snap.my_cc_max_hp > 0.0 {
+        (snap.my_cc_total_hp / snap.my_cc_max_hp).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    s.push(cc_hp_ratio);
+
+    // 32. Tỷ lệ % HP trung bình của toàn quân đội phe mình
+    let combat_hp_ratio = if snap.my_combat_max_hp > 0.0 {
+        (snap.my_combat_total_hp / snap.my_combat_max_hp).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    s.push(combat_hp_ratio);
+
+    // 33-35. Cơ cấu binh chủng phe mình (Frontline, Artillery, Magic)
+    let total_my_c = (snap.my_combat as f32).max(1.0);
+    s.push((snap.my_frontline as f32 / total_my_c).clamp(0.0, 1.0));
+    s.push((snap.my_artillery as f32 / total_my_c).clamp(0.0, 1.0));
+    s.push((snap.my_magic as f32 / total_my_c).clamp(0.0, 1.0));
+
+    // 36-38. Cơ cấu lực lượng đối phương (Heavy Tanks, Artillery, Turrets)
+    let total_opp_c = (snap.opp_combat as f32).max(1.0);
+    s.push((snap.opp_heavy_tanks as f32 / total_opp_c).clamp(0.0, 1.0));
+    s.push((snap.opp_artillery as f32 / total_opp_c).clamp(0.0, 1.0));
+    s.push((snap.opp_turrets as f32 / 12.0).clamp(0.0, 1.5));
+
+    // 39. Tương quan lực lượng Đồng minh (cho chế độ 2v2, 3v3, 4v4, 2v2v2)
+    s.push((snap.ally_combat as f32 / 40.0).clamp(0.0, 2.0));
+
+    // 40. Số lượng Phe thù địch còn sống trên bản đồ (quan trọng cho 8-FFA và 2v2v2)
+    s.push((snap.active_hostile_factions as f32 / 7.0).clamp(0.0, 1.0));
+
+    // Đảm bảo đúng 40 chiều
     if s.len() > STATE_DIM {
         s.truncate(STATE_DIM);
     }
@@ -189,48 +416,67 @@ pub fn extract_state_vector_for_team(engine: &GameEngine, team: Team) -> Vec<f32
     s
 }
 
+pub fn count_branch_techs(tech: &crate::resources::TechTreeState) -> (usize, usize, usize, usize) {
+    let mut sci = 0;
+    if tech.focused_laser { sci += 1; }
+    if tech.energy_shielding { sci += 1; }
+    if tech.dark_matter_rockets { sci += 1; }
+    if tech.titan_alloy_plating { sci += 1; }
+
+    let mut mag = 0;
+    if tech.celestial_flying_swords { mag += 1; }
+    if tech.golden_bell_shield { mag += 1; }
+    if tech.corrosive_curse { mag += 1; }
+    if tech.void_cataclysm { mag += 1; }
+
+    let mut mon = 0;
+    if tech.primeval_scales { mon += 1; }
+    if tech.behemoth_mutation { mon += 1; }
+    if tech.acid_banelings { mon += 1; }
+    if tech.hive_proliferation { mon += 1; }
+
+    let mut log = 0;
+    if tech.optical_drills { log += 1; }
+    if tech.overcharged_reactors { log += 1; }
+    if tech.fortified_blueprints { log += 1; }
+    if tech.magnetic_rounds { log += 1; }
+    if tech.exo_boosters { log += 1; }
+    if tech.superheated_blades { log += 1; }
+    if tech.overload_strike { log += 1; }
+
+    (sci, mag, mon, log)
+}
+
 pub fn count_unlocked_techs(tech: &crate::resources::TechTreeState) -> usize {
-    let mut count = 0;
-    if tech.focused_laser { count += 1; }
-    if tech.energy_shielding { count += 1; }
-    if tech.dark_matter_rockets { count += 1; }
-    if tech.titan_alloy_plating { count += 1; }
-    if tech.celestial_flying_swords { count += 1; }
-    if tech.golden_bell_shield { count += 1; }
-    if tech.corrosive_curse { count += 1; }
-    if tech.void_cataclysm { count += 1; }
-    if tech.primeval_scales { count += 1; }
-    if tech.behemoth_mutation { count += 1; }
-    if tech.acid_banelings { count += 1; }
-    if tech.hive_proliferation { count += 1; }
-    if tech.optical_drills { count += 1; }
-    if tech.overcharged_reactors { count += 1; }
-    if tech.fortified_blueprints { count += 1; }
-    if tech.magnetic_rounds { count += 1; }
-    if tech.exo_boosters { count += 1; }
-    if tech.superheated_blades { count += 1; }
-    if tech.overload_strike { count += 1; }
-    count
+    let (sci, mag, mon, log) = count_branch_techs(tech);
+    sci + mag + mon + log
 }
 
 pub fn update_ai(engine: &mut GameEngine) {
+    update_ai_with_dt(engine, 0.5);
+}
+
+pub fn update_ai_with_dt(engine: &mut GameEngine, dt: f32) {
     for i in 1..crate::components::MAX_PLAYERS {
         let team = Team::from_index(i);
-        // Nếu slot này đang kích hoạt Autoplay, bỏ qua update_ai để nhường quyền điều khiển cho Autoplay
         if engine.is_slot_active(team) && !engine.player_slots[i].is_human && !engine.team_autoplay(team).config.enabled {
             let mut ai_state = engine.team_ai(team).clone();
-            update_ai_for_team(engine, team, &mut ai_state);
+            update_ai_for_team_with_dt(engine, team, &mut ai_state, dt);
             *engine.team_ai_mut(team) = ai_state;
         }
     }
 }
 
 pub fn update_ai_for_team(engine: &mut GameEngine, team: Team, ai_state: &mut AiState) {
+    update_ai_for_team_with_dt(engine, team, ai_state, 0.5);
+}
+
+pub fn update_ai_for_team_with_dt(engine: &mut GameEngine, team: Team, ai_state: &mut AiState, dt: f32) {
     // Tự động phân công thợ mỏ rảnh đi đào quặng
     assign_idle_team_workers(engine, team);
 
     // Chu kỳ ra quyết định RL (mỗi 1.5s in-game)
-    ai_state.decision_timer += 0.5;
+    ai_state.decision_timer += dt;
     if ai_state.decision_timer >= 1.5 {
         ai_state.decision_timer = 0.0;
 
@@ -246,7 +492,7 @@ pub fn update_ai_for_team(engine: &mut GameEngine, team: Team, ai_state: &mut Ai
         apply_strategic_action_for_team(engine, team, action);
     }
 
-    // Luôn duy trì phản xạ vi mô liên tục (Continuous Micro-Executors)
+    // Luôn duy trì phản xạ vi mô liên tục
     maintain_continuous_ai_reflexes_for_team(engine, team);
 }
 
@@ -294,59 +540,79 @@ pub fn apply_strategic_action(engine: &mut GameEngine, action: BotStrategicActio
 pub fn apply_strategic_action_for_team(engine: &mut GameEngine, team: Team, action: BotStrategicAction) {
     match action {
         BotStrategicAction::ExpandEco => {
-            // Mở rộng kinh tế: Đào mỏ, thêm thợ mỏ từ CommandCenter và mở rộng căn cứ phụ
             execute_team_eco(engine, team, true);
             execute_team_training(engine, team, &[UnitType::ShockTrooper, UnitType::Rifleman]);
         }
         BotStrategicAction::BuildInfrastructure => {
-            // Cân bằng hạ tầng: PowerReactor + Converter + SupplyDepot
             execute_team_infrastructure(engine, team);
             execute_team_training(engine, team, &[UnitType::ShockTrooper, UnitType::Rifleman]);
         }
         BotStrategicAction::BuildDefenseGrid => {
-            // Xây dựng phòng tuyến tháp pháo và chống nghẽn
             execute_team_defense(engine, team);
             execute_team_training(engine, team, &[UnitType::ShockTrooper, UnitType::Rifleman]);
         }
         BotStrategicAction::TechScienceBranch => {
-            // Nghiên cứu nhánh Khoa học & phối hợp sản xuất quân công nghệ cao
             try_team_research(engine, team, &["focused_laser", "energy_shielding", "dark_matter_rockets", "titan_alloy_plating"]);
             execute_team_training(engine, team, &[UnitType::LaserMarksman, UnitType::DarkRocketeer, UnitType::BehemothTitan, UnitType::Vanguard, UnitType::ShockTrooper]);
         }
         BotStrategicAction::TechMagicBranch => {
-            // Nghiên cứu nhánh Ma thuật & phối hợp sản xuất quân tương ứng
             try_team_research(engine, team, &["celestial_flying_swords", "golden_bell_shield", "corrosive_curse", "void_cataclysm"]);
             execute_team_training(engine, team, &[UnitType::VoidWarlock, UnitType::TaoistSwordmaster, UnitType::DarkRocketeer, UnitType::Rifleman]);
         }
         BotStrategicAction::TechMonsterBranch => {
-            // Nghiên cứu nhánh Quái vật & phối hợp sản xuất quân tương ứng
             try_team_research(engine, team, &["primeval_scales", "behemoth_mutation", "acid_banelings", "hive_proliferation"]);
             execute_team_training(engine, team, &[UnitType::BehemothTitan, UnitType::AcidBaneling, UnitType::VoidWarlock, UnitType::LaserMarksman, UnitType::ShockTrooper]);
         }
         BotStrategicAction::MilitarySwarmRush => {
-            // Tổng lực sản xuất lính kết hợp cảm tử và tiên phong để dồn ép
             execute_team_training(engine, team, &[UnitType::AcidBaneling, UnitType::ShockTrooper, UnitType::Rifleman, UnitType::DarkRocketeer]);
             command_team_military(engine, team, MilitaryCommand::HarassOrAttack);
         }
         BotStrategicAction::DefendAndCounter => {
-            // Thủ căn cứ với Titan / Vanguard / Turret và sẵn sàng phản công
             command_team_military(engine, team, MilitaryCommand::DefendBase);
             execute_team_training(engine, team, &[UnitType::BehemothTitan, UnitType::Vanguard, UnitType::LaserMarksman, UnitType::Rifleman]);
         }
         BotStrategicAction::HarassEconomy => {
-            // Đột kích thợ mỏ đối thủ bằng lính cơ động cao
             command_team_military(engine, team, MilitaryCommand::HarassWorkers);
             execute_team_training(engine, team, &[UnitType::AcidBaneling, UnitType::TaoistSwordmaster, UnitType::ShockTrooper]);
         }
         BotStrategicAction::AllOutAssault => {
-            // Tổng tiến công tiêu diệt nhà chính đối thủ với đội hình phối hợp binh chủng
             command_team_military(engine, team, MilitaryCommand::AllOutAssault);
             execute_team_training(engine, team, &[UnitType::BehemothTitan, UnitType::DarkRocketeer, UnitType::VoidWarlock, UnitType::LaserMarksman, UnitType::ShockTrooper]);
         }
         BotStrategicAction::RegroupAndConsolidate => {
-            // Rút về điểm tập kết củng cố đội hình
             command_team_military(engine, team, MilitaryCommand::Regroup);
             execute_team_training(engine, team, &[UnitType::BehemothTitan, UnitType::Vanguard, UnitType::DarkRocketeer, UnitType::Rifleman]);
+        }
+        BotStrategicAction::TechLogisticsBranch => {
+            try_team_research(engine, team, &[
+                "optical_drills",
+                "overcharged_reactors",
+                "fortified_blueprints",
+                "magnetic_rounds",
+                "exo_boosters",
+                "superheated_blades",
+                "overload_strike",
+            ]);
+            execute_team_training(engine, team, &[UnitType::Rifleman, UnitType::ShockTrooper, UnitType::DarkRocketeer, UnitType::Vanguard]);
+        }
+        BotStrategicAction::SiegeArtilleryPush => {
+            // Đội hình công thành phá tháp pháo địch
+            command_team_military(engine, team, MilitaryCommand::SiegePush);
+            execute_team_training(engine, team, &[UnitType::BehemothTitan, UnitType::DarkRocketeer, UnitType::LaserMarksman, UnitType::Vanguard]);
+        }
+        BotStrategicAction::CoordinateAllySupport => {
+            if let Some(ally_threat_pos) = find_threatened_ally_base(engine, team) {
+                command_team_military(engine, team, MilitaryCommand::SupportAlly(ally_threat_pos));
+            } else {
+                command_team_military(engine, team, MilitaryCommand::AllOutAssault);
+            }
+            execute_team_training(engine, team, &[UnitType::BehemothTitan, UnitType::DarkRocketeer, UnitType::VoidWarlock, UnitType::ShockTrooper]);
+        }
+        BotStrategicAction::FocusWeakestEnemy => {
+            let weakest = find_weakest_hostile_team(engine, team);
+            let weakest_base = engine.base_pos(weakest);
+            command_team_military(engine, team, MilitaryCommand::AttackSpecific(weakest_base));
+            execute_team_training(engine, team, &[UnitType::AcidBaneling, UnitType::TaoistSwordmaster, UnitType::DarkRocketeer, UnitType::LaserMarksman]);
         }
     }
 }
@@ -475,10 +741,9 @@ pub fn maintain_continuous_ai_reflexes_for_team(engine: &mut GameEngine, team: T
         }
     }
 
-    // 4.8. Chủ động nghiên cứu và nâng cấp công nghệ liên tục (hỗ trợ nâng hết toàn bộ 19/19 cây công nghệ)
+    // 4.8. Nghiên cứu công nghệ liên tục
     let (active_res_len, tech_en) = (engine.team_tech(team).active_researches.len(), engine.team_eco(team).energy);
     if active_res_len < crate::config::MAX_TOTAL_CONCURRENT_RESEARCH && tech_en >= 80.0 {
-        // Lộ trình nâng cấp công nghệ chiến lược đa nhánh
         let tech_priorities = [
             "optical_drills",
             "focused_laser",
@@ -617,7 +882,6 @@ pub fn execute_team_continuous_recruitment(engine: &mut GameEngine, team: Team) 
         .map(|b| b.id)
         .collect();
 
-    // Thống kê số lượng từng binh chủng hiện có để phối hợp đa binh chủng (Combined Arms)
     let count_unit = |ut: UnitType| -> usize {
         engine.units.iter().filter(|u| u.team == team && u.unit_type == ut).count()
     };
@@ -629,8 +893,6 @@ pub fn execute_team_continuous_recruitment(engine: &mut GameEngine, team: Team) 
     let shields = count_unit(UnitType::Vanguard);
     let banelings = count_unit(UnitType::AcidBaneling);
 
-    // Xác định mức độ ưu tiên dựa trên tỷ lệ thiếu hụt đội hình:
-    // Khổng lồ (Titan) + Pháo (Rocket, Laser) + Phù thủy (Warlock) + Kiếm sư (Swordmaster) + Tiên phong (Vanguard) + Bọ nổ (Baneling)
     let mut candidate_order = vec![
         (UnitType::BehemothTitan, titans, 4),
         (UnitType::DarkRocketeer, rockets, 6),
@@ -640,7 +902,6 @@ pub fn execute_team_continuous_recruitment(engine: &mut GameEngine, team: Team) 
         (UnitType::Vanguard, shields, 4),
         (UnitType::AcidBaneling, banelings, 6),
     ];
-    // Sắp xếp ưu tiên đơn vị có số lượng hiện có ít nhất so với hạn mức (quota)
     candidate_order.sort_by_key(|&(_, cur, quota)| {
         if cur >= quota { 100 + cur } else { cur }
     });
@@ -661,7 +922,6 @@ pub fn execute_team_continuous_recruitment(engine: &mut GameEngine, team: Team) 
             if !crate::autoplay::can_train_unit(&tech, u_type) {
                 continue;
             }
-            // Nếu đã đủ quota cơ bản và có lính khác chưa đủ quota, nhường lượt
             if cur_cnt >= quota && candidate_order.iter().any(|&(other_u, other_c, other_q)| {
                 other_c < other_q && crate::autoplay::can_train_unit(&tech, other_u)
             }) {
@@ -686,7 +946,6 @@ pub fn execute_team_continuous_recruitment(engine: &mut GameEngine, team: Team) 
             }
         }
 
-        // Nếu chưa tuyển được lính cao cấp, tuyển lính cơ bản
         if !recruited {
             let basic_units = [UnitType::ShockTrooper, UnitType::Rifleman];
             for &u_type in &basic_units {
@@ -809,7 +1068,6 @@ pub fn execute_team_defense(engine: &mut GameEngine, team: Team) {
 }
 
 pub fn try_team_research(engine: &mut GameEngine, team: Team, tech_chain: &[&str]) {
-    // 1. Thử theo danh sách chỉ định
     for &tech_id in tech_chain {
         let (needs_research, target) = {
             let team_tech = engine.team_tech(team);
@@ -845,7 +1103,7 @@ pub fn try_team_research(engine: &mut GameEngine, team: Team, tech_chain: &[&str
         }
     }
 
-    // 2. Nếu đã hoàn thành chuỗi chỉ định hoặc bị kẹt nhánh, tự động nâng tiếp toàn bộ 19 công nghệ
+    // Nếu đã hoàn thành chuỗi chỉ định, tự động nâng tiếp các công nghệ còn lại
     for &all_t in &crate::autoplay::ALL_TECH_IDS {
         let (needs_research, target) = {
             let team_tech = engine.team_tech(team);
@@ -936,6 +1194,9 @@ pub enum MilitaryCommand {
     HarassOrAttack,
     AllOutAssault,
     Regroup,
+    SiegePush,
+    SupportAlly((f32, f32)),
+    AttackSpecific((f32, f32)),
 }
 
 pub fn command_team_military(engine: &mut GameEngine, team: Team, cmd: MilitaryCommand) {
@@ -1050,6 +1311,47 @@ pub fn command_team_military(engine: &mut GameEngine, team: Team, cmd: MilitaryC
                 }
             }
         }
+        MilitaryCommand::SiegePush => {
+            // Nhắm thẳng vào tháp pháo hoặc nhà chính đối phương
+            let target = engine.buildings.iter()
+                .find(|b| engine.are_hostile(team, b.team) && b.building_type == BuildingType::TurretTower)
+                .map(|b| (b.x, b.y))
+                .or_else(|| {
+                    engine.buildings.iter()
+                        .find(|b| engine.are_hostile(team, b.team) && b.building_type == BuildingType::CommandCenter)
+                        .map(|b| (b.x, b.y))
+                })
+                .unwrap_or(default_opp_base);
+
+            let form_pos = crate::formation::compute_formation_positions(
+                &combat_pairs,
+                start_center,
+                target,
+                FormationType::Wedge,
+            );
+
+            for (uid, tx, ty, off_x, off_y) in form_pos {
+                if let Some(u) = engine.units.iter_mut().find(|u| u.id == uid) {
+                    u.formation_offset = (off_x, off_y);
+                    u.order = UnitOrder::AttackMove { x: tx, y: ty };
+                }
+            }
+        }
+        MilitaryCommand::SupportAlly(target) | MilitaryCommand::AttackSpecific(target) => {
+            let form_pos = crate::formation::compute_formation_positions(
+                &combat_pairs,
+                start_center,
+                target,
+                form,
+            );
+
+            for (uid, tx, ty, off_x, off_y) in form_pos {
+                if let Some(u) = engine.units.iter_mut().find(|u| u.id == uid) {
+                    u.formation_offset = (off_x, off_y);
+                    u.order = UnitOrder::AttackMove { x: tx, y: ty };
+                }
+            }
+        }
         MilitaryCommand::Regroup => {
             let form_pos = crate::formation::compute_formation_positions(
                 &combat_pairs,
@@ -1100,7 +1402,7 @@ mod tests {
 
     #[test]
     fn test_strategic_action_mapping() {
-        for idx in 0..11 {
+        for idx in 0..15 {
             let action = BotStrategicAction::from_index(idx);
             assert_eq!(action.to_index(), idx);
         }

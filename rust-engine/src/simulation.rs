@@ -47,8 +47,9 @@ pub fn step(engine: &mut GameEngine, dt: f32) {
     // 10. Cập nhật AI Đối thủ (kinh tế + điều quân càn quét nhà)
     engine.ai_think_timer += dt;
     if engine.ai_think_timer >= 0.5 {
+        let elapsed = engine.ai_think_timer;
         engine.ai_think_timer = 0.0;
-        crate::ai::update_ai(engine);
+        crate::ai::update_ai_with_dt(engine, elapsed);
     }
 
     // 10.5 Cập nhật Chế độ Tự Động (Auto-Play) cho tất cả team có autoplay bật
@@ -1100,15 +1101,17 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
         let eco = match team {
             Team::Player => {
                 engine.minerals_mined_accumulator += amount;
-                new_floating_texts.push(FloatingText {
-                    id: 0,
-                    text: format!("+{} 💎", amount as u32),
-                    x: fx,
-                    y: fy,
-                    color: "#00e5ff".to_string(),
-                    lifetime: 1.0,
-                    max_lifetime: 1.0,
-                });
+                if !engine.is_headless {
+                    new_floating_texts.push(FloatingText {
+                        id: 0,
+                        text: format!("+{} 💎", amount as u32),
+                        x: fx,
+                        y: fy,
+                        color: "#00e5ff".to_string(),
+                        lifetime: 1.0,
+                        max_lifetime: 1.0,
+                    });
+                }
                 &mut engine.player_eco
             }
             Team::Enemy => &mut engine.enemy_eco,
@@ -1490,15 +1493,17 @@ fn update_projectiles(engine: &mut GameEngine, dt: f32) {
                             u.resistances.arcane = (u.resistances.arcane - 0.04).max(0.0);
                         }
 
-                        new_texts.push(FloatingText {
-                            id: 0,
-                            text: format!("-{:.0}", taken),
-                            x: u.x,
-                            y: u.y - 12.0,
-                            color: p.damage_type.color_code().to_string(),
-                            lifetime: 0.7,
-                            max_lifetime: 0.7,
-                        });
+                        if !engine.is_headless {
+                            new_texts.push(FloatingText {
+                                id: 0,
+                                text: format!("-{:.0}", taken),
+                                x: u.x,
+                                y: u.y - 12.0,
+                                color: p.damage_type.color_code().to_string(),
+                                lifetime: 0.7,
+                                max_lifetime: 0.7,
+                            });
+                        }
 
                         if !is_aoe {
                             break;
@@ -1519,15 +1524,17 @@ fn update_projectiles(engine: &mut GameEngine, dt: f32) {
                         b.hp -= taken;
                         b.under_attack_timer = crate::config::BUILDING_UNDER_ATTACK_DURATION;
 
-                        new_texts.push(FloatingText {
-                            id: 0,
-                            text: format!("-{:.0}", taken),
-                            x: b.x,
-                            y: b.y - b_rad,
-                            color: p.damage_type.color_code().to_string(),
-                            lifetime: 0.8,
-                            max_lifetime: 0.8,
-                        });
+                        if !engine.is_headless {
+                            new_texts.push(FloatingText {
+                                id: 0,
+                                text: format!("-{:.0}", taken),
+                                x: b.x,
+                                y: b.y - b_rad,
+                                color: p.damage_type.color_code().to_string(),
+                                lifetime: 0.8,
+                                max_lifetime: 0.8,
+                            });
+                        }
 
                         if !is_aoe {
                             break;

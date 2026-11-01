@@ -84,6 +84,7 @@ pub struct GameEngine {
 
     // AI timer & Income tracker
     pub ai_think_timer: f32,
+    pub player_ai_state: crate::ai::AiState,
     pub ai_state: crate::ai::AiState,
     pub sync_timer: f32,
     pub minerals_mined_accumulator: f32,
@@ -183,6 +184,7 @@ impl GameEngine {
             keys_down: std::collections::HashSet::new(),
 
             ai_think_timer: 0.0,
+            player_ai_state: crate::ai::AiState::default(),
             ai_state: crate::ai::AiState::default(),
             sync_timer: 0.0,
             minerals_mined_accumulator: 0.0,
@@ -271,6 +273,7 @@ impl GameEngine {
             keys_down: std::collections::HashSet::new(),
 
             ai_think_timer: 0.0,
+            player_ai_state: crate::ai::AiState::default(),
             ai_state: crate::ai::AiState::default(),
             sync_timer: 0.0,
             minerals_mined_accumulator: 0.0,
@@ -411,7 +414,7 @@ impl GameEngine {
 
     pub fn team_ai(&self, team: Team) -> &crate::ai::AiState {
         match team {
-            Team::Player => &self.ai_state,
+            Team::Player => &self.player_ai_state,
             Team::Enemy => &self.ai_state,
             _ => {
                 let idx = team.index().saturating_sub(2);
@@ -426,7 +429,7 @@ impl GameEngine {
 
     pub fn team_ai_mut(&mut self, team: Team) -> &mut crate::ai::AiState {
         match team {
-            Team::Player => &mut self.ai_state,
+            Team::Player => &mut self.player_ai_state,
             Team::Enemy => &mut self.ai_state,
             _ => {
                 let idx = team.index().saturating_sub(2);
@@ -514,21 +517,32 @@ impl GameEngine {
 
         self.team_formations = [crate::components::FormationType::Line; 8];
 
-        // 7. Reset bộ đếm thời gian và ID, nhưng BẢO TỒN não bộ RL (rl_brain) đã học
+        // 7. Reset bộ đếm thời gian và ID, nạp bộ não phù hợp theo chế độ chơi
         self.next_id = 100;
         self.game_time = 0.0;
         self.is_paused = false;
         self.game_over = false;
         self.ai_think_timer = 0.0;
-        let preserved_brain = self.ai_state.rl_brain.clone();
+
+        let mode = crate::rl::AiGameMode::detect_from_slots(&self.player_slots);
+        let mode_brain = if self.ai_state.training_enabled {
+            self.ai_state.rl_brain.clone()
+        } else {
+            crate::rl::RlBrain::load_for_mode(mode)
+        };
         let training_enabled = self.ai_state.training_enabled;
+
+        self.player_ai_state = crate::ai::AiState::default();
+        self.player_ai_state.rl_brain = mode_brain.clone();
+        self.player_ai_state.training_enabled = training_enabled;
+
         self.ai_state = crate::ai::AiState::default();
-        self.ai_state.rl_brain = preserved_brain.clone();
+        self.ai_state.rl_brain = mode_brain.clone();
         self.ai_state.training_enabled = training_enabled;
 
         for ai in self.extra_ai_states.iter_mut() {
             *ai = crate::ai::AiState::default();
-            ai.rl_brain = preserved_brain.clone();
+            ai.rl_brain = mode_brain.clone();
             ai.training_enabled = training_enabled;
         }
 
@@ -542,8 +556,10 @@ impl GameEngine {
         // 9. Sinh lại Căn cứ chính và 3 Thợ mỏ khởi đầu cho tất cả slot active
         self.init_base();
 
-        // 10. Cập nhật lại sương mù cho căn cứ ban đầu ngay tức thì
-        simulation::update_fog(self);
+        // 10. Cập nhật lại sương mù cho căn cứ ban đầu ngay tức thì (bỏ qua nếu headless)
+        if !self.is_headless {
+            simulation::update_fog(self);
+        }
     }
 
     pub fn init_base(&mut self) {

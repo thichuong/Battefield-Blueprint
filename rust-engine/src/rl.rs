@@ -1,9 +1,69 @@
 use crate::components::FormationType;
 use serde::{Deserialize, Serialize};
 
-pub const STATE_DIM: usize = 24;
-pub const ACTION_DIM: usize = 11;
+pub const STATE_DIM: usize = 40;
+pub const ACTION_DIM: usize = 15;
 pub const FORMATION_DIM: usize = 6;
+pub const DEFAULT_HIDDEN_SIZE: usize = 96;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AiGameMode {
+    Duel1v1,
+    Team2v2,
+    Team3v3,
+    Team4v4,
+    ThreeWay2v2v2,
+    FreeForAll8,
+}
+
+impl AiGameMode {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Duel1v1 => "1v1 Duel",
+            Self::Team2v2 => "2v2 Battle",
+            Self::Team3v3 => "3v3 War",
+            Self::Team4v4 => "4v4 Grand War",
+            Self::ThreeWay2v2v2 => "2v2v2 3-Way",
+            Self::FreeForAll8 => "8-FFA Battle Royale",
+        }
+    }
+
+    pub fn model_filename(&self) -> &'static str {
+        match self {
+            Self::Duel1v1 => "rl_model_1v1.json",
+            Self::Team2v2 => "rl_model_2v2.json",
+            Self::Team3v3 => "rl_model_3v3.json",
+            Self::Team4v4 => "rl_model_4v4.json",
+            Self::ThreeWay2v2v2 => "rl_model_2v2v2.json",
+            Self::FreeForAll8 => "rl_model_ffa8.json",
+        }
+    }
+
+    pub fn detect_from_slots(slots: &[crate::components::PlayerSlotConfig; 8]) -> Self {
+        let active_slots: Vec<&crate::components::PlayerSlotConfig> =
+            slots.iter().filter(|s| s.active).collect();
+        let num_active = active_slots.len();
+
+        let mut factions = std::collections::HashSet::new();
+        for s in &active_slots {
+            factions.insert(s.faction);
+        }
+        let num_factions = factions.len();
+
+        if num_factions >= 6 && num_active >= 6 {
+            Self::FreeForAll8
+        } else if num_factions == 3 {
+            Self::ThreeWay2v2v2
+        } else {
+            match num_active {
+                0..=2 => Self::Duel1v1,
+                3..=4 => Self::Team2v2,
+                5..=6 => Self::Team3v3,
+                _ => Self::Team4v4,
+            }
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BotStrategicAction {
@@ -18,6 +78,10 @@ pub enum BotStrategicAction {
     HarassEconomy = 8,
     AllOutAssault = 9,
     RegroupAndConsolidate = 10,
+    TechLogisticsBranch = 11,
+    SiegeArtilleryPush = 12,
+    CoordinateAllySupport = 13,
+    FocusWeakestEnemy = 14,
 }
 
 impl BotStrategicAction {
@@ -33,7 +97,11 @@ impl BotStrategicAction {
             7 => Self::DefendAndCounter,
             8 => Self::HarassEconomy,
             9 => Self::AllOutAssault,
-            _ => Self::RegroupAndConsolidate,
+            10 => Self::RegroupAndConsolidate,
+            11 => Self::TechLogisticsBranch,
+            12 => Self::SiegeArtilleryPush,
+            13 => Self::CoordinateAllySupport,
+            _ => Self::FocusWeakestEnemy,
         }
     }
 
@@ -54,6 +122,10 @@ impl BotStrategicAction {
             Self::HarassEconomy => "Tactical: Harass Player Minerals",
             Self::AllOutAssault => "Tactical: All-out Base Assault",
             Self::RegroupAndConsolidate => "Tactical: Regroup & Consolidate",
+            Self::TechLogisticsBranch => "Tech & Produce: Logistics Branch",
+            Self::SiegeArtilleryPush => "Tactical: Siege Artillery Push",
+            Self::CoordinateAllySupport => "Tactical: Coordinate Ally Support",
+            Self::FocusWeakestEnemy => "Tactical: Focus Weakest Enemy",
         }
     }
 }
@@ -86,11 +158,9 @@ fn default_epsilon() -> f32 { 0.05 }
 impl Default for RlBrain {
     fn default() -> Self {
         if let Some(loaded) = Self::load_default_weights() {
-            if loaded.input_size == STATE_DIM && loaded.output_size == ACTION_DIM {
-                return loaded;
-            }
+            return loaded;
         }
-        Self::new_random(STATE_DIM, 48, ACTION_DIM)
+        Self::new_random(STATE_DIM, DEFAULT_HIDDEN_SIZE, ACTION_DIM)
     }
 }
 
@@ -149,25 +219,89 @@ impl RlBrain {
         }
     }
 
+    /// Đảm bảo kích thước ma trận phù hợp với STATE_DIM (40) và ACTION_DIM (15)
+    pub fn ensure_dimensions(self) -> Self {
+        if self.input_size == STATE_DIM
+            && self.output_size == ACTION_DIM
+            && self.hidden_size == DEFAULT_HIDDEN_SIZE
+            && self.w1.len() == STATE_DIM
+            && self.w2.len() == DEFAULT_HIDDEN_SIZE
+            && self.w2[0].len() == ACTION_DIM
+            && self.w_form.len() == DEFAULT_HIDDEN_SIZE
+            && self.w_form[0].len() == FORMATION_DIM
+        {
+            return self;
+        }
+
+        // Tạo bộ khung mới chuẩn kích thước
+        let mut target = Self::new_random(STATE_DIM, DEFAULT_HIDDEN_SIZE, ACTION_DIM);
+        target.learning_rate = self.learning_rate;
+        target.gamma = self.gamma;
+        target.epsilon = self.epsilon;
+
+        // Sao chép trọng số cũ sang ma trận mới
+        let copy_inputs = self.input_size.min(STATE_DIM);
+        let copy_hidden = self.hidden_size.min(DEFAULT_HIDDEN_SIZE);
+        let copy_actions = self.output_size.min(ACTION_DIM);
+
+        for i in 0..copy_inputs {
+            for j in 0..copy_hidden {
+                if i < self.w1.len() && j < self.w1[i].len() {
+                    target.w1[i][j] = self.w1[i][j];
+                }
+            }
+        }
+        for j in 0..copy_hidden {
+            if j < self.b1.len() {
+                target.b1[j] = self.b1[j];
+            }
+            for k in 0..copy_actions {
+                if j < self.w2.len() && k < self.w2[j].len() {
+                    target.w2[j][k] = self.w2[j][k];
+                }
+            }
+            for f in 0..FORMATION_DIM {
+                if j < self.w_form.len() && f < self.w_form[j].len() {
+                    target.w_form[j][f] = self.w_form[j][f];
+                }
+            }
+        }
+        for k in 0..copy_actions {
+            if k < self.b2.len() {
+                target.b2[k] = self.b2[k];
+            }
+        }
+        for f in 0..FORMATION_DIM {
+            if f < self.b_form.len() {
+                target.b_form[f] = self.b_form[f];
+            }
+        }
+
+        target
+    }
+
+    pub fn load_for_mode(mode: AiGameMode) -> Self {
+        // Cố gắng nạp đúng model theo mode từ assets
+        let model_str = match mode {
+            AiGameMode::Duel1v1 => include_str!("../assets/rl_model_1v1.json"),
+            AiGameMode::Team2v2 => include_str!("../assets/rl_model_2v2.json"),
+            AiGameMode::Team3v3 => include_str!("../assets/rl_model_3v3.json"),
+            AiGameMode::Team4v4 => include_str!("../assets/rl_model_4v4.json"),
+            AiGameMode::ThreeWay2v2v2 => include_str!("../assets/rl_model_2v2v2.json"),
+            AiGameMode::FreeForAll8 => include_str!("../assets/rl_model_ffa8.json"),
+        };
+
+        if let Ok(brain) = serde_json::from_str::<Self>(model_str) {
+            brain.ensure_dimensions()
+        } else {
+            Self::default()
+        }
+    }
+
     pub fn load_default_weights() -> Option<Self> {
         let model_str = include_str!("../assets/rl_model.json");
-        if let Ok(mut brain) = serde_json::from_str::<Self>(model_str) {
-            // Tự động khởi tạo nhánh formation nếu file model cũ chưa có
-            if brain.w_form.is_empty() || brain.w_form.len() != brain.hidden_size {
-                let mut rng = fastrand::Rng::with_seed(2024);
-                let scale_form = (2.0 / (brain.hidden_size as f32)).sqrt();
-                let mut w_form = Vec::with_capacity(brain.hidden_size);
-                for _ in 0..brain.hidden_size {
-                    let mut row = Vec::with_capacity(FORMATION_DIM);
-                    for _ in 0..FORMATION_DIM {
-                        row.push((rng.f32() * 2.0 - 1.0) * scale_form);
-                    }
-                    w_form.push(row);
-                }
-                brain.w_form = w_form;
-                brain.b_form = vec![0.0; FORMATION_DIM];
-            }
-            Some(brain)
+        if let Ok(brain) = serde_json::from_str::<Self>(model_str) {
+            Some(brain.ensure_dimensions())
         } else {
             None
         }
