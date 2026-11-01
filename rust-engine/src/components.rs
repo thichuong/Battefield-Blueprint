@@ -397,6 +397,8 @@ pub struct Projectile {
     pub aoe_radius: f32,
     pub is_laser: bool,
     pub lifetime: f32,
+    #[serde(default)]
+    pub is_melee: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

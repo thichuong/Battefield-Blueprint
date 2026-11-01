@@ -265,8 +265,11 @@ fn render_buildings(engine: &GameEngine) {
             ctx.stroke();
         }
 
-        // Tên công trình & Tiến độ
-        ctx.set_font("bold 11px monospace");
+        // Vẽ Đồ Họa 2D Tĩnh Cho Công Trình
+        draw_building_graphic(ctx, b.building_type, b.x as f64, b.y as f64, bw, bh, color_neon);
+
+        // Tên công trình hiển thị bên dưới
+        ctx.set_font("bold 10px monospace");
         ctx.set_fill_style_str(color_neon);
         let title = match b.building_type {
             BuildingType::CommandCenter => "HQ COMMAND",
@@ -276,71 +279,9 @@ fn render_buildings(engine: &GameEngine) {
             BuildingType::TurretTower => "TURRET",
             BuildingType::EnergyConverter => "CONVERTER",
         };
-        let _ = ctx.fill_text(title, bx + 6.0, by + 18.0);
-
-        // Hiệu ứng lõi cho Trạm Chuyển Hóa Năng Lượng
-        if b.building_type == BuildingType::EnergyConverter && b.build_progress >= 1.0 {
-            let cx = b.x as f64;
-            let cy = (b.y + 3.0) as f64;
-            let is_active = if b.team == Team::Player {
-                engine.player_eco.energy >= 1000.0
-            } else {
-                engine.enemy_eco.energy >= 1000.0
-            };
-
-            if is_active {
-                // Vòng xoay năng lượng đang chuyển hóa (Màu hổ phách / vàng kim)
-                let pulse = ((engine.game_time * 5.0).sin() * 2.5) as f64;
-                ctx.set_stroke_style_str("#fbbf24");
-                ctx.set_line_width(1.8);
-                ctx.begin_path();
-                let _ = ctx.arc(cx, cy, 14.0 + pulse * 0.5, 0.0, std::f64::consts::PI * 2.0);
-                ctx.stroke();
-
-                ctx.set_fill_style_str("rgba(251, 191, 36, 0.35)");
-                ctx.begin_path();
-                let _ = ctx.arc(
-                    cx,
-                    cy,
-                    (8.0 + pulse).max(4.0),
-                    0.0,
-                    std::f64::consts::PI * 2.0,
-                );
-                ctx.fill();
-
-                // Tia chuyển đổi xoay
-                let angle = (engine.game_time * 3.0) as f64;
-                ctx.set_stroke_style_str("#fef08a");
-                ctx.set_line_width(1.5);
-                ctx.begin_path();
-                ctx.move_to(cx + angle.cos() * 14.0, cy + angle.sin() * 14.0);
-                ctx.line_to(cx - angle.cos() * 14.0, cy - angle.sin() * 14.0);
-                ctx.move_to(
-                    cx + (angle + 1.57).cos() * 14.0,
-                    cy + (angle + 1.57).sin() * 14.0,
-                );
-                ctx.line_to(
-                    cx - (angle + 1.57).cos() * 14.0,
-                    cy - (angle + 1.57).sin() * 14.0,
-                );
-                ctx.stroke();
-
-                ctx.set_font("bold 9px monospace");
-                ctx.set_fill_style_str("#fbbf24");
-                let _ = ctx.fill_text("⚡➔💎", cx - 13.0, cy + 22.0);
-            } else {
-                // Trạng thái STANDBY khi Năng lượng < 1000
-                ctx.set_stroke_style_str("#64748b");
-                ctx.set_line_width(1.2);
-                ctx.begin_path();
-                let _ = ctx.arc(cx, cy, 12.0, 0.0, std::f64::consts::PI * 2.0);
-                ctx.stroke();
-
-                ctx.set_font("bold 8px monospace");
-                ctx.set_fill_style_str("#94a3b8");
-                let _ = ctx.fill_text("STANDBY", cx - 18.0, cy + 22.0);
-            }
-        }
+        // Căn giữa dòng chữ dưới công trình
+        let text_w = (title.len() as f64) * 6.2;
+        let _ = ctx.fill_text(title, b.x as f64 - text_w * 0.5, by + bh + 13.0);
 
         // Thanh tiến độ xây dựng hoặc Thanh máu
         if b.build_progress < 1.0 {
@@ -409,6 +350,183 @@ fn draw_blueprint_brackets(
     ctx.line_to(x + w, y + h);
     ctx.line_to(x + w, y + h - d);
     ctx.stroke();
+}
+
+fn draw_building_graphic(
+    ctx: &CanvasRenderingContext2d,
+    b_type: BuildingType,
+    cx: f64,
+    cy: f64,
+    bw: f64,
+    bh: f64,
+    color: &str,
+) {
+    ctx.save();
+    ctx.set_stroke_style_str(color);
+    ctx.set_fill_style_str(color);
+    ctx.set_line_width(1.8);
+
+    match b_type {
+        BuildingType::CommandCenter => {
+            // 1. HQ CommandCenter: Khối tháp pháo đài chỉ huy bát giác kiên cố + ăng-ten radar ở giữa
+            let r_outer = (bw.min(bh) * 0.32).max(18.0);
+            let r_inner = r_outer * 0.6;
+            
+            // Viền bát giác ngoài
+            ctx.begin_path();
+            for i in 0..8 {
+                let ang = (i as f64) * std::f64::consts::PI / 4.0;
+                let px = cx + ang.cos() * r_outer;
+                let py = cy + ang.sin() * r_outer;
+                if i == 0 {
+                    ctx.move_to(px, py);
+                } else {
+                    ctx.line_to(px, py);
+                }
+            }
+            ctx.close_path();
+            ctx.stroke();
+
+            // Khối phòng ngự lõi trung tâm
+            ctx.stroke_rect(cx - r_inner, cy - r_inner, r_inner * 2.0, r_inner * 2.0);
+
+            // Ăng-ten radar trung tâm
+            ctx.begin_path();
+            let _ = ctx.arc(cx, cy, 3.5, 0.0, std::f64::consts::PI * 2.0);
+            ctx.fill();
+
+            // 4 chấu tiếp đất bảo vệ ở 4 hướng chính
+            ctx.begin_path();
+            ctx.move_to(cx - r_outer - 5.0, cy);
+            ctx.line_to(cx - r_inner, cy);
+            ctx.move_to(cx + r_inner, cy);
+            ctx.line_to(cx + r_outer + 5.0, cy);
+            ctx.move_to(cx, cy - r_outer - 5.0);
+            ctx.line_to(cx, cy - r_inner);
+            ctx.move_to(cx, cy + r_inner);
+            ctx.line_to(cx, cy + r_outer + 5.0);
+            ctx.stroke();
+        }
+        BuildingType::SupplyDepot => {
+            // 2. Supply Depot: 4 kiện hàng công-te-nơ tiếp vận (2x2) có dây chằng chéo X
+            let box_size = (bw.min(bh) * 0.30).max(12.0);
+            let gap = 3.5;
+            let offsets = [
+                (-box_size - gap * 0.5, -box_size - gap * 0.5),
+                (gap * 0.5, -box_size - gap * 0.5),
+                (-box_size - gap * 0.5, gap * 0.5),
+                (gap * 0.5, gap * 0.5),
+            ];
+
+            for (ox, oy) in offsets {
+                let rx = cx + ox;
+                let ry = cy + oy;
+                ctx.stroke_rect(rx, ry, box_size, box_size);
+
+                // Dây chằng chéo chữ X trên từng kiện hàng
+                ctx.begin_path();
+                ctx.move_to(rx, ry);
+                ctx.line_to(rx + box_size, ry + box_size);
+                ctx.move_to(rx + box_size, ry);
+                ctx.line_to(rx, ry + box_size);
+                ctx.stroke();
+            }
+        }
+        BuildingType::PowerReactor => {
+            // 3. Power Reactor: Lõi lò phản ứng hạt nhân tĩnh - Vòng tròn đồng tâm + 3 cánh quạt năng lượng
+            let r = (bw.min(bh) * 0.35).max(15.0);
+            
+            // Vòng tròn ngoài
+            ctx.begin_path();
+            let _ = ctx.arc(cx, cy, r, 0.0, std::f64::consts::PI * 2.0);
+            ctx.stroke();
+
+            // Lõi phát điện trung tâm
+            ctx.begin_path();
+            let _ = ctx.arc(cx, cy, 4.0, 0.0, std::f64::consts::PI * 2.0);
+            ctx.fill();
+
+            // 3 cánh quạt / thanh năng lượng hạt nhân phân kỳ 120 độ
+            for i in 0..3 {
+                let ang = (i as f64) * std::f64::consts::PI * 2.0 / 3.0 - std::f64::consts::FRAC_PI_2;
+                ctx.begin_path();
+                ctx.move_to(cx + ang.cos() * 5.0, cy + ang.sin() * 5.0);
+                ctx.line_to(cx + ang.cos() * (r - 2.5), cy + ang.sin() * (r - 2.5));
+                ctx.stroke();
+            }
+        }
+        BuildingType::Barracks => {
+            // 4. Barracks: Doanh trại huấn luyện - Mái che/khung trại + biểu tượng 2 kiếm chéo tĩnh
+            let hw = bw * 0.36;
+            let hh = bh * 0.34;
+            
+            // Khung lều trại quân đội
+            ctx.begin_path();
+            ctx.move_to(cx - hw, cy + hh);
+            ctx.line_to(cx - hw, cy - hh * 0.3);
+            ctx.line_to(cx, cy - hh);
+            ctx.line_to(cx + hw, cy - hh * 0.3);
+            ctx.line_to(cx + hw, cy + hh);
+            ctx.close_path();
+            ctx.stroke();
+
+            // Biểu tượng kiếm chéo quân đội ở giữa
+            let sw_len = 9.0;
+            ctx.begin_path();
+            ctx.move_to(cx - sw_len, cy - sw_len * 0.7);
+            ctx.line_to(cx + sw_len, cy + sw_len * 0.7);
+            ctx.move_to(cx + sw_len, cy - sw_len * 0.7);
+            ctx.line_to(cx - sw_len, cy + sw_len * 0.7);
+            ctx.stroke();
+        }
+        BuildingType::TurretTower => {
+            // 5. TurretTower: Bệ pháo phòng thủ tự động - Đế tròn/bát giác + Ụ pháo 2 nòng súng
+            let r = (bw.min(bh) * 0.34).max(12.0);
+
+            // Đế tháp pháo
+            ctx.begin_path();
+            let _ = ctx.arc(cx, cy + 2.0, r, 0.0, std::f64::consts::PI * 2.0);
+            ctx.stroke();
+
+            // Ụ xoay pháo
+            ctx.begin_path();
+            let _ = ctx.arc(cx, cy + 2.0, r * 0.55, 0.0, std::f64::consts::PI * 2.0);
+            ctx.fill();
+
+            // 2 nòng pháo vươn lên trên
+            let gun_w = 3.2;
+            let gun_h = r * 1.1;
+            ctx.fill_rect(cx - gun_w * 1.5, cy + 2.0 - gun_h, gun_w, gun_h);
+            ctx.fill_rect(cx + gun_w * 0.5, cy + 2.0 - gun_h, gun_w, gun_h);
+        }
+        BuildingType::EnergyConverter => {
+            // 6. EnergyConverter: Trạm chuyển hóa - Hình thoi tinh thể kim cương nằm trong vòng tròn tĩnh
+            let r = (bw.min(bh) * 0.36).max(15.0);
+
+            // Vòng tròn chuyển hóa
+            ctx.begin_path();
+            let _ = ctx.arc(cx, cy, r, 0.0, std::f64::consts::PI * 2.0);
+            ctx.stroke();
+
+            // Tinh thể kim cương hình thoi tĩnh ở trung tâm
+            let dw = r * 0.7;
+            let dh = r * 0.85;
+            ctx.begin_path();
+            ctx.move_to(cx, cy - dh);
+            ctx.line_to(cx + dw, cy);
+            ctx.line_to(cx, cy + dh);
+            ctx.line_to(cx - dw, cy);
+            ctx.close_path();
+            ctx.stroke();
+
+            // Tâm năng lượng
+            ctx.begin_path();
+            let _ = ctx.arc(cx, cy, 3.0, 0.0, std::f64::consts::PI * 2.0);
+            ctx.fill();
+        }
+    }
+
+    ctx.restore();
 }
 
 fn render_units(engine: &GameEngine) {
@@ -634,6 +752,11 @@ fn draw_procedural_stickman(ctx: &CanvasRenderingContext2d, u: &Unit, color: &st
 fn render_projectiles(engine: &GameEngine) {
     let ctx = match engine.context.as_ref() { Some(c) => c, None => return };
     for p in &engine.projectiles {
+        // Đòn cận chiến không hiển thị tia đạn
+        if p.is_melee {
+            continue;
+        }
+
         if !engine.camera.is_point_visible(p.x, p.y, 40.0)
             && !engine.camera.is_point_visible(p.target_x, p.target_y, 40.0)
         {
@@ -700,6 +823,23 @@ fn render_build_ghost(engine: &GameEngine, b_type: BuildingType) {
     ctx.set_stroke_style_str("#00e5ff");
     ctx.set_line_width(2.0);
     ctx.stroke_rect(bx, by, w as f64, h as f64);
+
+    // Vẽ hình 2D tĩnh bóng mờ
+    draw_building_graphic(ctx, b_type, wx as f64, wy as f64, w as f64, h as f64, "#00e5ff");
+
+    // Tên công trình bên dưới ghost
+    ctx.set_font("bold 10px monospace");
+    ctx.set_fill_style_str("#00e5ff");
+    let ghost_title = match b_type {
+        BuildingType::CommandCenter => "HQ COMMAND",
+        BuildingType::SupplyDepot => "SUPPLY DEPOT",
+        BuildingType::PowerReactor => "REACTOR",
+        BuildingType::Barracks => "BARRACKS",
+        BuildingType::TurretTower => "TURRET",
+        BuildingType::EnergyConverter => "CONVERTER",
+    };
+    let text_w = (ghost_title.len() as f64) * 6.2;
+    let _ = ctx.fill_text(ghost_title, wx as f64 - text_w * 0.5, by + (h as f64) + 13.0);
 
     // Hiển thị vòng tròn tầm bắn của công trình khi đang đặt móng
     let range = engine

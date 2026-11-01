@@ -95,14 +95,14 @@ pub const ROWS: usize = ((MAP_HEIGHT / CELL_SIZE) as usize) + 1; // 33
 // === KINH TẾ & CHUYỂN ĐỔI NĂNG LƯỢNG (ECONOMY & CONVERSION) ===
 pub const ENERGY_CONVERSION_THRESHOLD: f32 = 1000.0;
 pub const CONVERT_ENERGY_PER_SEC: f32 = 30.0;
-pub const CONVERT_MINERALS_PER_SEC: f32 = 25.0;
+pub const CONVERT_MINERALS_PER_SEC: f32 = 10.0;
 
 // === TỐC ĐỘ XÂY DỰNG & HIỆU ỨNG BỊ TẤN CÔNG ===
 pub const BUILD_SPEED_BASE: f32 = 0.05; // Tốc độ xây tự động cơ bản khi không có thợ (1/20s)
 pub const BUILD_SPEED_WORKER: f32 = 0.20; // Tốc độ xây khi có Engineer ở gần (1/5s)
 pub const WORKER_BUILD_RANGE: f32 = 90.0; // Khoảng cách thợ hỗ trợ xây dựng
 pub const BUILDING_UNDER_ATTACK_DURATION: f32 = 5.0; // Thời gian duy trì hiệu ứng bị tấn công (5s)
-pub const BUILDING_UNDER_ATTACK_SPEED_MULTIPLIER: f32 = 0.30; // Giảm còn 30% tốc độ xây khi bị tấn công
+pub const BUILDING_UNDER_ATTACK_SPEED_MULTIPLIER: f32 = 0.20; // Giảm còn 30% tốc độ xây khi bị tấn công
 
 // === NGHIÊN CỨU ĐA NHÁNH CÔNG NGHỆ ===
 pub const MAX_CONCURRENT_RESEARCH_PER_BRANCH: usize = 1; // 1 công nghệ mỗi nhánh cùng lúc
@@ -215,8 +215,8 @@ impl Default for GameConfig {
                 resistances: Resistances {
                     physical: 0.40,
                     energy: 0.50,
-                    explosive: 0.35,
-                    arcane: 0.25,
+                    explosive: 0.40,
+                    arcane: 0.30,
                 },
                 cost_minerals: 150.0,
                 cost_energy: 50.0,
@@ -231,8 +231,8 @@ impl Default for GameConfig {
                 hp: 110.0,
                 speed: 95.0,
                 attack_range: 220.0,
-                attack_damage: 38.0,
-                attack_cooldown: 1.0,
+                attack_damage: 25.0,
+                attack_cooldown: 0.5,
                 damage_type: DamageType::Energy,
                 aoe_radius: 0.0,
                 resistances: Resistances {
@@ -255,7 +255,7 @@ impl Default for GameConfig {
                 speed: 95.0,
                 attack_range: 200.0,
                 attack_damage: 50.0,
-                attack_cooldown: 1.8,
+                attack_cooldown: 1.5,
                 damage_type: DamageType::Explosive,
                 aoe_radius: 50.0,
                 resistances: Resistances {
@@ -277,10 +277,10 @@ impl Default for GameConfig {
                 hp: 170.0,
                 speed: 130.0,
                 attack_range: 140.0,
-                attack_damage: 28.0,
+                attack_damage: 40.0,
                 attack_cooldown: 1.0,
                 damage_type: DamageType::Arcane,
-                aoe_radius: 0.0,
+                aoe_radius: 10.0,
                 resistances: Resistances {
                     physical: 0.15,
                     energy: 0.35,
@@ -300,7 +300,7 @@ impl Default for GameConfig {
                 hp: 135.0,
                 speed: 100.0,
                 attack_range: 175.0,
-                attack_damage: 30.0,
+                attack_damage: 35.0,
                 attack_cooldown: 1.0,
                 damage_type: DamageType::Arcane,
                 aoe_radius: 35.0,
@@ -323,14 +323,14 @@ impl Default for GameConfig {
                 hp: 650.0,
                 speed: 60.0,
                 attack_range: 55.0,
-                attack_damage: 48.0,
+                attack_damage: 40.0,
                 attack_cooldown: 1.5,
                 damage_type: DamageType::Physical,
-                aoe_radius: 45.0,
+                aoe_radius: 35.0,
                 resistances: Resistances {
                     physical: 0.50,
                     energy: 0.20,
-                    explosive: 0.25,
+                    explosive: 0.20,
                     arcane: 0.10,
                 },
                 cost_minerals: 250.0,
@@ -343,13 +343,13 @@ impl Default for GameConfig {
             "AcidBaneling".to_string(),
             UnitStatsConfig {
                 name: "SWARM // ACID BANELING".to_string(),
-                hp: 85.0,
+                hp: 100.0,
                 speed: 160.0,
                 attack_range: 25.0,
-                attack_damage: 75.0,
+                attack_damage: 90.0,
                 attack_cooldown: 0.5,
                 damage_type: DamageType::Explosive,
-                aoe_radius: 65.0,
+                aoe_radius: 70.0,
                 resistances: Resistances {
                     physical: 0.05,
                     energy: 0.05,

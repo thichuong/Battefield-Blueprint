@@ -1006,8 +1006,8 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                                 new_projectiles.push(Projectile {
                                     id: 0,
                                     team: unit.team,
-                                    x: unit.x,
-                                    y: unit.y,
+                                    x: hit_x,
+                                    y: hit_y,
                                     target_x: hit_x,
                                     target_y: hit_y,
                                     speed: 1500.0,
@@ -1015,27 +1015,29 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                                     damage_type: DamageType::Explosive,
                                     aoe_radius: unit.aoe_radius,
                                     is_laser: false,
-                                    lifetime: 0.1,
+                                    lifetime: 0.0,
+                                    is_melee: true,
                                 });
                             } else if unit.unit_type == UnitType::ShockTrooper
                                 || unit.unit_type == UnitType::Vanguard
                                 || unit.unit_type == UnitType::Engineer
                                 || unit.unit_type == UnitType::BehemothTitan
                             {
-                                // Cận chiến: tạo vệt chém hoặc dậm chấn động
+                                // Cận chiến: gây sát thương tức thì trực tiếp tại mục tiêu, không có tia đạn
                                 new_projectiles.push(Projectile {
                                     id: 0,
                                     team: unit.team,
-                                    x: unit.x,
-                                    y: unit.y,
+                                    x: hit_x,
+                                    y: hit_y,
                                     target_x: hit_x,
                                     target_y: hit_y,
-                                    speed: 900.0,
+                                    speed: 2000.0,
                                     damage: dmg,
                                     damage_type: unit.damage_type,
                                     aoe_radius: unit.aoe_radius,
                                     is_laser: false,
-                                    lifetime: 0.15,
+                                    lifetime: 0.0,
+                                    is_melee: true,
                                 });
                             } else {
                                 // Tầm xa
@@ -1062,6 +1064,7 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                                     aoe_radius: unit.aoe_radius,
                                     is_laser,
                                     lifetime: if is_laser { 0.25 } else { 1.5 },
+                                    is_melee: false,
                                 });
                             }
                         }
@@ -1428,6 +1431,7 @@ pub fn process_building_combat_with_factions(
             } else {
                 1.0
             },
+            is_melee: false,
         })
     } else {
         None
@@ -2470,7 +2474,8 @@ mod tests {
         // Có 1 nhà chuyển đổi, năng lượng 1200 (> 1000), dt = 1.0
         let (used_en, gained_minerals) = calculate_energy_conversion(1200.0, 1, 1.0);
         assert_eq!(used_en, 30.0);
-        assert_eq!(gained_minerals, 25.0);
+        let expected_minerals = 30.0 * (CONVERT_MINERALS_PER_SEC / CONVERT_ENERGY_PER_SEC);
+        assert_eq!(gained_minerals, expected_minerals);
     }
 
     #[test]
@@ -2492,16 +2497,17 @@ mod tests {
         // Nhu cầu chuyển đổi là 30, nhưng chỉ được phép tiêu thụ tối đa 10 để bảo toàn ngưỡng 1000.
         let (used_en, gained_minerals) = calculate_energy_conversion(1010.0, 1, 1.0);
         assert_eq!(used_en, 10.0);
-        // Tỷ lệ 25 / 30 = 5 / 6. 10 * 25 / 30 = 8.333333
-        assert!((gained_minerals - (10.0 * 25.0 / 30.0)).abs() < 1e-5);
+        let expected = 10.0 * (CONVERT_MINERALS_PER_SEC / CONVERT_ENERGY_PER_SEC);
+        assert!((gained_minerals - expected).abs() < 1e-5);
     }
 
     #[test]
     fn test_energy_conversion_multiple_converters() {
-        // 2 nhà chuyển đổi, năng lượng 1200, dt = 1.0 -> Tiêu thụ 60 năng lượng, nhận 50 khoáng sản
+        // 2 nhà chuyển đổi, năng lượng 1200, dt = 1.0 -> Tiêu thụ 60 năng lượng
         let (used_en, gained_minerals) = calculate_energy_conversion(1200.0, 2, 1.0);
         assert_eq!(used_en, 60.0);
-        assert_eq!(gained_minerals, 50.0);
+        let expected = 60.0 * (CONVERT_MINERALS_PER_SEC / CONVERT_ENERGY_PER_SEC);
+        assert_eq!(gained_minerals, expected);
     }
 
     #[test]
