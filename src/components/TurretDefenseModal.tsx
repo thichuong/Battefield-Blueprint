@@ -22,23 +22,37 @@ export const TurretDefenseModal: React.FC<TurretDefenseModalProps> = ({
   const [lineState, setLineState] = useState<TurretDefenseLine>(defenseLine);
   const [selectedPointMode, setSelectedPointMode] = useState<'p1' | 'p2' | null>(null);
   const [clickStep, setClickStep] = useState<1 | 2>(1);
-  const [draggingPoint, setDraggingPoint] = useState<'p1' | 'p2' | null>(null);
+  const [dragMode, setDragMode] = useState<'p1' | 'p2' | 'draw' | null>(null);
+  const [hoveredPoint, setHoveredPoint] = useState<'p1' | 'p2' | null>(null);
 
-  // Đồng bộ cấu hình ban đầu khi modal mở lên
+  const prevIsOpenRef = useRef(false);
+  const isPointerDownRef = useRef(false);
+  const dragTargetRef = useRef<'p1' | 'p2' | 'new_line' | null>(null);
+  const pointerStartWorldRef = useRef<[number, number] | null>(null);
+  const hasMovedRef = useRef<boolean>(false);
+
+  // Giới hạn tọa độ trong phạm vi an toàn của bản đồ 4800x4800
+  const clampWorld = useCallback((val: number): number => {
+    return Math.round(Math.max(80, Math.min(MAP_SIZE - 80, val)));
+  }, []);
+
+  // Chỉ đồng bộ cấu hình ban đầu khi modal được mở lên (tránh bị reset bởi vòng lặp sync state)
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !prevIsOpenRef.current) {
       setLineState(defenseLine);
       setSelectedPointMode(null);
       setClickStep(1);
+      setDragMode(null);
     }
-  }, [isOpen]);
+    prevIsOpenRef.current = isOpen;
+  }, [isOpen, defenseLine]);
 
-  // Chuyển đổi tọa độ World (0..2400) sang Canvas Screen (0..480)
+  // Chuyển đổi tọa độ World (0..4800) sang Canvas Screen (0..480)
   const worldToCanvas = useCallback((wx: number, wy: number): [number, number] => {
     return [(wx / MAP_SIZE) * CANVAS_SIZE, (wy / MAP_SIZE) * CANVAS_SIZE];
   }, []);
 
-  // Chuyển đổi tọa độ Canvas Screen sang World (0..2400)
+  // Chuyển đổi tọa độ Canvas Screen sang World (0..4800)
   const canvasToWorld = useCallback((cx: number, cy: number): [number, number] => {
     return [(cx / CANVAS_SIZE) * MAP_SIZE, (cy / CANVAS_SIZE) * MAP_SIZE];
   }, []);
@@ -201,13 +215,13 @@ export const TurretDefenseModal: React.FC<TurretDefenseModalProps> = ({
     ctx.fill();
     ctx.stroke();
 
-    // Vòng phát sáng nếu đang chọn hoặc kéo Điểm A
-    if (selectedPointMode === 'p1' || draggingPoint === 'p1') {
+    // Vòng phát sáng nếu đang chọn, hover hoặc kéo Điểm A
+    if (selectedPointMode === 'p1' || dragMode === 'p1' || hoveredPoint === 'p1') {
       ctx.strokeStyle = '#22d3ee';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([2, 2]);
+      ctx.lineWidth = 2;
+      ctx.setLineDash([3, 3]);
       ctx.beginPath();
-      ctx.arc(p1X, p1Y, 14, 0, Math.PI * 2);
+      ctx.arc(p1X, p1Y, 15, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
     }
@@ -225,19 +239,19 @@ export const TurretDefenseModal: React.FC<TurretDefenseModalProps> = ({
     ctx.fill();
     ctx.stroke();
 
-    if (selectedPointMode === 'p2' || draggingPoint === 'p2') {
+    if (selectedPointMode === 'p2' || dragMode === 'p2' || hoveredPoint === 'p2' || dragMode === 'draw') {
       ctx.strokeStyle = '#c084fc';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([2, 2]);
+      ctx.lineWidth = 2;
+      ctx.setLineDash([3, 3]);
       ctx.beginPath();
-      ctx.arc(p2X, p2Y, 14, 0, Math.PI * 2);
+      ctx.arc(p2X, p2Y, 15, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
     }
 
     ctx.fillStyle = '#ffffff';
     ctx.fillText('B', p2X - 3.5, p2Y + 3);
-  }, [isOpen, lineState, previewSpots, selectedPointMode, draggingPoint, worldToCanvas]);
+  }, [isOpen, lineState, previewSpots, selectedPointMode, dragMode, hoveredPoint, worldToCanvas]);
 
   // Tính tọa độ canvas chính xác từ MouseEvent
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement> | MouseEvent) => {
@@ -249,12 +263,12 @@ export const TurretDefenseModal: React.FC<TurretDefenseModalProps> = ({
     return { cx, cy };
   };
 
-  // MouseDown trên canvas: Bắt đầu kéo hoặc click đặt điểm
-  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  // Hover chuột trên canvas để đổi con trỏ
+  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (dragMode) return;
     const coords = getCanvasCoords(e);
     if (!coords) return;
     const { cx, cy } = coords;
-    const [wx, wy] = canvasToWorld(cx, cy);
 
     const [p1X, p1Y] = worldToCanvas(lineState.p1[0], lineState.p1[1]);
     const [p2X, p2Y] = worldToCanvas(lineState.p2[0], lineState.p2[1]);
@@ -262,74 +276,157 @@ export const TurretDefenseModal: React.FC<TurretDefenseModalProps> = ({
     const distA = Math.hypot(cx - p1X, cy - p1Y);
     const distB = Math.hypot(cx - p2X, cy - p2Y);
 
-    // Nếu nhấp trúng điểm A hoặc B -> Bật chế độ kéo thả
-    if (distA <= 18) {
-      setDraggingPoint('p1');
-      setSelectedPointMode('p1');
-      return;
+    if (distA <= 22) {
+      setHoveredPoint('p1');
+    } else if (distB <= 22) {
+      setHoveredPoint('p2');
+    } else {
+      setHoveredPoint(null);
     }
-    if (distB <= 18) {
-      setDraggingPoint('p2');
-      setSelectedPointMode('p2');
-      return;
-    }
+  };
 
-    // Nếu đang bật chế độ chọn chủ động Điểm A
+  // MouseDown trên canvas: Bắt đầu kéo thả hoặc click đặt điểm
+  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const coords = getCanvasCoords(e);
+    if (!coords) return;
+    const { cx, cy } = coords;
+    const [rawWx, rawWy] = canvasToWorld(cx, cy);
+    const wx = clampWorld(rawWx);
+    const wy = clampWorld(rawWy);
+
+    const [p1X, p1Y] = worldToCanvas(lineState.p1[0], lineState.p1[1]);
+    const [p2X, p2Y] = worldToCanvas(lineState.p2[0], lineState.p2[1]);
+
+    const distA = Math.hypot(cx - p1X, cy - p1Y);
+    const distB = Math.hypot(cx - p2X, cy - p2Y);
+
+    // 1. Nếu đang bật chế độ chọn thủ công Điểm A qua nút "CHỌN TRÊN MAP"
     if (selectedPointMode === 'p1') {
       setLineState((prev) => ({
         ...prev,
-        p1: [Math.round(wx), Math.round(wy)],
+        p1: [wx, wy],
       }));
-      setSelectedPointMode('p2'); // Tự động chuyển sang chờ chọn điểm B
+      setSelectedPointMode('p2'); // Tự động chuyển sang chờ chọn Điểm B
       return;
     }
 
-    // Nếu đang bật chế độ chọn chủ động Điểm B
+    // 2. Nếu đang bật chế độ chọn thủ công Điểm B qua nút "CHỌN TRÊN MAP"
     if (selectedPointMode === 'p2') {
       setLineState((prev) => ({
         ...prev,
-        p2: [Math.round(wx), Math.round(wy)],
+        p2: [wx, wy],
       }));
       setSelectedPointMode(null);
       return;
     }
 
-    // Chế độ tự động tuần tự: Lần 1 đặt A, Lần 2 đặt B
-    if (clickStep === 1) {
-      setLineState((prev) => ({
-        ...prev,
-        p1: [Math.round(wx), Math.round(wy)],
-      }));
-      setClickStep(2);
-    } else {
-      setLineState((prev) => ({
-        ...prev,
-        p2: [Math.round(wx), Math.round(wy)],
-      }));
-      setClickStep(1);
+    // 3. Nhấp trúng điểm A hoặc B -> Kéo thả trực tiếp điểm đó
+    if (distA <= 22) {
+      isPointerDownRef.current = true;
+      dragTargetRef.current = 'p1';
+      pointerStartWorldRef.current = [wx, wy];
+      hasMovedRef.current = false;
+      setDragMode('p1');
+      return;
     }
+    if (distB <= 22) {
+      isPointerDownRef.current = true;
+      dragTargetRef.current = 'p2';
+      pointerStartWorldRef.current = [wx, wy];
+      hasMovedRef.current = false;
+      setDragMode('p2');
+      return;
+    }
+
+    // 4. Nhấn trên bản đồ trống: Chuẩn bị kéo vẽ đường mới hoặc click đặt điểm
+    isPointerDownRef.current = true;
+    dragTargetRef.current = 'new_line';
+    pointerStartWorldRef.current = [wx, wy];
+    hasMovedRef.current = false;
   };
 
-  // Lắng nghe chuột toàn màn hình khi đang kéo điểm A hoặc B
+  // Lắng nghe chuột toàn màn hình khi đang nhấn chuột / kéo
   useEffect(() => {
-    if (!draggingPoint) return;
-
     const handleWindowMouseMove = (e: MouseEvent) => {
+      if (!isPointerDownRef.current || !pointerStartWorldRef.current) return;
+
       const coords = getCanvasCoords(e);
       if (!coords) return;
-      const [wx, wy] = canvasToWorld(coords.cx, coords.cy);
+      const [rawWx, rawWy] = canvasToWorld(coords.cx, coords.cy);
+      const wx = clampWorld(rawWx);
+      const wy = clampWorld(rawWy);
 
-      const clampedX = Math.round(Math.max(80, Math.min(2320, wx)));
-      const clampedY = Math.round(Math.max(80, Math.min(2320, wy)));
+      const moveDist = Math.hypot(
+        wx - pointerStartWorldRef.current[0],
+        wy - pointerStartWorldRef.current[1]
+      );
+      if (moveDist > 15) {
+        hasMovedRef.current = true;
+      }
 
-      setLineState((prev) => ({
-        ...prev,
-        [draggingPoint]: [clampedX, clampedY],
-      }));
+      if (dragTargetRef.current === 'p1') {
+        setLineState((prev) => ({
+          ...prev,
+          p1: [wx, wy],
+        }));
+      } else if (dragTargetRef.current === 'p2') {
+        setLineState((prev) => ({
+          ...prev,
+          p2: [wx, wy],
+        }));
+      } else if (dragTargetRef.current === 'new_line') {
+        // Đang kéo vẽ tuyến phòng thủ mới từ A (vị trí ấn chuột) tới B (vị trí hiện tại)
+        setDragMode('draw');
+        setLineState((prev) => ({
+          ...prev,
+          p1: pointerStartWorldRef.current!,
+          p2: [wx, wy],
+        }));
+      }
     };
 
     const handleWindowMouseUp = () => {
-      setDraggingPoint(null);
+      if (!isPointerDownRef.current) return;
+      isPointerDownRef.current = false;
+      const target = dragTargetRef.current;
+      const startPos = pointerStartWorldRef.current;
+      const didMove = hasMovedRef.current;
+
+      setDragMode(null);
+      dragTargetRef.current = null;
+      pointerStartWorldRef.current = null;
+      hasMovedRef.current = false;
+
+      // Nếu người chơi kéo thả (Drag)
+      if (didMove) {
+        if (target === 'new_line') {
+          setClickStep(1);
+          setSelectedPointMode(null);
+        }
+        return;
+      }
+
+      // Nếu người chơi chỉ Click chuột tại chỗ (không kéo)
+      if (target === 'p1') {
+        setSelectedPointMode('p1');
+      } else if (target === 'p2') {
+        setSelectedPointMode('p2');
+      } else if (target === 'new_line' && startPos) {
+        // Click từng điểm tuần tự: Lần 1 đặt A, Lần 2 đặt B
+        if (clickStep === 1) {
+          setLineState((prev) => ({
+            ...prev,
+            p1: startPos,
+          }));
+          setClickStep(2);
+        } else {
+          setLineState((prev) => ({
+            ...prev,
+            p2: startPos,
+          }));
+          setClickStep(1);
+        }
+      }
     };
 
     window.addEventListener('mousemove', handleWindowMouseMove);
@@ -339,7 +436,7 @@ export const TurretDefenseModal: React.FC<TurretDefenseModalProps> = ({
       window.removeEventListener('mousemove', handleWindowMouseMove);
       window.removeEventListener('mouseup', handleWindowMouseUp);
     };
-  }, [draggingPoint, canvasToWorld]);
+  }, [canvasToWorld, clampWorld, clickStep]);
 
   // Đặt lại vị trí phòng thủ mặc định
   const handleResetDefault = () => {
@@ -353,6 +450,7 @@ export const TurretDefenseModal: React.FC<TurretDefenseModalProps> = ({
     });
     setSelectedPointMode(null);
     setClickStep(1);
+    setDragMode(null);
   };
 
   // Lưu và áp dụng
@@ -385,7 +483,7 @@ export const TurretDefenseModal: React.FC<TurretDefenseModalProps> = ({
                 QUY HOẠCH HÀNG RÀO PHÒNG THỦ TURRET // TACTICAL DEFENSE LINE
               </h2>
               <p className="text-xs text-slate-400">
-                Click hoặc Kéo thả Điểm A & B trên bản đồ, hoặc nhập tọa độ để định hình tuyến phòng ngự
+                Nhấn giữ và kéo trực tiếp trên bản đồ để định hình tuyến A-B, hoặc kéo thả từng điểm neo
               </p>
             </div>
           </div>
@@ -401,24 +499,31 @@ export const TurretDefenseModal: React.FC<TurretDefenseModalProps> = ({
         <div className="flex-1 overflow-y-auto p-6 flex flex-col md:flex-row gap-6 items-start">
           {/* Mini-map Canvas */}
           <div className="flex flex-col items-center gap-2.5 w-full md:w-auto">
-            <div className="relative border-2 border-amber-500/60 rounded-xl overflow-hidden shadow-[0_0_20px_rgba(245,158,11,0.2)] cursor-crosshair">
+            <div className="relative border-2 border-amber-500/60 rounded-xl overflow-hidden shadow-[0_0_20px_rgba(245,158,11,0.2)]">
               <canvas
                 ref={canvasRef}
                 width={CANVAS_SIZE}
                 height={CANVAS_SIZE}
                 onMouseDown={handleCanvasMouseDown}
+                onMouseMove={handleCanvasMouseMove}
+                style={{
+                  cursor: dragMode ? 'grabbing' : hoveredPoint ? 'grab' : 'crosshair',
+                }}
                 className="block max-w-full h-auto"
               />
             </div>
             <div className="text-[11px] font-mono text-slate-400 flex items-center justify-between w-full px-2">
-              <span className="flex items-center gap-1.5 text-cyan-400">
+              <span className="flex items-center gap-1.5 text-cyan-400 font-bold">
                 <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 inline-block shadow-[0_0_6px_#22d3ee]" />
                 Điểm A: ({lineState.p1[0]}, {lineState.p1[1]})
               </span>
-              <span className="flex items-center gap-1.5 text-purple-400">
+              <span className="flex items-center gap-1.5 text-purple-400 font-bold">
                 <span className="w-2.5 h-2.5 rounded-full bg-purple-400 inline-block shadow-[0_0_6px_#c084fc]" />
                 Điểm B: ({lineState.p2[0]}, {lineState.p2[1]})
               </span>
+            </div>
+            <div className="text-[10px] text-amber-400/90 font-mono text-center w-full bg-slate-900/60 py-1 px-2.5 rounded-lg border border-amber-500/30">
+              💡 Nhấn giữ & kéo chuột để vạch hàng rào A-B, hoặc kéo từng điểm neo
             </div>
           </div>
 

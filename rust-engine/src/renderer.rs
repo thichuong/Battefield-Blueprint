@@ -1071,6 +1071,38 @@ fn render_in_game_hud(engine: &GameEngine) {
     ctx.set_line_width(2.0);
     ctx.stroke_rect(mm_x, mm_y, mm_s, mm_s);
 
+    // Tuyến phòng thủ TurretDefenseLine trên Minimap
+    let def_line = &engine.autoplay.config.turret_defense;
+    if def_line.enabled {
+        let p1x = mm_x + (def_line.p1.0 / MAP_WIDTH) as f64 * mm_s;
+        let p1y = mm_y + (def_line.p1.1 / MAP_HEIGHT) as f64 * mm_s;
+        let p2x = mm_x + (def_line.p2.0 / MAP_WIDTH) as f64 * mm_s;
+        let p2y = mm_y + (def_line.p2.1 / MAP_HEIGHT) as f64 * mm_s;
+
+        ctx.set_stroke_style_str("rgba(245, 158, 11, 0.85)");
+        ctx.set_line_width(1.5);
+        let dash = js_sys::Array::new();
+        dash.push(&wasm_bindgen::JsValue::from_f64(3.0));
+        dash.push(&wasm_bindgen::JsValue::from_f64(2.0));
+        let _ = ctx.set_line_dash(&dash);
+        ctx.begin_path();
+        ctx.move_to(p1x, p1y);
+        ctx.line_to(p2x, p2y);
+        ctx.stroke();
+        let _ = ctx.set_line_dash(&js_sys::Array::new());
+
+        // Điểm A (Cyan) & Điểm B (Purple)
+        ctx.set_fill_style_str("#06b6d4");
+        ctx.begin_path();
+        let _ = ctx.arc(p1x, p1y, 2.5, 0.0, std::f64::consts::PI * 2.0);
+        ctx.fill();
+
+        ctx.set_fill_style_str("#a855f7");
+        ctx.begin_path();
+        let _ = ctx.arc(p2x, p2y, 2.5, 0.0, std::f64::consts::PI * 2.0);
+        ctx.fill();
+    }
+
     // Vẽ mỏ quặng trên Minimap
     for m in &engine.minerals {
         let mx = mm_x + (m.x / MAP_WIDTH) as f64 * mm_s;

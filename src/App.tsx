@@ -13,8 +13,8 @@ const defaultAutoPlay: AutoPlayConfig = {
   priority_techs: [],
   turret_defense: {
     enabled: true,
-    p1: [520, 1680],
-    p2: [860, 1980],
+    p1: [850, 3800],
+    p2: [1300, 4250],
     spacing: 90,
     rows: 1,
     row_spacing: 80,
