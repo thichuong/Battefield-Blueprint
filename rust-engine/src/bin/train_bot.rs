@@ -103,7 +103,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let mut total_episodes = 60;
     let mut time_scale_dt = 0.15_f32;
-    let max_game_time = 500.0_f32;
+    let max_game_time = 650.0_f32;
     let mut output_path = "assets/rl_model.json".to_string();
 
     let mut i = 1;
@@ -181,13 +181,15 @@ fn main() {
         engine.ai_state.training_enabled = true;
 
         // Chọn chiến thuật đối thủ (Auto Archetype hoặc Self-Play sparring)
-        let opponent_style = if champion_pool.is_empty() || episode % 3 != 0 {
-            let arch_idx = (episode % 5) as usize;
+        let opponent_style = if champion_pool.is_empty() || episode % 4 != 0 {
+            let arch_idx = (episode % 7) as usize;
             let arch = match arch_idx {
-                0 => AutoTrainingArchetype::ScienceArtillery,
-                1 => AutoTrainingArchetype::MagicCelestialVoid,
-                2 => AutoTrainingArchetype::MonsterSwarmBehemoth,
-                3 => AutoTrainingArchetype::BioBlitzRush,
+                0 => AutoTrainingArchetype::CombinedTitanArtilleryMage,
+                1 => AutoTrainingArchetype::OmniTechGrandmaster,
+                2 => AutoTrainingArchetype::ScienceArtillery,
+                3 => AutoTrainingArchetype::MagicCelestialVoid,
+                4 => AutoTrainingArchetype::MonsterSwarmBehemoth,
+                5 => AutoTrainingArchetype::BioBlitzRush,
                 _ => AutoTrainingArchetype::MacroFortress,
             };
             OpponentStyle::VsAuto(arch)
@@ -239,6 +241,7 @@ fn main() {
             let prev_opp_bldgs = count_hostile_buildings(&engine, learner_team);
             let prev_opp_ccs = count_hostile_ccs(&engine, learner_team);
             let prev_my_ccs = count_ally_ccs(&engine, learner_team);
+            let prev_my_unlocked = rust_engine::ai::count_unlocked_techs(engine.team_tech(learner_team));
 
             // Tùy biến thích ứng giữa trận cho Auto đối thủ
             if let OpponentStyle::VsAuto(_) = opponent_style {
@@ -323,6 +326,26 @@ fn main() {
             let cur_my_ccs = count_ally_ccs(&engine, learner_team);
             if prev_my_ccs > cur_my_ccs {
                 step_reward -= (prev_my_ccs - cur_my_ccs) as f32 * 150.0;
+            }
+
+            // 5. Thưởng nghiên cứu công nghệ & hoàn thành cây công nghệ (Tech Tree Progression)
+            let cur_my_unlocked = rust_engine::ai::count_unlocked_techs(engine.team_tech(learner_team));
+            if cur_my_unlocked > prev_my_unlocked {
+                step_reward += (cur_my_unlocked - prev_my_unlocked) as f32 * 16.0;
+                if cur_my_unlocked == 19 {
+                    step_reward += 50.0; // Thưởng lớn khi hoàn thành toàn bộ cây công nghệ
+                }
+            }
+
+            // 6. Thưởng phối hợp đa binh chủng (Combined Arms Synergy Reward)
+            let count_my_u = |ut: UnitType| -> usize {
+                engine.units.iter().filter(|u| u.team == learner_team && u.unit_type == ut).count()
+            };
+            let has_frontline = count_my_u(UnitType::BehemothTitan) > 0 || count_my_u(UnitType::Vanguard) > 0;
+            let has_artillery = count_my_u(UnitType::DarkRocketeer) > 0 || count_my_u(UnitType::LaserMarksman) > 0;
+            let has_magic = count_my_u(UnitType::VoidWarlock) > 0 || count_my_u(UnitType::TaoistSwordmaster) > 0;
+            if has_frontline && has_artillery && has_magic {
+                step_reward += 0.25; // Thưởng duy trì đội hình hỗn hợp
             }
 
             // Phạt nhẹ thời gian trôi

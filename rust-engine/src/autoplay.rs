@@ -318,6 +318,9 @@ pub fn update_team_autoplay(engine: &mut GameEngine, team: Team, dt: f32) {
         return;
     }
 
+    // Tự động điều phối thợ mỏ rảnh cho team bật autoplay
+    crate::ai::assign_idle_team_workers(engine, team);
+
     let timer = &mut engine.team_autoplay_mut(team).timer;
     *timer += dt;
     if *timer < 0.25 {
@@ -447,6 +450,47 @@ fn evaluate_condition_for_team(engine: &GameEngine, team: Team, condition: &Auto
                 false
             }
         }
+    }
+}
+
+pub const ALL_TECH_IDS: [&str; 19] = [
+    // Khoa học (Science)
+    "focused_laser",
+    "energy_shielding",
+    "dark_matter_rockets",
+    "titan_alloy_plating",
+    // Ma thuật (Magic)
+    "celestial_flying_swords",
+    "golden_bell_shield",
+    "corrosive_curse",
+    "void_cataclysm",
+    // Quái vật (Monster)
+    "primeval_scales",
+    "behemoth_mutation",
+    "acid_banelings",
+    "hive_proliferation",
+    // Hậu cần & Kinh tế (Logistics)
+    "optical_drills",
+    "overcharged_reactors",
+    "fortified_blueprints",
+    "magnetic_rounds",
+    "exo_boosters",
+    "superheated_blades",
+    "overload_strike",
+];
+
+pub fn get_tech_prerequisite(tech_id: &str) -> Option<String> {
+    match tech_id {
+        "energy_shielding" => Some("focused_laser".to_string()),
+        "titan_alloy_plating" => Some("dark_matter_rockets".to_string()),
+        "golden_bell_shield" => Some("celestial_flying_swords".to_string()),
+        "void_cataclysm" => Some("corrosive_curse".to_string()),
+        "behemoth_mutation" => Some("primeval_scales".to_string()),
+        "hive_proliferation" => Some("acid_banelings".to_string()),
+        "overcharged_reactors" => Some("optical_drills".to_string()),
+        "fortified_blueprints" => Some("overcharged_reactors".to_string()),
+        "exo_boosters" => Some("magnetic_rounds".to_string()),
+        _ => None,
     }
 }
 
@@ -595,18 +639,44 @@ fn execute_action_for_team(
             let priority_list = engine.team_autoplay(team).config.priority_techs.clone();
             let team_tech = engine.team_tech(team);
 
+            let mut found_priority = false;
             if *use_priority_queue {
-                for p_tech in priority_list {
-                    if !crate::simulation::is_tech_unlocked(team_tech, &p_tech)
-                        && !team_tech.active_researches.iter().any(|r| r.tech_id == p_tech)
+                for p_tech in &priority_list {
+                    if !crate::simulation::is_tech_unlocked(team_tech, p_tech)
+                        && !team_tech.active_researches.iter().any(|r| &r.tech_id == p_tech)
                     {
-                        if let Some(req) = get_tech_prerequisite(&p_tech) {
-                            if !crate::simulation::is_tech_unlocked(team_tech, &req) {
+                        if let Some(req) = get_tech_prerequisite(p_tech) {
+                            if !crate::simulation::is_tech_unlocked(team_tech, &req)
+                                && !team_tech.active_researches.iter().any(|r| r.tech_id == req)
+                            {
+                                target_tech = req;
+                                found_priority = true;
+                                break;
+                            }
+                        }
+                        target_tech = p_tech.clone();
+                        found_priority = true;
+                        break;
+                    }
+                }
+            }
+
+            // Nếu không còn priority tech nào cần nâng, tiếp tục nâng tiếp cho hết toàn bộ cây công nghệ (19/19)
+            if !found_priority {
+                let team_tech = engine.team_tech(team);
+                for &all_t in &ALL_TECH_IDS {
+                    if !crate::simulation::is_tech_unlocked(team_tech, all_t)
+                        && !team_tech.active_researches.iter().any(|r| r.tech_id == all_t)
+                    {
+                        if let Some(req) = get_tech_prerequisite(all_t) {
+                            if !crate::simulation::is_tech_unlocked(team_tech, &req)
+                                && !team_tech.active_researches.iter().any(|r| r.tech_id == req)
+                            {
                                 target_tech = req;
                                 break;
                             }
                         }
-                        target_tech = p_tech;
+                        target_tech = all_t.to_string();
                         break;
                     }
                 }
@@ -882,21 +952,6 @@ fn parse_building_type(s: &str) -> Option<BuildingType> {
     }
 }
 
-fn get_tech_prerequisite(tech_id: &str) -> Option<String> {
-    match tech_id {
-        "energy_shielding" => Some("focused_laser".to_string()),
-        "titan_alloy_plating" => Some("dark_matter_rockets".to_string()),
-        "golden_bell_shield" => Some("celestial_flying_swords".to_string()),
-        "void_cataclysm" => Some("corrosive_curse".to_string()),
-        "behemoth_mutation" => Some("primeval_scales".to_string()),
-        "hive_proliferation" => Some("acid_banelings".to_string()),
-        "overcharged_reactors" => Some("optical_drills".to_string()),
-        "fortified_blueprints" => Some("overcharged_reactors".to_string()),
-        "exo_boosters" => Some("magnetic_rounds".to_string()),
-        _ => None,
-    }
-}
-
 /// Tính danh sách tất cả các điểm đặt tháp dọc theo hàng rào phòng thủ
 pub fn compute_defense_tower_spots(defense_line: &TurretDefenseLine) -> Vec<(f32, f32)> {
     let mut spots = Vec::new();
@@ -1011,7 +1066,7 @@ pub fn find_defense_line_spot_for_team(
             continue;
         }
 
-        if !(120.0..=2280.0).contains(&sx) || !(120.0..=2280.0).contains(&sy) {
+        if !(120.0..=(crate::map::MAP_WIDTH - 120.0)).contains(&sx) || !(120.0..=(crate::map::MAP_HEIGHT - 120.0)).contains(&sy) {
             continue;
         }
 
@@ -1235,6 +1290,8 @@ pub enum AutoTrainingArchetype {
     MonsterSwarmBehemoth = 2,
     BioBlitzRush = 3,
     MacroFortress = 4,
+    CombinedTitanArtilleryMage = 5,
+    OmniTechGrandmaster = 6,
 }
 
 impl AutoTrainingArchetype {
@@ -1245,6 +1302,8 @@ impl AutoTrainingArchetype {
             Self::MonsterSwarmBehemoth => "Monster Swarm & Behemoth Titan",
             Self::BioBlitzRush => "Bio Infantry Blitz Rush",
             Self::MacroFortress => "Macro Eco & Multi-row Fortress",
+            Self::CombinedTitanArtilleryMage => "Combined Titan, Artillery & Void Mage",
+            Self::OmniTechGrandmaster => "Omni-Tech Grandmaster (All 19 Techs)",
         }
     }
 }
@@ -1260,7 +1319,12 @@ pub fn create_training_autoplay_config(team: Team, archetype: AutoTrainingArchet
                 "energy_shielding".to_string(),
                 "dark_matter_rockets".to_string(),
                 "titan_alloy_plating".to_string(),
+                "overcharged_reactors".to_string(),
                 "overload_strike".to_string(),
+                // Phối hợp thêm nhánh Quái vật & Ma thuật
+                "primeval_scales".to_string(),
+                "behemoth_mutation".to_string(),
+                "celestial_flying_swords".to_string(),
             ];
             config.preferred_formation = FormationType::Box;
             config.turret_defense.rows = 2;
@@ -1271,6 +1335,10 @@ pub fn create_training_autoplay_config(team: Team, archetype: AutoTrainingArchet
                 "golden_bell_shield".to_string(),
                 "corrosive_curse".to_string(),
                 "void_cataclysm".to_string(),
+                // Phối hợp thêm Hỏa lực tầm xa & Chống chịu
+                "dark_matter_rockets".to_string(),
+                "primeval_scales".to_string(),
+                "behemoth_mutation".to_string(),
             ];
             config.preferred_formation = FormationType::Line;
         }
@@ -1281,9 +1349,11 @@ pub fn create_training_autoplay_config(team: Team, archetype: AutoTrainingArchet
                 "hive_proliferation".to_string(),
                 "primeval_scales".to_string(),
                 "behemoth_mutation".to_string(),
+                // Phối hợp thêm Phù thủy & Pháo hắc khoa kỹ
+                "void_cataclysm".to_string(),
+                "dark_matter_rockets".to_string(),
             ];
             config.preferred_formation = FormationType::Circle;
-            // Swarm tăng số thợ mỏ ban đầu
             if let Some(prod_loop) = config.loops.iter_mut().find(|l| l.id == "loop_production") {
                 if let Some(w_card) = prod_loop.cards.iter_mut().find(|c| c.id == "card_prod_worker") {
                     w_card.conditions = vec![AutoCondition::UnitCountLessThan {
@@ -1298,9 +1368,11 @@ pub fn create_training_autoplay_config(team: Team, archetype: AutoTrainingArchet
                 "magnetic_rounds".to_string(),
                 "exo_boosters".to_string(),
                 "superheated_blades".to_string(),
+                // Chuyển giao sang binh chủng cao cấp
+                "dark_matter_rockets".to_string(),
+                "behemoth_mutation".to_string(),
             ];
             config.preferred_formation = FormationType::Wedge;
-            // Rush sớm với ngưỡng quân thấp hơn
             if let Some(mil_loop) = config.loops.iter_mut().find(|l| l.id == "loop_military") {
                 if let Some(atk_card) = mil_loop.cards.iter_mut().find(|c| c.id == "card_mil_attack") {
                     atk_card.conditions = vec![AutoCondition::UnitCountGreaterThan {
@@ -1316,10 +1388,38 @@ pub fn create_training_autoplay_config(team: Team, archetype: AutoTrainingArchet
                 "overcharged_reactors".to_string(),
                 "fortified_blueprints".to_string(),
                 "dark_matter_rockets".to_string(),
+                "titan_alloy_plating".to_string(),
+                "behemoth_mutation".to_string(),
+                "void_cataclysm".to_string(),
             ];
             config.preferred_formation = FormationType::Line;
             config.turret_defense.rows = 2;
             config.turret_defense.spacing = 75.0;
+        }
+        AutoTrainingArchetype::CombinedTitanArtilleryMage => {
+            config.priority_techs = vec![
+                // 1. Kinh tế & phòng ngự cơ sở
+                "optical_drills".to_string(),
+                // 2. Chống chịu Khổng lồ
+                "primeval_scales".to_string(),
+                "behemoth_mutation".to_string(),
+                // 3. Pháo tầm xa Rocket & Laser
+                "dark_matter_rockets".to_string(),
+                "focused_laser".to_string(),
+                "energy_shielding".to_string(),
+                // 4. Phù thủy Hư không & Kiếm thần
+                "corrosive_curse".to_string(),
+                "void_cataclysm".to_string(),
+                "celestial_flying_swords".to_string(),
+                "golden_bell_shield".to_string(),
+            ];
+            config.preferred_formation = FormationType::Box;
+            config.turret_defense.rows = 2;
+        }
+        AutoTrainingArchetype::OmniTechGrandmaster => {
+            config.priority_techs = ALL_TECH_IDS.iter().map(|s| s.to_string()).collect();
+            config.preferred_formation = FormationType::Line;
+            config.turret_defense.rows = 2;
         }
     }
 
@@ -1418,62 +1518,69 @@ pub fn adapt_training_autoplay_mid_match(engine: &mut GameEngine, team: Team) {
 
     // 2. Tùy biến Vòng Lặp Quân Sự (Loop Military) khi mở khóa Binh Chủng Mới
     if let Some(mil_loop) = config.loops.iter_mut().find(|l| l.id == "loop_military") {
-        // Danh sách các binh chủng công nghệ cao kèm điều kiện mở khóa
+        // Danh sách các binh chủng công nghệ cao kèm quota tỷ lệ mục tiêu
         let advanced_units = [
             (
-                "Vanguard",
-                tech.energy_shielding,
-                "card_mil_vanguard",
-                "Mua Vanguard (Lá Chắn Tiên Phong)",
-                120.0,
-            ),
-            (
-                "LaserMarksman",
-                tech.focused_laser,
-                "card_mil_laser",
-                "Mua LaserMarksman (Bắn Tỉa Laser)",
-                140.0,
+                "BehemothTitan",
+                tech.behemoth_mutation,
+                "card_mil_titan",
+                "Mua BehemothTitan (Chiến Thú Khổng Lồ)",
+                180.0,
+                5,
             ),
             (
                 "DarkRocketeer",
                 tech.dark_matter_rockets,
                 "card_mil_rocket",
                 "Mua DarkRocketeer (Rocket Hắc Khoa Kỹ AoE)",
-                130.0,
+                120.0,
+                7,
             ),
             (
-                "TaoistSwordmaster",
-                tech.celestial_flying_swords,
-                "card_mil_sword",
-                "Mua TaoistSwordmaster (Tu Tiên Ngự Kiếm)",
-                150.0,
+                "LaserMarksman",
+                tech.focused_laser,
+                "card_mil_laser",
+                "Mua LaserMarksman (Bắn Tỉa Laser)",
+                130.0,
+                6,
             ),
             (
                 "VoidWarlock",
                 tech.void_cataclysm,
                 "card_mil_warlock",
                 "Mua VoidWarlock (Phù Thủy Hư Không AoE)",
-                160.0,
+                140.0,
+                5,
+            ),
+            (
+                "TaoistSwordmaster",
+                tech.celestial_flying_swords,
+                "card_mil_sword",
+                "Mua TaoistSwordmaster (Tu Tiên Ngự Kiếm)",
+                130.0,
+                6,
+            ),
+            (
+                "Vanguard",
+                tech.energy_shielding,
+                "card_mil_vanguard",
+                "Mua Vanguard (Lá Chắn Tiên Phong)",
+                100.0,
+                5,
             ),
             (
                 "AcidBaneling",
                 tech.acid_banelings,
                 "card_mil_baneling",
                 "Mua AcidBaneling (Bọ Nổ Axit Cảm Tử)",
-                50.0,
-            ),
-            (
-                "BehemothTitan",
-                tech.behemoth_mutation,
-                "card_mil_titan",
-                "Mua BehemothTitan (Chiến Thú Khổng Lồ)",
-                200.0,
+                40.0,
+                6,
             ),
         ];
 
         let mut unlocked_advanced_count = 0;
 
-        for (u_name, is_unlocked, card_id, card_name, min_threshold) in advanced_units {
+        for (u_name, is_unlocked, card_id, card_name, min_threshold, max_count) in advanced_units {
             if is_unlocked {
                 unlocked_advanced_count += 1;
                 let exists = mil_loop.cards.iter().any(|c| c.id == card_id);
@@ -1486,15 +1593,32 @@ pub fn adapt_training_autoplay_mid_match(engine: &mut GameEngine, team: Team) {
                             id: card_id.to_string(),
                             name: card_name.to_string(),
                             enabled: true,
-                            conditions: vec![AutoCondition::MineralsGreaterThan {
-                                amount: min_threshold,
-                            }],
+                            conditions: vec![
+                                AutoCondition::MineralsGreaterThan {
+                                    amount: min_threshold,
+                                },
+                                AutoCondition::UnitCountLessThan {
+                                    unit_type: u_name.to_string(),
+                                    count: max_count,
+                                },
+                            ],
                             action: AutoAction::TrainUnit {
                                 unit_type: u_name.to_string(),
                                 count: if tech.hive_proliferation { 2 } else { 1 },
                             },
                         },
                     );
+                } else if let Some(card) = mil_loop.cards.iter_mut().find(|c| c.id == card_id) {
+                    // Cập nhật điều kiện trần số lượng để phối hợp đa binh chủng đều đặn
+                    card.conditions = vec![
+                        AutoCondition::MineralsGreaterThan {
+                            amount: min_threshold,
+                        },
+                        AutoCondition::UnitCountLessThan {
+                            unit_type: u_name.to_string(),
+                            count: max_count,
+                        },
+                    ];
                 }
             }
         }
@@ -1623,7 +1747,7 @@ mod tests {
         let mut engine = GameEngine::new_headless();
         let config = create_training_autoplay_config(Team::Player, AutoTrainingArchetype::ScienceArtillery);
         assert!(config.enabled);
-        assert_eq!(config.priority_techs.len(), 5);
+        assert!(config.priority_techs.len() >= 5);
         assert_eq!(config.turret_defense.rows, 2);
 
         engine.autoplay.config = config;
@@ -1638,5 +1762,28 @@ mod tests {
         // Kiểm tra đã tự động chèn thẻ mua Vanguard và LaserMarksman
         assert!(mil_loop.cards.iter().any(|c| c.id == "card_mil_vanguard"));
         assert!(mil_loop.cards.iter().any(|c| c.id == "card_mil_laser"));
+    }
+
+    #[test]
+    fn test_research_tech_full_tree_fallback() {
+        let mut engine = GameEngine::new_headless();
+        engine.player_eco.minerals = 1000.0;
+        engine.player_eco.energy = 1000.0;
+
+        // Ưu tiên chỉ có 1 tech
+        engine.autoplay.config.priority_techs = vec!["focused_laser".to_string()];
+        engine.player_tech.focused_laser = true;
+
+        // Thực thi ResearchTech với priority_queue: khi priority tech đã mở, phải tự động chọn tech tiếp theo trong ALL_TECH_IDS
+        let action = AutoAction::ResearchTech {
+            tech_id: "focused_laser".to_string(),
+            use_priority_queue: true,
+        };
+
+        let result = execute_action_for_team(&mut engine, Team::Player, 0, &action, 0.1);
+        assert!(result);
+        assert!(!engine.player_tech.active_researches.is_empty());
+        // Không phải focused_laser vì nó đã được mở khóa
+        assert_ne!(engine.player_tech.active_researches[0].tech_id, "focused_laser");
     }
 }

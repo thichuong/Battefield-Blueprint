@@ -215,8 +215,8 @@ impl Default for GameConfig {
                 resistances: Resistances {
                     physical: 0.40,
                     energy: 0.50,
-                    explosive: 0.25,
-                    arcane: 0.15,
+                    explosive: 0.35,
+                    arcane: 0.25,
                 },
                 cost_minerals: 150.0,
                 cost_energy: 50.0,
@@ -232,7 +232,7 @@ impl Default for GameConfig {
                 speed: 95.0,
                 attack_range: 220.0,
                 attack_damage: 38.0,
-                attack_cooldown: 1.6,
+                attack_cooldown: 1.0,
                 damage_type: DamageType::Energy,
                 aoe_radius: 0.0,
                 resistances: Resistances {
@@ -301,7 +301,7 @@ impl Default for GameConfig {
                 speed: 100.0,
                 attack_range: 175.0,
                 attack_damage: 30.0,
-                attack_cooldown: 1.5,
+                attack_cooldown: 1.0,
                 damage_type: DamageType::Arcane,
                 aoe_radius: 35.0,
                 resistances: Resistances {
@@ -321,10 +321,10 @@ impl Default for GameConfig {
             UnitStatsConfig {
                 name: "BEHEMOTH // TITAN".to_string(),
                 hp: 650.0,
-                speed: 80.0,
+                speed: 60.0,
                 attack_range: 55.0,
                 attack_damage: 48.0,
-                attack_cooldown: 1.4,
+                attack_cooldown: 1.5,
                 damage_type: DamageType::Physical,
                 aoe_radius: 45.0,
                 resistances: Resistances {
