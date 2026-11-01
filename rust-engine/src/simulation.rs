@@ -7,17 +7,21 @@ use crate::GameEngine;
 
 pub fn step(engine: &mut GameEngine, dt: f32) {
     // 1. Xử lý các lệnh từ React
-    process_commands(engine);
+    if !engine.is_headless {
+        process_commands(engine);
+    }
 
     if engine.is_paused || engine.game_over {
         return;
     }
 
-    let dt = dt.min(0.05); // Tránh lag giật thời gian lớn
+    let dt = if engine.is_headless { dt } else { dt.min(0.05) };
     engine.game_time += dt;
 
     // 2. Di chuyển Camera bằng phím WASD / Mũi tên và Edge Scrolling
-    update_camera(engine, dt);
+    if !engine.is_headless {
+        update_camera(engine, dt);
+    }
 
     // 3. Cập nhật Kinh tế tự nhiên & Đo tốc độ thu nhập
     update_economy(engine, dt);
@@ -34,11 +38,11 @@ pub fn step(engine: &mut GameEngine, dt: f32) {
     // 7. Cập nhật Đạn & Tia Laser (sát thương đơn vị & công trình)
     update_projectiles(engine, dt);
 
-    // 8. Cập nhật Hiệu ứng Chữ nổi (Floating numbers)
-    update_floating_texts(engine, dt);
-
-    // 9. Cập nhật Fog of War
-    update_fog(engine);
+    // 8. Cập nhật Hiệu ứng Chữ nổi (Floating numbers) & Fog
+    if !engine.is_headless {
+        update_floating_texts(engine, dt);
+        update_fog(engine);
+    }
 
     // 10. Cập nhật AI Đối thủ (kinh tế + điều quân càn quét nhà)
     engine.ai_think_timer += dt;
@@ -47,17 +51,20 @@ pub fn step(engine: &mut GameEngine, dt: f32) {
         crate::ai::update_ai(engine);
     }
 
-    // 10.5 Cập nhật Chế độ Tự Động (Auto-Play) cho Player
-    crate::autoplay::update_autoplay(engine, dt);
+    // 10.5 Cập nhật Chế độ Tự Động (Auto-Play) cho Player & Enemy
+    crate::autoplay::update_team_autoplay(engine, Team::Player, dt);
+    crate::autoplay::update_team_autoplay(engine, Team::Enemy, dt);
 
     // 11. Kiểm tra Điều kiện Thắng / Thua
     check_game_over(engine);
 
-    // 12. Bắn sự kiện định kỳ đồng bộ về React (~10 Hz / 100ms để giảm tải DOM và JSON parsing)
-    engine.sync_timer += dt;
-    if engine.sync_timer >= 0.1 {
-        engine.sync_timer = 0.0;
-        send_sync_event(engine);
+    // 12. Bắn sự kiện định kỳ đồng bộ về React
+    if !engine.is_headless {
+        engine.sync_timer += dt;
+        if engine.sync_timer >= 0.1 {
+            engine.sync_timer = 0.0;
+            send_sync_event(engine);
+        }
     }
 }
 
@@ -239,6 +246,7 @@ pub fn process_start_research(
 }
 
 pub fn process_update_tech_research(
+    team: Team,
     player_tech: &mut TechTreeState,
     buildings: &mut [Building],
     units: &mut [Unit],
@@ -265,7 +273,7 @@ pub fn process_update_tech_research(
                 "energy_shielding" => player_tech.energy_shielding = true,
                 "dark_matter_rockets" => {
                     player_tech.dark_matter_rockets = true;
-                    for b in buildings.iter_mut().filter(|b| b.team == Team::Player) {
+                    for b in buildings.iter_mut().filter(|b| b.team == team) {
                         let is_armed = config
                             .get_building(b.building_type)
                             .map(|c| c.turret_damage > 0.0)
@@ -278,7 +286,7 @@ pub fn process_update_tech_research(
                 "titan_alloy_plating" => {
                     player_tech.titan_alloy_plating = true;
                     // Tăng thêm máu cho các công trình hiện hữu
-                    for b in buildings.iter_mut().filter(|b| b.team == Team::Player) {
+                    for b in buildings.iter_mut().filter(|b| b.team == team) {
                         b.max_hp *= 1.25;
                         b.hp *= 1.25;
                         b.resistances.physical = (b.resistances.physical + 0.20).min(0.80);
@@ -289,7 +297,7 @@ pub fn process_update_tech_research(
                 "celestial_flying_swords" => player_tech.celestial_flying_swords = true,
                 "golden_bell_shield" => {
                     player_tech.golden_bell_shield = true;
-                    for u in units.iter_mut().filter(|u| u.team == Team::Player) {
+                    for u in units.iter_mut().filter(|u| u.team == team) {
                         u.resistances.energy = (u.resistances.energy + 0.25).min(0.80);
                         u.resistances.arcane = (u.resistances.arcane + 0.30).min(0.80);
                     }
@@ -300,7 +308,7 @@ pub fn process_update_tech_research(
                 // Quái vật
                 "primeval_scales" => {
                     player_tech.primeval_scales = true;
-                    for u in units.iter_mut().filter(|u| u.team == Team::Player) {
+                    for u in units.iter_mut().filter(|u| u.team == team) {
                         u.resistances.physical = (u.resistances.physical + 0.25).min(0.80);
                         u.resistances.explosive = (u.resistances.explosive + 0.25).min(0.80);
                     }
@@ -309,7 +317,7 @@ pub fn process_update_tech_research(
                 "acid_banelings" => player_tech.acid_banelings = true,
                 "hive_proliferation" => {
                     player_tech.hive_proliferation = true;
-                    for u in units.iter_mut().filter(|u| u.team == Team::Player) {
+                    for u in units.iter_mut().filter(|u| u.team == team) {
                         u.speed *= 1.25;
                     }
                 }
@@ -350,7 +358,8 @@ fn try_start_research(engine: &mut GameEngine, tech_id: &str) {
 }
 
 fn update_tech_research(engine: &mut GameEngine, dt: f32) {
-    let completed = process_update_tech_research(
+    let completed_player = process_update_tech_research(
+        Team::Player,
         &mut engine.player_tech,
         &mut engine.buildings,
         &mut engine.units,
@@ -358,7 +367,16 @@ fn update_tech_research(engine: &mut GameEngine, dt: f32) {
         dt,
     );
 
-    if !completed.is_empty() {
+    let _completed_enemy = process_update_tech_research(
+        Team::Enemy,
+        &mut engine.enemy_tech,
+        &mut engine.buildings,
+        &mut engine.units,
+        &engine.config,
+        dt,
+    );
+
+    if !completed_player.is_empty() {
         engine.outgoing_events.push(EngineToReactEvent::PlaySound {
             sound: "research_complete".to_string(),
         });
@@ -465,6 +483,11 @@ fn update_economy(engine: &mut GameEngine, dt: f32) {
     } else {
         1.0
     };
+    let e_mult = if engine.enemy_tech.overcharged_reactors {
+        1.5
+    } else {
+        1.0
+    };
     let base_energy = engine.config.economy.base_energy_per_sec;
     let reactor_energy = engine
         .config
@@ -473,7 +496,7 @@ fn update_economy(engine: &mut GameEngine, dt: f32) {
         .unwrap_or(8.0);
 
     let player_energy_rate = (base_energy + p_reactors as f32 * reactor_energy) * p_mult;
-    let enemy_energy_rate = base_energy + e_reactors as f32 * reactor_energy;
+    let enemy_energy_rate = (base_energy + e_reactors as f32 * reactor_energy) * e_mult;
 
     engine.player_eco.energy += player_energy_rate * dt;
     engine.enemy_eco.energy += enemy_energy_rate * dt;
@@ -536,9 +559,12 @@ fn update_economy(engine: &mut GameEngine, dt: f32) {
 fn update_units(engine: &mut GameEngine, dt: f32) {
     let mut new_projectiles = Vec::new();
     let mut new_floating_texts = Vec::new();
-    let has_exo = engine.player_tech.exo_boosters;
-    let has_superheated = engine.player_tech.superheated_blades;
-    let has_magnetic = engine.player_tech.magnetic_rounds;
+    let p_has_exo = engine.player_tech.exo_boosters;
+    let e_has_exo = engine.enemy_tech.exo_boosters;
+    let p_has_superheated = engine.player_tech.superheated_blades;
+    let e_has_superheated = engine.enemy_tech.superheated_blades;
+    let p_has_magnetic = engine.player_tech.magnetic_rounds;
+    let e_has_magnetic = engine.enemy_tech.magnetic_rounds;
 
     engine
         .spatial_grid
@@ -581,7 +607,7 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
         }
 
         let mut cur_speed = unit.speed;
-        if unit.team == Team::Player && has_exo {
+        if (unit.team == Team::Player && p_has_exo) || (unit.team == Team::Enemy && e_has_exo) {
             cur_speed *= 1.2;
         }
 
@@ -685,20 +711,23 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                         }
                     }
                     HarvestPhase::Mining(mut t) => {
-                        let mining_duration =
-                            if unit.team == Team::Player && engine.player_tech.optical_drills {
-                                engine.config.economy.worker_mining_time_upgraded
-                            } else {
-                                engine.config.economy.worker_mining_time
-                            };
+                        let has_drills = if unit.team == Team::Player {
+                            engine.player_tech.optical_drills
+                        } else {
+                            engine.enemy_tech.optical_drills
+                        };
+                        let mining_duration = if has_drills {
+                            engine.config.economy.worker_mining_time_upgraded
+                        } else {
+                            engine.config.economy.worker_mining_time
+                        };
                         t += dt;
                         if t >= mining_duration {
-                            unit.carried_minerals =
-                                if unit.team == Team::Player && engine.player_tech.optical_drills {
-                                    engine.config.economy.worker_carry_capacity_upgraded
-                                } else {
-                                    engine.config.economy.worker_carry_capacity
-                                };
+                            unit.carried_minerals = if has_drills {
+                                engine.config.economy.worker_carry_capacity_upgraded
+                            } else {
+                                engine.config.economy.worker_carry_capacity
+                            };
                             // Trừ trữ lượng mỏ quặng
                             if let Some(m) = engine
                                 .minerals
@@ -849,13 +878,13 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                         if unit.current_cooldown <= 0.0 {
                             unit.current_cooldown = unit.attack_cooldown;
                             let mut dmg = unit.attack_damage;
-                            if unit.team == Team::Player {
-                                if unit.unit_type == UnitType::Rifleman && has_magnetic {
-                                    dmg *= 1.25;
-                                }
-                                if unit.unit_type == UnitType::ShockTrooper && has_superheated {
-                                    dmg *= 1.35;
-                                }
+                            let has_mag = if unit.team == Team::Player { p_has_magnetic } else { e_has_magnetic };
+                            let has_super = if unit.team == Team::Player { p_has_superheated } else { e_has_superheated };
+                            if unit.unit_type == UnitType::Rifleman && has_mag {
+                                dmg *= 1.25;
+                            }
+                            if unit.unit_type == UnitType::ShockTrooper && has_super {
+                                dmg *= 1.35;
                             }
 
                             // Điểm va chạm nằm ở mép mục tiêu
@@ -948,9 +977,12 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
     engine.units.retain(|u| u.hp > 0.0);
 
     // Hồi máu linh quang từ Kim cang hộ thể (3 HP/s)
-    if engine.player_tech.golden_bell_shield {
+    let p_has_bell = engine.player_tech.golden_bell_shield;
+    let e_has_bell = engine.enemy_tech.golden_bell_shield;
+    if p_has_bell || e_has_bell {
         for u in engine.units.iter_mut() {
-            if u.team == Team::Player && u.hp > 0.0 && u.hp < u.max_hp {
+            let active = (u.team == Team::Player && p_has_bell) || (u.team == Team::Enemy && e_has_bell);
+            if active && u.hp > 0.0 && u.hp < u.max_hp {
                 u.hp = (u.hp + 3.0 * dt).min(u.max_hp);
             }
         }
@@ -1096,31 +1128,33 @@ fn update_buildings(engine: &mut GameEngine, dt: f32) {
             unit.order = UnitOrder::MoveTo { x: rx, y: ry };
         }
 
-        // Áp dụng nâng cấp công nghệ (Player tech upgrades)
-        if team == Team::Player {
-            if u_type == UnitType::ShockTrooper && engine.player_tech.energy_shielding {
-                unit.hp += 30.0;
-                unit.max_hp += 30.0;
-            }
-            if engine.player_tech.exo_boosters || engine.player_tech.hive_proliferation {
-                unit.speed *= 1.25;
-            }
-            if engine.player_tech.titan_alloy_plating {
-                unit.resistances.physical = (unit.resistances.physical + 0.25).min(0.80);
-            }
-            if engine.player_tech.golden_bell_shield {
-                unit.resistances.energy = (unit.resistances.energy + 0.25).min(0.80);
-                unit.resistances.arcane = (unit.resistances.arcane + 0.30).min(0.80);
-            }
-            if engine.player_tech.primeval_scales
-                && (u_type == UnitType::ShockTrooper
-                    || u_type == UnitType::Vanguard
-                    || u_type == UnitType::BehemothTitan
-                    || u_type == UnitType::AcidBaneling)
-            {
-                unit.resistances.physical = (unit.resistances.physical + 0.25).min(0.80);
-                unit.resistances.explosive = (unit.resistances.explosive + 0.25).min(0.80);
-            }
+        // Áp dụng nâng cấp công nghệ (Tech upgrades cho 2 phe)
+        let team_tech = match team {
+            Team::Player => &engine.player_tech,
+            Team::Enemy => &engine.enemy_tech,
+        };
+        if u_type == UnitType::ShockTrooper && team_tech.energy_shielding {
+            unit.hp += 30.0;
+            unit.max_hp += 30.0;
+        }
+        if team_tech.exo_boosters || team_tech.hive_proliferation {
+            unit.speed *= 1.25;
+        }
+        if team_tech.titan_alloy_plating {
+            unit.resistances.physical = (unit.resistances.physical + 0.25).min(0.80);
+        }
+        if team_tech.golden_bell_shield {
+            unit.resistances.energy = (unit.resistances.energy + 0.25).min(0.80);
+            unit.resistances.arcane = (unit.resistances.arcane + 0.30).min(0.80);
+        }
+        if team_tech.primeval_scales
+            && (u_type == UnitType::ShockTrooper
+                || u_type == UnitType::Vanguard
+                || u_type == UnitType::BehemothTitan
+                || u_type == UnitType::AcidBaneling)
+        {
+            unit.resistances.physical = (unit.resistances.physical + 0.25).min(0.80);
+            unit.resistances.explosive = (unit.resistances.explosive + 0.25).min(0.80);
         }
 
         engine.units.push(unit);
@@ -1239,7 +1273,8 @@ pub fn calculate_effective_damage(raw_dmg: f32, dmg_type: DamageType, res: &Resi
 }
 
 fn update_projectiles(engine: &mut GameEngine, dt: f32) {
-    let has_corrosive = engine.player_tech.corrosive_curse;
+    let p_has_corrosive = engine.player_tech.corrosive_curse;
+    let e_has_corrosive = engine.enemy_tech.corrosive_curse;
     let mut new_texts = Vec::new();
 
     for p in engine.projectiles.iter_mut() {
@@ -1274,7 +1309,8 @@ fn update_projectiles(engine: &mut GameEngine, dt: f32) {
                         );
                         u.hp -= taken;
 
-                        if p.team == Team::Player && has_corrosive {
+                        let has_corrosive = if p.team == Team::Player { p_has_corrosive } else { e_has_corrosive };
+                        if has_corrosive {
                             u.resistances.physical = (u.resistances.physical - 0.04).max(0.0);
                             u.resistances.energy = (u.resistances.energy - 0.04).max(0.0);
                             u.resistances.explosive = (u.resistances.explosive - 0.04).max(0.0);
@@ -2386,14 +2422,14 @@ mod tests {
 
         // Tiến hành nghiên cứu 15 giây (chưa tech nào xong: 20s và 22s)
         let completed_early =
-            process_update_tech_research(&mut p_tech, &mut buildings, &mut units, &config, 15.0);
+            process_update_tech_research(Team::Player, &mut p_tech, &mut buildings, &mut units, &config, 15.0);
         assert!(completed_early.is_empty());
         assert!(!p_tech.focused_laser);
         assert!(!p_tech.celestial_flying_swords);
 
         // Tiến hành nghiên cứu thêm 10 giây nữa (tổng 25s, cả 2 đều xong)
         let completed_done =
-            process_update_tech_research(&mut p_tech, &mut buildings, &mut units, &config, 10.0);
+            process_update_tech_research(Team::Player, &mut p_tech, &mut buildings, &mut units, &config, 10.0);
         assert_eq!(completed_done.len(), 2);
         assert!(p_tech.focused_laser, "Focused laser phải được mở khóa");
         assert!(

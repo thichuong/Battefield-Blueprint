@@ -5,7 +5,10 @@ use crate::GameEngine;
 use web_sys::CanvasRenderingContext2d;
 
 pub fn render(engine: &mut GameEngine) {
-    let ctx = &engine.context;
+    if engine.is_headless || engine.context.is_none() {
+        return;
+    }
+    let ctx = engine.context.as_ref().unwrap();
     let vw = engine.camera.viewport_w;
     let vh = engine.camera.viewport_h;
 
@@ -89,7 +92,7 @@ pub fn render(engine: &mut GameEngine) {
 }
 
 fn render_blueprint_grid(engine: &GameEngine) {
-    let ctx = &engine.context;
+    let ctx = match engine.context.as_ref() { Some(c) => c, None => return };
     ctx.set_stroke_style_str("#0a223e");
     ctx.set_line_width(1.0);
     ctx.begin_path();
@@ -117,7 +120,7 @@ fn render_blueprint_grid(engine: &GameEngine) {
 }
 
 fn render_obstacles(engine: &GameEngine) {
-    let ctx = &engine.context;
+    let ctx = match engine.context.as_ref() { Some(c) => c, None => return };
     for obs in &engine.obstacles {
         if !engine
             .camera
@@ -146,7 +149,7 @@ fn render_obstacles(engine: &GameEngine) {
 }
 
 fn render_minerals(engine: &GameEngine) {
-    let ctx = &engine.context;
+    let ctx = match engine.context.as_ref() { Some(c) => c, None => return };
     for m in &engine.minerals {
         if !engine.camera.is_point_visible(m.x, m.y, 60.0) {
             continue;
@@ -179,7 +182,7 @@ fn render_minerals(engine: &GameEngine) {
 }
 
 fn render_buildings(engine: &GameEngine) {
-    let ctx = &engine.context;
+    let ctx = match engine.context.as_ref() { Some(c) => c, None => return };
     for b in &engine.buildings {
         let bw = b.width;
         let bh = b.height;
@@ -399,7 +402,7 @@ fn draw_blueprint_brackets(
 }
 
 fn render_units(engine: &GameEngine) {
-    let ctx = &engine.context;
+    let ctx = match engine.context.as_ref() { Some(c) => c, None => return };
     for u in &engine.units {
         if !engine.camera.is_point_visible(u.x, u.y, 40.0) {
             continue;
@@ -623,7 +626,7 @@ fn draw_procedural_stickman(ctx: &CanvasRenderingContext2d, u: &Unit, color: &st
 }
 
 fn render_projectiles(engine: &GameEngine) {
-    let ctx = &engine.context;
+    let ctx = match engine.context.as_ref() { Some(c) => c, None => return };
     for p in &engine.projectiles {
         if !engine.camera.is_point_visible(p.x, p.y, 40.0)
             && !engine.camera.is_point_visible(p.target_x, p.target_y, 40.0)
@@ -671,7 +674,7 @@ fn render_projectiles(engine: &GameEngine) {
 }
 
 fn render_build_ghost(engine: &GameEngine, b_type: BuildingType) {
-    let ctx = &engine.context;
+    let ctx = match engine.context.as_ref() { Some(c) => c, None => return };
     let (wx, wy) = engine.screen_to_world(engine.mouse_screen_x, engine.mouse_screen_y);
     let (w, h) = match b_type {
         BuildingType::CommandCenter => (90.0, 90.0),
@@ -714,7 +717,7 @@ fn render_build_ghost(engine: &GameEngine, b_type: BuildingType) {
 }
 
 fn render_fog_of_war(engine: &GameEngine) {
-    let ctx = &engine.context;
+    let ctx = match engine.context.as_ref() { Some(c) => c, None => return };
     use crate::fog::{CELL_H, CELL_W, FOG_COLS, FOG_ROWS};
 
     let (min_x, min_y, max_x, max_y) = engine.camera.viewport_bounds(CELL_W.max(CELL_H));
@@ -767,7 +770,7 @@ fn render_fog_of_war(engine: &GameEngine) {
 }
 
 fn render_floating_texts(engine: &GameEngine) {
-    let ctx = &engine.context;
+    let ctx = match engine.context.as_ref() { Some(c) => c, None => return };
     ctx.set_font("bold 13px monospace");
     for ft in &engine.floating_texts {
         let (sx, sy) = engine.world_to_screen(ft.x, ft.y);
@@ -778,7 +781,7 @@ fn render_floating_texts(engine: &GameEngine) {
 }
 
 fn render_attack_move_cursor(engine: &GameEngine) {
-    let ctx = &engine.context;
+    let ctx = match engine.context.as_ref() { Some(c) => c, None => return };
     let mx = engine.mouse_screen_x as f64;
     let my = engine.mouse_screen_y as f64;
 
@@ -798,7 +801,7 @@ fn render_attack_move_cursor(engine: &GameEngine) {
 }
 
 fn render_in_game_hud(engine: &GameEngine) {
-    let ctx = &engine.context;
+    let ctx = match engine.context.as_ref() { Some(c) => c, None => return };
     let vw = engine.camera.viewport_w as f64;
     let vh = engine.camera.viewport_h as f64;
 
@@ -979,7 +982,7 @@ fn render_in_game_hud(engine: &GameEngine) {
 }
 
 fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f64) {
-    let ctx = &engine.context;
+    let ctx = match engine.context.as_ref() { Some(c) => c, None => return };
     ctx.set_fill_style_str("rgba(3, 13, 26, 0.94)");
     ctx.fill_rect(x, y, w, h);
     ctx.set_stroke_style_str("#0284c7");
@@ -1375,7 +1378,7 @@ fn draw_barracks_slot(
 }
 
 fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
-    let ctx = &engine.context;
+    let ctx = match engine.context.as_ref() { Some(c) => c, None => return };
     ctx.set_fill_style_str("rgba(3, 13, 26, 0.94)");
     ctx.fill_rect(x, y, 215.0, 140.0);
     ctx.set_stroke_style_str("#0284c7");

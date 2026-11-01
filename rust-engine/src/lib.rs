@@ -12,6 +12,7 @@ pub mod fog;
 pub mod map;
 pub mod renderer;
 pub mod resources;
+pub mod rl;
 pub mod simulation;
 pub mod spatial_grid;
 
@@ -27,8 +28,9 @@ thread_local! {
 }
 
 pub struct GameEngine {
-    pub context: CanvasRenderingContext2d,
-    pub canvas: HtmlCanvasElement,
+    pub context: Option<CanvasRenderingContext2d>,
+    pub canvas: Option<HtmlCanvasElement>,
+    pub is_headless: bool,
     pub camera: CameraState,
     pub fog: FogOfWar,
     pub settings: GameSettings,
@@ -49,6 +51,7 @@ pub struct GameEngine {
     pub player_tech: TechTreeState,
     pub enemy_tech: TechTreeState,
     pub autoplay: crate::autoplay::AutoPlayState,
+    pub enemy_autoplay: crate::autoplay::AutoPlayState,
 
     // Đang chọn & Thao tác
     pub selected_unit_ids: Vec<u32>,
@@ -98,8 +101,9 @@ impl GameEngine {
         let enemy_eco = player_eco.clone();
 
         let mut engine = Self {
-            context: ctx,
-            canvas,
+            context: Some(ctx),
+            canvas: Some(canvas),
+            is_headless: false,
             camera: CameraState::default(),
             fog: FogOfWar::new(),
             settings: GameSettings::default(),
@@ -118,6 +122,7 @@ impl GameEngine {
             player_tech: TechTreeState::default(),
             enemy_tech: TechTreeState::default(),
             autoplay: crate::autoplay::AutoPlayState::default(),
+            enemy_autoplay: crate::autoplay::AutoPlayState::default_for_enemy(),
 
             selected_unit_ids: Vec::new(),
             selected_building_id: None,
@@ -149,6 +154,75 @@ impl GameEngine {
 
         engine.init_base();
         simulation::update_fog(&mut engine);
+        engine
+    }
+
+    pub fn new_headless() -> Self {
+        let (minerals, obstacles) = map::generate_map_elements();
+        let config = GameConfig::default();
+        let player_eco = PlayerEconomy {
+            minerals: config.economy.starting_minerals,
+            energy: config.economy.starting_energy,
+            supply: config.economy.starting_supply,
+            max_supply: config.economy.base_max_supply,
+            minerals_per_sec: 0.0,
+            energy_per_sec: config.economy.base_energy_per_sec,
+        };
+        let enemy_eco = player_eco.clone();
+
+        let mut engine = Self {
+            context: None,
+            canvas: None,
+            is_headless: true,
+            camera: CameraState::default(),
+            fog: FogOfWar::new(),
+            settings: GameSettings::default(),
+            config,
+
+            units: Vec::new(),
+            buildings: Vec::new(),
+            minerals,
+            obstacles,
+            projectiles: Vec::new(),
+            floating_texts: Vec::new(),
+            spatial_grid: SpatialGrid::new(),
+
+            player_eco,
+            enemy_eco,
+            player_tech: TechTreeState::default(),
+            enemy_tech: TechTreeState::default(),
+            autoplay: crate::autoplay::AutoPlayState::default(),
+            enemy_autoplay: crate::autoplay::AutoPlayState::default_for_enemy(),
+
+            selected_unit_ids: Vec::new(),
+            selected_building_id: None,
+            selection_box: None,
+            build_mode: None,
+            is_attack_move_mode: false,
+            is_minimap_dragging: false,
+            hovered_command_button: None,
+
+            next_id: 100,
+            game_time: 0.0,
+            is_paused: false,
+            game_over: false,
+            mouse_screen_x: 0.0,
+            mouse_screen_y: 0.0,
+            is_mouse_down: false,
+            mouse_down_start: (0.0, 0.0),
+            keys_down: std::collections::HashSet::new(),
+
+            ai_think_timer: 0.0,
+            ai_state: crate::ai::AiState::default(),
+            sync_timer: 0.0,
+            minerals_mined_accumulator: 0.0,
+            income_calc_timer: 0.0,
+            difficulty: "normal".to_string(),
+            pending_commands: VecDeque::new(),
+            outgoing_events: Vec::new(),
+        };
+
+        engine.init_base();
         engine
     }
 
@@ -212,6 +286,7 @@ impl GameEngine {
         self.ai_state = crate::ai::AiState::default();
         self.minerals_mined_accumulator = 0.0;
         self.income_calc_timer = 0.0;
+        self.enemy_autoplay = crate::autoplay::AutoPlayState::default_for_enemy();
 
         // 8. Dọn dẹp sự kiện cũ còn sót lại trong hàng đợi
         self.outgoing_events.clear();
@@ -382,8 +457,10 @@ pub fn poll_events_from_engine() -> String {
 pub fn resize_canvas(width: f32, height: f32) {
     ENGINE_STATE.with(|state| {
         if let Some(ref mut engine) = *state.borrow_mut() {
-            engine.canvas.set_width(width as u32);
-            engine.canvas.set_height(height as u32);
+            if let Some(ref canvas) = engine.canvas {
+                canvas.set_width(width as u32);
+                canvas.set_height(height as u32);
+            }
             engine.camera.viewport_w = width;
             engine.camera.viewport_h = height;
         }
