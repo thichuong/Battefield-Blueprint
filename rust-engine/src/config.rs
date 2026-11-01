@@ -254,10 +254,10 @@ impl Default for GameConfig {
                 hp: 140.0,
                 speed: 95.0,
                 attack_range: 200.0,
-                attack_damage: 32.0,
+                attack_damage: 50.0,
                 attack_cooldown: 1.8,
                 damage_type: DamageType::Explosive,
-                aoe_radius: 40.0,
+                aoe_radius: 50.0,
                 resistances: Resistances {
                     physical: 0.20,
                     energy: 0.10,

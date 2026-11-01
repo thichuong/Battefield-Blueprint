@@ -151,6 +151,16 @@ impl AutoPlayConfig {
                     },
                 },
                 AutoCard {
+                    id: "card_prod_supply".to_string(),
+                    name: "Xây SupplyDepot tránh kẹt".to_string(),
+                    enabled: true,
+                    conditions: vec![AutoCondition::SupplyNearCap],
+                    action: AutoAction::BuildStructure {
+                        building_type: "SupplyDepot".to_string(),
+                        count: 1,
+                    },
+                },
+                AutoCard {
                     id: "card_prod_reactor".to_string(),
                     name: "Xây 2 PowerReactor".to_string(),
                     enabled: true,
@@ -210,11 +220,31 @@ impl AutoPlayConfig {
                     },
                 },
                 AutoCard {
+                    id: "card_prod_shock".to_string(),
+                    name: "Mua ShockTrooper (>150 Khoáng)".to_string(),
+                    enabled: true,
+                    conditions: vec![AutoCondition::MineralsGreaterThan { amount: 150.0 }],
+                    action: AutoAction::TrainUnit {
+                        unit_type: "ShockTrooper".to_string(),
+                        count: 1,
+                    },
+                },
+                AutoCard {
+                    id: "card_prod_rifle".to_string(),
+                    name: "Mua Rifleman (>150 Khoáng)".to_string(),
+                    enabled: true,
+                    conditions: vec![AutoCondition::MineralsGreaterThan { amount: 150.0 }],
+                    action: AutoAction::TrainUnit {
+                        unit_type: "Rifleman".to_string(),
+                        count: 1,
+                    },
+                },
+                AutoCard {
                     id: "card_prod_delay".to_string(),
-                    name: "Tạm nghỉ công trình (Delay 5s)".to_string(),
+                    name: "Tạm nghỉ sản xuất (Delay 2s)".to_string(),
                     enabled: true,
                     conditions: vec![AutoCondition::Always],
-                    action: AutoAction::Delay { seconds: 5.0 },
+                    action: AutoAction::Delay { seconds: 2.0 },
                 },
             ],
         };
@@ -229,36 +259,6 @@ impl AutoPlayConfig {
             card_timer: 0.0,
             cards: vec![
                 AutoCard {
-                    id: "card_mil_supply".to_string(),
-                    name: "Xây SupplyDepot tránh kẹt".to_string(),
-                    enabled: true,
-                    conditions: vec![AutoCondition::SupplyNearCap],
-                    action: AutoAction::BuildStructure {
-                        building_type: "SupplyDepot".to_string(),
-                        count: 1,
-                    },
-                },
-                AutoCard {
-                    id: "card_mil_shock".to_string(),
-                    name: "Mua ShockTrooper (>150 Khoáng)".to_string(),
-                    enabled: true,
-                    conditions: vec![AutoCondition::MineralsGreaterThan { amount: 150.0 }],
-                    action: AutoAction::TrainUnit {
-                        unit_type: "ShockTrooper".to_string(),
-                        count: 1,
-                    },
-                },
-                AutoCard {
-                    id: "card_mil_rifle".to_string(),
-                    name: "Mua Rifleman (>150 Khoáng)".to_string(),
-                    enabled: true,
-                    conditions: vec![AutoCondition::MineralsGreaterThan { amount: 150.0 }],
-                    action: AutoAction::TrainUnit {
-                        unit_type: "Rifleman".to_string(),
-                        count: 1,
-                    },
-                },
-                AutoCard {
                     id: "card_mil_attack".to_string(),
                     name: "Tự động tấn công (>20 Lính)".to_string(),
                     enabled: true,
@@ -267,6 +267,13 @@ impl AutoPlayConfig {
                         count: 20,
                     }],
                     action: AutoAction::AttackWave { formation: None },
+                },
+                AutoCard {
+                    id: "card_mil_delay".to_string(),
+                    name: "Nghỉ lệnh hành quân (Delay 2s)".to_string(),
+                    enabled: true,
+                    conditions: vec![AutoCondition::Always],
+                    action: AutoAction::Delay { seconds: 2.0 },
                 },
             ],
         };
@@ -347,6 +354,31 @@ fn step_team_loop(engine: &mut GameEngine, team: Team, loop_idx: usize, dt: f32)
     }
 
     let current_idx = loop_data.current_card_index % loop_data.cards.len();
+
+    // Trong train AI: khi auto chạm tới giới hạn công trình (PowerReactor, TurretTower, Barracks),
+    // tự động tăng gấp đôi giới hạn ngay lập tức
+    if engine.ai_state.training_enabled {
+        let cur_reactors = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::PowerReactor).count();
+        let cur_turrets = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::TurretTower).count();
+        let cur_barracks = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::Barracks).count();
+
+        let current_card = &mut engine.team_autoplay_mut(team).config.loops[loop_idx].cards[current_idx];
+        for cond in &mut current_card.conditions {
+            if let AutoCondition::BuildingCountLessThan { building_type, count } = cond {
+                let actual = match building_type.as_str() {
+                    "PowerReactor" => cur_reactors,
+                    "TurretTower" => cur_turrets,
+                    "Barracks" => cur_barracks,
+                    _ => 0,
+                };
+                if actual >= *count && *count > 0 {
+                    *count = (*count * 2).min(128);
+                }
+            }
+        }
+    }
+
+    let loop_data = &engine.team_autoplay(team).config.loops[loop_idx];
     let card = loop_data.cards[current_idx].clone();
 
     if !card.enabled {
@@ -1455,6 +1487,9 @@ pub fn adapt_training_autoplay_mid_match(engine: &mut GameEngine, team: Team) {
 
     let game_time = engine.game_time;
     let eco_minerals = engine.team_eco(team).minerals;
+    let cur_reactors = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::PowerReactor).count();
+    let cur_turrets = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::TurretTower).count();
+    let cur_barracks = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::Barracks).count();
 
     let config = &mut engine.team_autoplay_mut(team).config;
 
@@ -1499,31 +1534,29 @@ pub fn adapt_training_autoplay_mid_match(engine: &mut GameEngine, team: Team) {
             );
         }
 
-        // Tăng trần Barracks và Reactor khi bước vào Mid/Late Game
-        if let Some(r_card) = prod_loop.cards.iter_mut().find(|c| c.id == "card_prod_reactor") {
-            let max_reactors = if tech.overcharged_reactors { 8 } else { 12 };
-            r_card.conditions = vec![AutoCondition::BuildingCountLessThan {
-                building_type: "PowerReactor".to_string(),
-                count: max_reactors,
-            }];
+        // Tự động tăng gấp đôi giới hạn công trình (PowerReactor, TurretTower, Barracks) khi chạm tới trần
+        for card in prod_loop.cards.iter_mut() {
+            for cond in card.conditions.iter_mut() {
+                if let AutoCondition::BuildingCountLessThan { building_type, count } = cond {
+                    let actual = match building_type.as_str() {
+                        "PowerReactor" => cur_reactors,
+                        "TurretTower" => cur_turrets,
+                        "Barracks" => cur_barracks,
+                        _ => 0,
+                    };
+                    if actual >= *count && *count > 0 {
+                        *count = (*count * 2).min(128);
+                    }
+                }
+            }
         }
-        if let Some(b_card) = prod_loop.cards.iter_mut().find(|c| c.id == "card_prod_barracks") {
-            let max_barracks = if game_time > 120.0 { 8 } else { 5 };
-            b_card.conditions = vec![AutoCondition::BuildingCountLessThan {
-                building_type: "Barracks".to_string(),
-                count: max_barracks,
-            }];
-        }
-    }
 
-    // 2. Tùy biến Vòng Lặp Quân Sự (Loop Military) khi mở khóa Binh Chủng Mới
-    if let Some(mil_loop) = config.loops.iter_mut().find(|l| l.id == "loop_military") {
-        // Danh sách các binh chủng công nghệ cao kèm quota tỷ lệ mục tiêu
+        // Tùy biến sản xuất binh chủng cao cấp ngay trong Vòng Lặp Sản Xuất (Loop Production)
         let advanced_units = [
             (
                 "BehemothTitan",
                 tech.behemoth_mutation,
-                "card_mil_titan",
+                "card_prod_titan",
                 "Mua BehemothTitan (Chiến Thú Khổng Lồ)",
                 180.0,
                 5,
@@ -1531,7 +1564,7 @@ pub fn adapt_training_autoplay_mid_match(engine: &mut GameEngine, team: Team) {
             (
                 "DarkRocketeer",
                 tech.dark_matter_rockets,
-                "card_mil_rocket",
+                "card_prod_rocket",
                 "Mua DarkRocketeer (Rocket Hắc Khoa Kỹ AoE)",
                 120.0,
                 7,
@@ -1539,7 +1572,7 @@ pub fn adapt_training_autoplay_mid_match(engine: &mut GameEngine, team: Team) {
             (
                 "LaserMarksman",
                 tech.focused_laser,
-                "card_mil_laser",
+                "card_prod_laser",
                 "Mua LaserMarksman (Bắn Tỉa Laser)",
                 130.0,
                 6,
@@ -1547,7 +1580,7 @@ pub fn adapt_training_autoplay_mid_match(engine: &mut GameEngine, team: Team) {
             (
                 "VoidWarlock",
                 tech.void_cataclysm,
-                "card_mil_warlock",
+                "card_prod_warlock",
                 "Mua VoidWarlock (Phù Thủy Hư Không AoE)",
                 140.0,
                 5,
@@ -1555,7 +1588,7 @@ pub fn adapt_training_autoplay_mid_match(engine: &mut GameEngine, team: Team) {
             (
                 "TaoistSwordmaster",
                 tech.celestial_flying_swords,
-                "card_mil_sword",
+                "card_prod_sword",
                 "Mua TaoistSwordmaster (Tu Tiên Ngự Kiếm)",
                 130.0,
                 6,
@@ -1563,7 +1596,7 @@ pub fn adapt_training_autoplay_mid_match(engine: &mut GameEngine, team: Team) {
             (
                 "Vanguard",
                 tech.energy_shielding,
-                "card_mil_vanguard",
+                "card_prod_vanguard",
                 "Mua Vanguard (Lá Chắn Tiên Phong)",
                 100.0,
                 5,
@@ -1571,7 +1604,7 @@ pub fn adapt_training_autoplay_mid_match(engine: &mut GameEngine, team: Team) {
             (
                 "AcidBaneling",
                 tech.acid_banelings,
-                "card_mil_baneling",
+                "card_prod_baneling",
                 "Mua AcidBaneling (Bọ Nổ Axit Cảm Tử)",
                 40.0,
                 6,
@@ -1583,11 +1616,18 @@ pub fn adapt_training_autoplay_mid_match(engine: &mut GameEngine, team: Team) {
         for (u_name, is_unlocked, card_id, card_name, min_threshold, max_count) in advanced_units {
             if is_unlocked {
                 unlocked_advanced_count += 1;
-                let exists = mil_loop.cards.iter().any(|c| c.id == card_id);
+                let exists = prod_loop
+                    .cards
+                    .iter()
+                    .any(|c| c.id == card_id || c.id == card_id.replace("card_prod_", "card_mil_"));
                 if !exists {
-                    // Chèn trước thẻ AttackWave (thường là thẻ cuối)
-                    let insert_pos = mil_loop.cards.len().saturating_sub(1);
-                    mil_loop.cards.insert(
+                    // Chèn trước thẻ Delay (thường là thẻ cuối của vòng sản xuất)
+                    let insert_pos = prod_loop
+                        .cards
+                        .iter()
+                        .position(|c| c.id == "card_prod_delay")
+                        .unwrap_or(prod_loop.cards.len());
+                    prod_loop.cards.insert(
                         insert_pos,
                         AutoCard {
                             id: card_id.to_string(),
@@ -1608,8 +1648,11 @@ pub fn adapt_training_autoplay_mid_match(engine: &mut GameEngine, team: Team) {
                             },
                         },
                     );
-                } else if let Some(card) = mil_loop.cards.iter_mut().find(|c| c.id == card_id) {
-                    // Cập nhật điều kiện trần số lượng để phối hợp đa binh chủng đều đặn
+                } else if let Some(card) = prod_loop
+                    .cards
+                    .iter_mut()
+                    .find(|c| c.id == card_id || c.id == card_id.replace("card_prod_", "card_mil_"))
+                {
                     card.conditions = vec![
                         AutoCondition::MineralsGreaterThan {
                             amount: min_threshold,
@@ -1626,7 +1669,11 @@ pub fn adapt_training_autoplay_mid_match(engine: &mut GameEngine, team: Team) {
         // Chuyển giao cơ cấu quân đội (Transition):
         // Khi đã có binh chủng cao cấp và bước sang mid-game, hạn chế sản xuất lính cơ bản
         let should_throttle_basics = unlocked_advanced_count >= 1 && (game_time > 110.0 || my_combat_count >= 12);
-        if let Some(shock_card) = mil_loop.cards.iter_mut().find(|c| c.id == "card_mil_shock") {
+        if let Some(shock_card) = prod_loop
+            .cards
+            .iter_mut()
+            .find(|c| c.id == "card_prod_shock" || c.id == "card_mil_shock")
+        {
             if should_throttle_basics {
                 shock_card.conditions = vec![
                     AutoCondition::UnitCountLessThan {
@@ -1637,7 +1684,11 @@ pub fn adapt_training_autoplay_mid_match(engine: &mut GameEngine, team: Team) {
                 ];
             }
         }
-        if let Some(rifle_card) = mil_loop.cards.iter_mut().find(|c| c.id == "card_mil_rifle") {
+        if let Some(rifle_card) = prod_loop
+            .cards
+            .iter_mut()
+            .find(|c| c.id == "card_prod_rifle" || c.id == "card_mil_rifle")
+        {
             if should_throttle_basics {
                 rifle_card.conditions = vec![
                     AutoCondition::UnitCountLessThan {
@@ -1648,7 +1699,10 @@ pub fn adapt_training_autoplay_mid_match(engine: &mut GameEngine, team: Team) {
                 ];
             }
         }
+    }
 
+    // 2. Tùy biến Vòng Lặp Quân Sự (Loop Military): chuyên trách Tổng Tấn Công & Hành Quân
+    if let Some(mil_loop) = config.loops.iter_mut().find(|l| l.id == "loop_military") {
         // Tùy biến ngưỡng Tổng Tấn Công (AttackWave):
         // Nếu bị đối phương dồn ép hoặc đã có lượng quân áp đảo -> điều chỉnh ngưỡng tấn công
         if let Some(atk_card) = mil_loop.cards.iter_mut().find(|c| c.id == "card_mil_attack") {
@@ -1688,9 +1742,18 @@ mod tests {
         assert!(!config.enabled);
         assert_eq!(config.loops.len(), 2);
         assert_eq!(config.loops[0].name, "Sản Xuất");
-        assert_eq!(config.loops[0].cards.len(), 7);
+        assert_eq!(config.loops[0].cards.len(), 10);
+        assert!(config.loops[0].cards.iter().any(|c| c.id == "card_prod_supply"));
+        assert!(config.loops[0].cards.iter().any(|c| c.id == "card_prod_shock"));
+        assert!(config.loops[0].cards.iter().any(|c| c.id == "card_prod_rifle"));
+        let delay_card = config.loops[0].cards.iter().find(|c| c.id == "card_prod_delay").unwrap();
+        assert_eq!(delay_card.action, AutoAction::Delay { seconds: 2.0 });
+
         assert_eq!(config.loops[1].name, "Quân Sự");
-        assert_eq!(config.loops[1].cards.len(), 4);
+        assert_eq!(config.loops[1].cards.len(), 2);
+        assert!(config.loops[1].cards.iter().any(|c| c.id == "card_mil_attack"));
+        let mil_delay = config.loops[1].cards.iter().find(|c| c.id == "card_mil_delay").unwrap();
+        assert_eq!(mil_delay.action, AutoAction::Delay { seconds: 2.0 });
     }
 
     #[test]
@@ -1758,10 +1821,60 @@ mod tests {
 
         adapt_training_autoplay_mid_match(&mut engine, Team::Player);
 
-        let mil_loop = engine.autoplay.config.loops.iter().find(|l| l.id == "loop_military").unwrap();
-        // Kiểm tra đã tự động chèn thẻ mua Vanguard và LaserMarksman
-        assert!(mil_loop.cards.iter().any(|c| c.id == "card_mil_vanguard"));
-        assert!(mil_loop.cards.iter().any(|c| c.id == "card_mil_laser"));
+        let prod_loop = engine.autoplay.config.loops.iter().find(|l| l.id == "loop_production").unwrap();
+        // Kiểm tra đã tự động chèn thẻ mua Vanguard và LaserMarksman vào loop_production
+        assert!(prod_loop.cards.iter().any(|c| c.id == "card_prod_vanguard" || c.id == "card_mil_vanguard"));
+        assert!(prod_loop.cards.iter().any(|c| c.id == "card_prod_laser" || c.id == "card_mil_laser"));
+    }
+
+    #[test]
+    fn test_train_ai_building_limit_doubling() {
+        let mut engine = GameEngine::new_headless();
+        engine.ai_state.training_enabled = true;
+        let config = create_training_autoplay_config(Team::Player, AutoTrainingArchetype::MacroFortress);
+        engine.autoplay.config = config;
+
+        // Giả lập đã xây đủ 10 PowerReactor, 8 TurretTower, 6 Barracks
+        let mut b_id = 1;
+        for _ in 0..10 {
+            b_id += 1;
+            engine.buildings.push(engine.config.create_building(b_id, Team::Player, BuildingType::PowerReactor, 600.0, 4200.0, true));
+        }
+        for _ in 0..8 {
+            b_id += 1;
+            engine.buildings.push(engine.config.create_building(b_id, Team::Player, BuildingType::TurretTower, 700.0, 4100.0, true));
+        }
+        for _ in 0..6 {
+            b_id += 1;
+            engine.buildings.push(engine.config.create_building(b_id, Team::Player, BuildingType::Barracks, 800.0, 4000.0, true));
+        }
+
+        // Chạy thích ứng giữa trận cho AI Training
+        adapt_training_autoplay_mid_match(&mut engine, Team::Player);
+
+        let prod_loop = engine.autoplay.config.loops.iter().find(|l| l.id == "loop_production").unwrap();
+        let reactor_card = prod_loop.cards.iter().find(|c| c.id == "card_prod_reactor").unwrap();
+        let turret_card = prod_loop.cards.iter().find(|c| c.id == "card_prod_turret").unwrap();
+        let barracks_card = prod_loop.cards.iter().find(|c| c.id == "card_prod_barracks").unwrap();
+
+        // Kiểm tra các giới hạn đã được gấp đôi: 10 -> 20, 8 -> 16, 6 -> 12
+        let reactor_cap = reactor_card.conditions.iter().find_map(|c| match c {
+            AutoCondition::BuildingCountLessThan { building_type, count } if building_type == "PowerReactor" => Some(*count),
+            _ => None,
+        }).unwrap();
+        assert_eq!(reactor_cap, 20);
+
+        let turret_cap = turret_card.conditions.iter().find_map(|c| match c {
+            AutoCondition::BuildingCountLessThan { building_type, count } if building_type == "TurretTower" => Some(*count),
+            _ => None,
+        }).unwrap();
+        assert_eq!(turret_cap, 16);
+
+        let barracks_cap = barracks_card.conditions.iter().find_map(|c| match c {
+            AutoCondition::BuildingCountLessThan { building_type, count } if building_type == "Barracks" => Some(*count),
+            _ => None,
+        }).unwrap();
+        assert_eq!(barracks_cap, 12);
     }
 
     #[test]

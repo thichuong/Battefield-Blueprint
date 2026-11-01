@@ -243,16 +243,14 @@ fn main() {
             let prev_my_ccs = count_ally_ccs(&engine, learner_team);
             let prev_my_unlocked = rust_engine::ai::count_unlocked_techs(engine.team_tech(learner_team));
 
-            // Tùy biến thích ứng giữa trận cho Auto đối thủ
-            if let OpponentStyle::VsAuto(_) = opponent_style {
-                mid_adapt_timer += time_scale_dt;
-                if mid_adapt_timer >= 2.0 {
-                    mid_adapt_timer = 0.0;
-                    for slot_idx in 0..MAX_PLAYERS {
-                        let t = Team::from_index(slot_idx);
-                        if engine.is_slot_active(t) && engine.are_hostile(learner_team, t) && engine.team_autoplay(t).config.enabled {
-                            adapt_training_autoplay_mid_match(&mut engine, t);
-                        }
+            // Tùy biến thích ứng giữa trận cho các slot sử dụng Auto (đối thủ & đồng minh)
+            mid_adapt_timer += time_scale_dt;
+            if mid_adapt_timer >= 2.0 {
+                mid_adapt_timer = 0.0;
+                for slot_idx in 0..MAX_PLAYERS {
+                    let t = Team::from_index(slot_idx);
+                    if engine.is_slot_active(t) && engine.team_autoplay(t).config.enabled {
+                        adapt_training_autoplay_mid_match(&mut engine, t);
                     }
                 }
             }
