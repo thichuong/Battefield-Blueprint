@@ -1,35 +1,37 @@
 use serde::{Deserialize, Serialize};
 
-pub const STATE_DIM: usize = 16;
-pub const ACTION_DIM: usize = 10;
+pub const STATE_DIM: usize = 24;
+pub const ACTION_DIM: usize = 11;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BotStrategicAction {
-    AutoEcoExpand = 0,
-    AutoDefenseFortify = 1,
-    AutoTechScience = 2,
-    AutoTechMagic = 3,
-    AutoTechMonster = 4,
-    AutoAggressiveRush = 5,
-    ManualDefendAndRepair = 6,
-    ManualStageAndHarass = 7,
-    ManualAllOutAttack = 8,
-    ManualRetreatAndRegroup = 9,
+    ExpandEco = 0,
+    BuildInfrastructure = 1,
+    BuildDefenseGrid = 2,
+    TechScienceBranch = 3,
+    TechMagicBranch = 4,
+    TechMonsterBranch = 5,
+    MilitarySwarmRush = 6,
+    DefendAndCounter = 7,
+    HarassEconomy = 8,
+    AllOutAssault = 9,
+    RegroupAndConsolidate = 10,
 }
 
 impl BotStrategicAction {
     pub fn from_index(index: usize) -> Self {
         match index {
-            0 => Self::AutoEcoExpand,
-            1 => Self::AutoDefenseFortify,
-            2 => Self::AutoTechScience,
-            3 => Self::AutoTechMagic,
-            4 => Self::AutoTechMonster,
-            5 => Self::AutoAggressiveRush,
-            6 => Self::ManualDefendAndRepair,
-            7 => Self::ManualStageAndHarass,
-            8 => Self::ManualAllOutAttack,
-            _ => Self::ManualRetreatAndRegroup,
+            0 => Self::ExpandEco,
+            1 => Self::BuildInfrastructure,
+            2 => Self::BuildDefenseGrid,
+            3 => Self::TechScienceBranch,
+            4 => Self::TechMagicBranch,
+            5 => Self::TechMonsterBranch,
+            6 => Self::MilitarySwarmRush,
+            7 => Self::DefendAndCounter,
+            8 => Self::HarassEconomy,
+            9 => Self::AllOutAssault,
+            _ => Self::RegroupAndConsolidate,
         }
     }
 
@@ -39,16 +41,17 @@ impl BotStrategicAction {
 
     pub fn name(&self) -> &'static str {
         match self {
-            Self::AutoEcoExpand => "Auto Eco & Expansion",
-            Self::AutoDefenseFortify => "Auto Defense & Fortification",
-            Self::AutoTechScience => "Auto Tech: Science Branch",
-            Self::AutoTechMagic => "Auto Tech: Magic Branch",
-            Self::AutoTechMonster => "Auto Tech: Monster Branch",
-            Self::AutoAggressiveRush => "Auto Rush: Combat Units",
-            Self::ManualDefendAndRepair => "Direct: Defend & Repair Base",
-            Self::ManualStageAndHarass => "Direct: Stage & Harass",
-            Self::ManualAllOutAttack => "Direct: All-out Attack Wave",
-            Self::ManualRetreatAndRegroup => "Direct: Retreat & Regroup",
+            Self::ExpandEco => "Expand Base & Eco",
+            Self::BuildInfrastructure => "Build Power & Supply Depot",
+            Self::BuildDefenseGrid => "Fortify Turret Defense Grid",
+            Self::TechScienceBranch => "Tech & Produce: Science Branch",
+            Self::TechMagicBranch => "Tech & Produce: Magic Branch",
+            Self::TechMonsterBranch => "Tech & Produce: Monster Branch",
+            Self::MilitarySwarmRush => "Mass Production: Swarm Rush",
+            Self::DefendAndCounter => "Tactical: Defend & Counter-Attack",
+            Self::HarassEconomy => "Tactical: Harass Player Minerals",
+            Self::AllOutAssault => "Tactical: All-out Base Assault",
+            Self::RegroupAndConsolidate => "Tactical: Regroup & Consolidate",
         }
     }
 }
@@ -70,23 +73,24 @@ pub struct RlBrain {
     pub epsilon: f32,
 }
 
-fn default_learning_rate() -> f32 { 0.01 }
+fn default_learning_rate() -> f32 { 0.015 }
 fn default_gamma() -> f32 { 0.95 }
 fn default_epsilon() -> f32 { 0.05 }
 
 impl Default for RlBrain {
     fn default() -> Self {
         if let Some(loaded) = Self::load_default_weights() {
-            loaded
-        } else {
-            Self::new_random(STATE_DIM, 32, ACTION_DIM)
+            if loaded.input_size == STATE_DIM && loaded.output_size == ACTION_DIM {
+                return loaded;
+            }
         }
+        Self::new_random(STATE_DIM, 48, ACTION_DIM)
     }
 }
 
 impl RlBrain {
     pub fn new_random(input_size: usize, hidden_size: usize, output_size: usize) -> Self {
-        let mut rng = fastrand::Rng::with_seed(42);
+        let mut rng = fastrand::Rng::with_seed(1337);
         let scale1 = (2.0 / (input_size as f32)).sqrt();
         let scale2 = (2.0 / (hidden_size as f32)).sqrt();
 
@@ -120,7 +124,7 @@ impl RlBrain {
             b1,
             w2,
             b2,
-            learning_rate: 0.01,
+            learning_rate: 0.015,
             gamma: 0.95,
             epsilon: 0.05,
         }
@@ -140,7 +144,7 @@ impl RlBrain {
                     sum += state[i] * self.w1[i][j];
                 }
             }
-            hidden[j] = sum.max(0.0); // ReLU
+            hidden[j] = sum.max(0.0); // LeakyReLU / ReLU
         }
 
         let mut outputs = vec![0.0; self.output_size];
@@ -194,7 +198,7 @@ impl RlBrain {
         let td_error = target - q_values[action_idx];
         let grad_out = td_error.clamp(-1.0, 1.0);
 
-        // Backprop to w2, b2
+        // Backprop w2, b2
         let mut grad_hidden = vec![0.0; self.hidden_size];
         for j in 0..self.hidden_size {
             grad_hidden[j] = self.w2[j][action_idx] * grad_out;
@@ -202,7 +206,7 @@ impl RlBrain {
         }
         self.b2[action_idx] += self.learning_rate * grad_out;
 
-        // Backprop to w1, b1 (ReLU derivative)
+        // Backprop w1, b1 (ReLU derivative)
         for j in 0..self.hidden_size {
             if hidden[j] > 0.0 {
                 let delta_h = grad_hidden[j];
@@ -216,4 +220,3 @@ impl RlBrain {
         }
     }
 }
-

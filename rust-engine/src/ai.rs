@@ -5,14 +5,11 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AiState {
-    pub attack_wave: u32,
-    pub is_attacking: bool,
-    pub wave_target_size: usize,
     pub rally_point: (f32, f32),
     pub expansion_attempted: bool,
     pub last_attack_target: Option<(f32, f32)>,
 
-    // RL State
+    // RL Brain & Policy State
     pub rl_brain: RlBrain,
     pub current_action: BotStrategicAction,
     pub decision_timer: f32,
@@ -24,14 +21,11 @@ pub struct AiState {
 impl Default for AiState {
     fn default() -> Self {
         Self {
-            attack_wave: 0,
-            is_attacking: false,
-            wave_target_size: 10,
-            rally_point: (1950.0, 580.0),
+            rally_point: (1850.0, 580.0),
             expansion_attempted: false,
             last_attack_target: None,
             rl_brain: RlBrain::default(),
-            current_action: BotStrategicAction::AutoEcoExpand,
+            current_action: BotStrategicAction::ExpandEco,
             decision_timer: 0.0,
             last_state: vec![0.0; STATE_DIM],
             cumulative_reward: 0.0,
@@ -47,17 +41,21 @@ pub fn extract_state_vector(engine: &GameEngine) -> Vec<f32> {
     let time_norm = (engine.game_time / 600.0).clamp(0.0, 1.0);
     s.push(time_norm);
 
-    // 2. Giai đoạn: Early (<90s), Mid (90-240s), Late (>240s)
-    let is_early = if engine.game_time < 90.0 { 1.0 } else { 0.0 };
-    let is_mid = if engine.game_time >= 90.0 && engine.game_time < 240.0 { 1.0 } else { 0.0 };
+    // 2-3. Giai đoạn: Early (<100s), Mid (100-260s)
+    let is_early = if engine.game_time < 100.0 { 1.0 } else { 0.0 };
+    let is_mid = if engine.game_time >= 100.0 && engine.game_time < 260.0 { 1.0 } else { 0.0 };
     s.push(is_early);
     s.push(is_mid);
 
-    // 3. Kinh tế Bot: Khoáng sản & Năng lượng (chuẩn hóa)
-    s.push((engine.enemy_eco.minerals / 1000.0).clamp(0.0, 2.0));
-    s.push((engine.enemy_eco.energy / 500.0).clamp(0.0, 2.0));
+    // 4-5. Kinh tế Bot: Khoáng sản & Năng lượng hiện tại
+    s.push((engine.enemy_eco.minerals / 800.0).clamp(0.0, 2.0));
+    s.push((engine.enemy_eco.energy / 400.0).clamp(0.0, 2.0));
 
-    // 4. Dân số & Dư địa Supply
+    // 6. Tốc độ thu nhập khoáng sản / s (so sánh với Player)
+    let income_rate = (engine.enemy_eco.minerals_per_sec / 50.0).clamp(0.0, 2.0);
+    s.push(income_rate);
+
+    // 7. Tỷ lệ Supply
     let supply_ratio = if engine.enemy_eco.max_supply > 0 {
         (engine.enemy_eco.supply as f32 / engine.enemy_eco.max_supply as f32).clamp(0.0, 1.0)
     } else {
@@ -65,44 +63,72 @@ pub fn extract_state_vector(engine: &GameEngine) -> Vec<f32> {
     };
     s.push(supply_ratio);
 
-    // 5. Số thợ mỏ & Số nhà chính
-    let workers = engine.units.iter().filter(|u| u.team == Team::Enemy && u.unit_type == UnitType::Engineer).count();
-    let ccs = engine.buildings.iter().filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::CommandCenter).count();
-    s.push((workers as f32 / 18.0).clamp(0.0, 1.0));
-    s.push((ccs as f32 / 3.0).clamp(0.0, 1.0));
+    // 8. Chênh lệch Supply so với trần (cảnh báo kẹt supply)
+    let supply_headroom = (engine.enemy_eco.max_supply.saturating_sub(engine.enemy_eco.supply)) as f32;
+    s.push((supply_headroom / 10.0).clamp(0.0, 2.0));
 
-    // 6. Số PowerReactor, Barracks, TurretTower
+    // 9-10. Số thợ mỏ & Số nhà chính của Bot
+    let my_workers = engine.units.iter().filter(|u| u.team == Team::Enemy && u.unit_type == UnitType::Engineer).count();
+    let my_ccs = engine.buildings.iter().filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::CommandCenter).count();
+    s.push((my_workers as f32 / 18.0).clamp(0.0, 1.5));
+    s.push((my_ccs as f32 / 3.0).clamp(0.0, 1.0));
+
+    // 11-13. Số Reactor, Converter, Barracks, Turret
     let reactors = engine.buildings.iter().filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::PowerReactor).count();
+    let converters = engine.buildings.iter().filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::EnergyConverter).count();
     let barracks = engine.buildings.iter().filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::Barracks).count();
     let turrets = engine.buildings.iter().filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::TurretTower).count();
-    s.push((reactors as f32 / 12.0).clamp(0.0, 1.0));
-    s.push((barracks as f32 / 6.0).clamp(0.0, 1.0));
-    s.push((turrets as f32 / 8.0).clamp(0.0, 1.0));
+    s.push((reactors as f32 / 10.0).clamp(0.0, 1.5));
+    s.push((converters as f32 / 3.0).clamp(0.0, 1.0));
+    s.push((barracks as f32 / 6.0).clamp(0.0, 1.5));
+    s.push((turrets as f32 / 8.0).clamp(0.0, 1.5));
 
-    // 7. Quân sự: Số lính chiến đấu phe mình và phe Player
+    // 14-16. Quân sự: Số lính chiến đấu phe Bot vs Player
     let enemy_combat = engine.units.iter().filter(|u| u.team == Team::Enemy && u.unit_type != UnitType::Engineer).count();
     let player_combat = engine.units.iter().filter(|u| u.team == Team::Player && u.unit_type != UnitType::Engineer).count();
-    s.push((enemy_combat as f32 / 40.0).clamp(0.0, 1.5));
+    s.push((enemy_combat as f32 / 35.0).clamp(0.0, 2.0));
+    s.push((player_combat as f32 / 35.0).clamp(0.0, 2.0));
     let mil_ratio = ((enemy_combat as f32 + 1.0) / (player_combat as f32 + 1.0)).clamp(0.1, 5.0) / 2.5 - 1.0;
     s.push(mil_ratio);
 
-    // 8. Số công nghệ đã unlock của Bot vs Player
+    // 17-18. Số công nghệ đã mở khóa của Bot vs Player
     let enemy_techs = count_unlocked_techs(&engine.enemy_tech);
     let player_techs = count_unlocked_techs(&engine.player_tech);
     s.push((enemy_techs as f32 / 8.0).clamp(0.0, 1.0));
     s.push((player_techs as f32 / 8.0).clamp(0.0, 1.0));
 
-    // 9. Căn cứ bị đe dọa (có lính Player gần CC địch trong vòng 650px)
-    let base_pos = (2150.0, 350.0);
-    let threatened = engine.units.iter().any(|u| {
-        u.team == Team::Player && ((u.x - base_pos.0).powi(2) + (u.y - base_pos.1).powi(2)) < 650.0_f32.powi(2)
+    // 19. Căn cứ Bot có đang bị đe dọa trực tiếp (lính Player tiếp cận <700px)
+    let bot_base = (2150.0, 350.0);
+    let base_threat = engine.units.iter().any(|u| {
+        u.team == Team::Player && ((u.x - bot_base.0).powi(2) + (u.y - bot_base.1).powi(2)) < 700.0_f32.powi(2)
     });
-    s.push(if threatened { 1.0 } else { 0.0 });
+    s.push(if base_threat { 1.0 } else { 0.0 });
+
+    // 20. Khoảng cách gần nhất từ cánh quân Player tới căn cứ Bot
+    let nearest_enemy_dist = engine.units.iter()
+        .filter(|u| u.team == Team::Player)
+        .map(|u| ((u.x - bot_base.0).powi(2) + (u.y - bot_base.1).powi(2)).sqrt())
+        .min_by(|a, b| a.partial_cmp(b).unwrap())
+        .unwrap_or(2400.0);
+    s.push((nearest_enemy_dist / 2400.0).clamp(0.0, 1.0));
+
+    // 21. Thợ mỏ của Player (thông tin để Bot quyết định Harass)
+    let player_workers = engine.units.iter().filter(|u| u.team == Team::Player && u.unit_type == UnitType::Engineer).count();
+    s.push((player_workers as f32 / 16.0).clamp(0.0, 1.5));
+
+    // 22. Tình trạng nhà chính Player (còn bao nhiêu CC)
+    let player_ccs = engine.buildings.iter().filter(|b| b.team == Team::Player && b.building_type == BuildingType::CommandCenter).count();
+    s.push((player_ccs as f32 / 2.0).clamp(0.0, 1.0));
+
+    // Đảm bảo đủ 24 chiều
+    while s.len() < STATE_DIM {
+        s.push(0.0);
+    }
 
     s
 }
 
-fn count_unlocked_techs(tech: &crate::resources::TechTreeState) -> usize {
+pub fn count_unlocked_techs(tech: &crate::resources::TechTreeState) -> usize {
     let mut count = 0;
     if tech.focused_laser { count += 1; }
     if tech.energy_shielding { count += 1; }
@@ -127,12 +153,12 @@ fn count_unlocked_techs(tech: &crate::resources::TechTreeState) -> usize {
 }
 
 pub fn update_ai(engine: &mut GameEngine) {
-    // 1. Phân bổ thợ mỏ rảnh (Micro reflex cơ bản giữ nguyên để bot không bao giờ đứng nhìn)
+    // Tự động phân công thợ mỏ rảnh đi đào quặng
     assign_idle_enemy_workers(engine);
 
-    // 2. Chu kỳ ra quyết định Chiến lược bằng RL (2.0s / lần)
+    // Chu kỳ ra quyết định RL (mỗi 1.5s in-game)
     engine.ai_state.decision_timer += 0.5;
-    if engine.ai_state.decision_timer >= 2.0 {
+    if engine.ai_state.decision_timer >= 1.5 {
         engine.ai_state.decision_timer = 0.0;
 
         let state = extract_state_vector(engine);
@@ -143,8 +169,8 @@ pub fn update_ai(engine: &mut GameEngine) {
         apply_strategic_action(engine, action);
     }
 
-    // 3. Xử lý các hành động Direct / Manual nếu đang chọn chế độ Manual
-    execute_active_strategy(engine);
+    // Luôn duy trì phản xạ vi mô liên tục (Continuous Micro-Executors)
+    maintain_continuous_ai_reflexes(engine);
 }
 
 fn assign_idle_enemy_workers(engine: &mut GameEngine) {
@@ -186,273 +212,566 @@ fn assign_idle_enemy_workers(engine: &mut GameEngine) {
 
 pub fn apply_strategic_action(engine: &mut GameEngine, action: BotStrategicAction) {
     match action {
-        BotStrategicAction::AutoEcoExpand => {
-            engine.enemy_autoplay.config.enabled = true;
-            engine.enemy_autoplay.config.priority_techs = vec![
-                "optical_drills".to_string(),
-                "overcharged_reactors".to_string(),
-                "fortified_blueprints".to_string(),
-            ];
-            // Kích hoạt xây dựng nhà mở rộng kinh tế
-            configure_enemy_autoplay_eco(&mut engine.enemy_autoplay.config);
+        BotStrategicAction::ExpandEco => {
+            // Mở rộng kinh tế: Đào mỏ, thêm thợ mỏ từ CommandCenter và mở rộng căn cứ phụ
+            execute_bot_eco(engine, true);
+            execute_bot_training(engine, &[UnitType::ShockTrooper, UnitType::Rifleman]);
         }
-        BotStrategicAction::AutoDefenseFortify => {
-            engine.enemy_autoplay.config.enabled = true;
-            engine.enemy_autoplay.config.turret_defense.enabled = true;
-            engine.enemy_autoplay.config.turret_defense.rows = 2;
-            engine.enemy_autoplay.config.priority_techs = vec![
-                "titan_alloy_plating".to_string(),
-                "overload_strike".to_string(),
-                "fortified_blueprints".to_string(),
-            ];
-            configure_enemy_autoplay_defense(&mut engine.enemy_autoplay.config);
+        BotStrategicAction::BuildInfrastructure => {
+            // Cân bằng hạ tầng: PowerReactor + Converter + SupplyDepot
+            execute_bot_infrastructure(engine);
+            execute_bot_training(engine, &[UnitType::ShockTrooper, UnitType::Rifleman]);
         }
-        BotStrategicAction::AutoTechScience => {
-            engine.enemy_autoplay.config.enabled = true;
-            engine.enemy_autoplay.config.priority_techs = vec![
-                "focused_laser".to_string(),
-                "energy_shielding".to_string(),
-                "dark_matter_rockets".to_string(),
-                "titan_alloy_plating".to_string(),
-            ];
-            configure_enemy_autoplay_units(&mut engine.enemy_autoplay.config, vec![
-                ("LaserMarksman".to_string(), 2),
-                ("Vanguard".to_string(), 1),
-                ("DarkRocketeer".to_string(), 1),
-            ]);
+        BotStrategicAction::BuildDefenseGrid => {
+            // Xây dựng phòng tuyến tháp pháo và chống nghẽn
+            execute_bot_defense(engine);
+            execute_bot_training(engine, &[UnitType::ShockTrooper, UnitType::Rifleman]);
         }
-        BotStrategicAction::AutoTechMagic => {
-            engine.enemy_autoplay.config.enabled = true;
-            engine.enemy_autoplay.config.priority_techs = vec![
-                "celestial_flying_swords".to_string(),
-                "golden_bell_shield".to_string(),
-                "corrosive_curse".to_string(),
-                "void_cataclysm".to_string(),
-            ];
-            configure_enemy_autoplay_units(&mut engine.enemy_autoplay.config, vec![
-                ("TaoistSwordmaster".to_string(), 2),
-                ("VoidWarlock".to_string(), 2),
-            ]);
+        BotStrategicAction::TechScienceBranch => {
+            // Nghiên cứu nhánh Khoa học & sản xuất quân tương ứng
+            try_bot_research(engine, &["focused_laser", "energy_shielding", "dark_matter_rockets", "titan_alloy_plating"]);
+            execute_bot_training(engine, &[UnitType::LaserMarksman, UnitType::Vanguard, UnitType::DarkRocketeer]);
         }
-        BotStrategicAction::AutoTechMonster => {
-            engine.enemy_autoplay.config.enabled = true;
-            engine.enemy_autoplay.config.priority_techs = vec![
-                "primeval_scales".to_string(),
-                "behemoth_mutation".to_string(),
-                "acid_banelings".to_string(),
-                "hive_proliferation".to_string(),
-            ];
-            configure_enemy_autoplay_units(&mut engine.enemy_autoplay.config, vec![
-                ("AcidBaneling".to_string(), 3),
-                ("BehemothTitan".to_string(), 1),
-            ]);
+        BotStrategicAction::TechMagicBranch => {
+            // Nghiên cứu nhánh Ma thuật & sản xuất quân tương ứng
+            try_bot_research(engine, &["celestial_flying_swords", "golden_bell_shield", "corrosive_curse", "void_cataclysm"]);
+            execute_bot_training(engine, &[UnitType::TaoistSwordmaster, UnitType::VoidWarlock]);
         }
-        BotStrategicAction::AutoAggressiveRush => {
-            engine.enemy_autoplay.config.enabled = true;
-            configure_enemy_autoplay_rush(&mut engine.enemy_autoplay.config);
+        BotStrategicAction::TechMonsterBranch => {
+            // Nghiên cứu nhánh Quái vật & sản xuất quân tương ứng
+            try_bot_research(engine, &["primeval_scales", "behemoth_mutation", "acid_banelings", "hive_proliferation"]);
+            execute_bot_training(engine, &[UnitType::AcidBaneling, UnitType::BehemothTitan]);
         }
-        BotStrategicAction::ManualDefendAndRepair => {
-            // Tạm dừng tấn công của Auto, điều khiển toàn bộ quân chiến đấu về bảo vệ căn cứ
-            engine.enemy_autoplay.config.enabled = false;
-            let main_base_pos = (2150.0, 350.0);
-            direct_defend_base(engine, main_base_pos);
+        BotStrategicAction::MilitarySwarmRush => {
+            // Tổng lực sản xuất lính cơ bản tốc độ cao để dồn ép
+            execute_bot_training(engine, &[UnitType::ShockTrooper, UnitType::Rifleman]);
+            command_bot_military(engine, MilitaryCommand::HarassOrAttack);
         }
-        BotStrategicAction::ManualStageAndHarass => {
-            engine.enemy_autoplay.config.enabled = false;
-            direct_stage_units(engine);
+        BotStrategicAction::DefendAndCounter => {
+            // Thủ căn cứ và sẵn sàng phản công
+            command_bot_military(engine, MilitaryCommand::DefendBase);
+            execute_bot_training(engine, &[UnitType::ShockTrooper, UnitType::Rifleman]);
         }
-        BotStrategicAction::ManualAllOutAttack => {
-            engine.enemy_autoplay.config.enabled = false;
-            direct_all_out_attack(engine);
+        BotStrategicAction::HarassEconomy => {
+            // Đột kích thợ mỏ người chơi
+            command_bot_military(engine, MilitaryCommand::HarassWorkers);
+            execute_bot_training(engine, &[UnitType::ShockTrooper, UnitType::Rifleman]);
         }
-        BotStrategicAction::ManualRetreatAndRegroup => {
-            engine.enemy_autoplay.config.enabled = false;
-            direct_retreat_units(engine);
+        BotStrategicAction::AllOutAssault => {
+            // Tổng tiến công tiêu diệt nhà chính Player
+            command_bot_military(engine, MilitaryCommand::AllOutAssault);
+            execute_bot_training(engine, &[UnitType::ShockTrooper, UnitType::Rifleman]);
+        }
+        BotStrategicAction::RegroupAndConsolidate => {
+            // Rút về điểm tập kết củng cố đội hình
+            command_bot_military(engine, MilitaryCommand::Regroup);
+            execute_bot_training(engine, &[UnitType::ShockTrooper, UnitType::Rifleman]);
         }
     }
 }
 
-fn configure_enemy_autoplay_eco(config: &mut crate::autoplay::AutoPlayConfig) {
-    if let Some(loop_prod) = config.loops.iter_mut().find(|l| l.id == "loop_production") {
-        for card in loop_prod.cards.iter_mut() {
-            if card.id == "card_prod_worker" {
-                card.enabled = true;
-                card.conditions = vec![crate::autoplay::AutoCondition::UnitCountLessThan {
-                    unit_type: "Engineer".to_string(),
-                    count: 16,
-                }];
-            }
-            if card.id == "card_prod_reactor" {
-                card.enabled = true;
-            }
-            if card.id == "card_prod_converter" {
-                card.enabled = true;
+fn maintain_continuous_ai_reflexes(engine: &mut GameEngine) {
+    let base_pos = (2150.0, 350.0);
+
+    // 1. Duy trì sản xuất thợ mỏ cơ bản
+    let enemy_workers = engine.units.iter().filter(|u| u.team == Team::Enemy && u.unit_type == UnitType::Engineer).count();
+    let enemy_ccs = engine.buildings.iter().filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::CommandCenter).count();
+    let worker_target = if enemy_ccs > 1 { 22 } else { 14 };
+    if enemy_workers < worker_target && engine.enemy_eco.supply < engine.enemy_eco.max_supply && engine.enemy_eco.minerals >= 50.0 {
+        if let Some(cc) = engine.buildings.iter_mut().find(|b| {
+            b.team == Team::Enemy && b.building_type == BuildingType::CommandCenter && b.build_progress >= 1.0 && b.training_queue.len() < 2
+        }) {
+            engine.enemy_eco.minerals -= 50.0;
+            cc.training_queue.push(UnitType::Engineer);
+        }
+    }
+
+    // 2. Chống kẹt dân số (Supply Depot): Mở rộng trần dân số chủ động lên 200
+    let under_construction_depots = engine.buildings.iter().filter(|b| {
+        b.team == Team::Enemy && b.building_type == BuildingType::SupplyDepot && b.build_progress < 1.0
+    }).count();
+    let needs_depot = engine.enemy_eco.supply + 6 >= engine.enemy_eco.max_supply;
+    if needs_depot && engine.enemy_eco.max_supply < 200 && under_construction_depots == 0 && engine.enemy_eco.minerals >= 100.0 {
+        let (depot_cost, _) = engine.config.get_building_cost(BuildingType::SupplyDepot);
+        if engine.enemy_eco.minerals >= depot_cost {
+            if let Some((bx, by)) = crate::autoplay::find_team_build_spot(engine, Team::Enemy, BuildingType::SupplyDepot) {
+                crate::autoplay::try_team_auto_build(engine, Team::Enemy, BuildingType::SupplyDepot, bx, by);
             }
         }
     }
-}
 
-fn configure_enemy_autoplay_defense(config: &mut crate::autoplay::AutoPlayConfig) {
-    if let Some(loop_prod) = config.loops.iter_mut().find(|l| l.id == "loop_production") {
-        for card in loop_prod.cards.iter_mut() {
-            if card.id == "card_prod_turret" {
-                card.enabled = true;
-                card.action = crate::autoplay::AutoAction::BuildStructure {
-                    building_type: "TurretTower".to_string(),
-                    count: 3,
-                };
+    // 3. Xây Power Reactor để có năng lượng dùng cho tech và vũ khí cao cấp
+    let reactors = engine.buildings.iter().filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::PowerReactor).count();
+    if reactors < 3 && engine.enemy_eco.minerals >= 100.0 {
+        let under_construction = engine.buildings.iter().any(|b| {
+            b.team == Team::Enemy && b.building_type == BuildingType::PowerReactor && b.build_progress < 1.0
+        });
+        if !under_construction {
+            if let Some((bx, by)) = crate::autoplay::find_team_build_spot(engine, Team::Enemy, BuildingType::PowerReactor) {
+                crate::autoplay::try_team_auto_build(engine, Team::Enemy, BuildingType::PowerReactor, bx, by);
+            }
+        }
+    } else if reactors < 14 && engine.enemy_eco.minerals >= 180.0 {
+        let under_construction = engine.buildings.iter().any(|b| {
+            b.team == Team::Enemy && b.building_type == BuildingType::PowerReactor && b.build_progress < 1.0
+        });
+        if !under_construction {
+            if let Some((bx, by)) = crate::autoplay::find_team_build_spot(engine, Team::Enemy, BuildingType::PowerReactor) {
+                crate::autoplay::try_team_auto_build(engine, Team::Enemy, BuildingType::PowerReactor, bx, by);
             }
         }
     }
-}
 
-fn configure_enemy_autoplay_rush(config: &mut crate::autoplay::AutoPlayConfig) {
-    if let Some(loop_mil) = config.loops.iter_mut().find(|l| l.id == "loop_military") {
-        for card in loop_mil.cards.iter_mut() {
-            if card.id == "card_mil_attack" {
-                card.conditions = vec![crate::autoplay::AutoCondition::UnitCountGreaterThan {
-                    unit_type: "Combat".to_string(),
-                    count: 12,
-                }];
+    // 3.5. Xây EnergyConverter để biến Năng lượng thành Khoáng sản (Biến năng lượng thừa thành lính!)
+    let converters = engine.buildings.iter().filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::EnergyConverter).count();
+    let under_construction_conv = engine.buildings.iter().any(|b| {
+        b.team == Team::Enemy && b.building_type == BuildingType::EnergyConverter && b.build_progress < 1.0
+    });
+    if !under_construction_conv && engine.enemy_eco.minerals >= 150.0 && engine.enemy_eco.energy >= 50.0 {
+        if converters < (reactors / 2).min(6).max(1) && (reactors >= 2 || engine.enemy_eco.energy >= 250.0) {
+            if let Some((bx, by)) = crate::autoplay::find_team_build_spot(engine, Team::Enemy, BuildingType::EnergyConverter) {
+                crate::autoplay::try_team_auto_build(engine, Team::Enemy, BuildingType::EnergyConverter, bx, by);
             }
         }
     }
-}
 
-fn configure_enemy_autoplay_units(
-    config: &mut crate::autoplay::AutoPlayConfig,
-    unit_targets: Vec<(String, u32)>,
-) {
-    if let Some(loop_mil) = config.loops.iter_mut().find(|l| l.id == "loop_military") {
-        for (idx, (u_type, count)) in unit_targets.into_iter().enumerate() {
-            let card_id = format!("card_mil_evo_{}", idx);
-            if let Some(existing) = loop_mil.cards.iter_mut().find(|c| c.id == card_id) {
-                existing.action = crate::autoplay::AutoAction::TrainUnit {
-                    unit_type: u_type,
-                    count,
-                };
-            } else {
-                loop_mil.cards.push(crate::autoplay::AutoCard {
-                    id: card_id,
-                    name: format!("Sản xuất {}", u_type),
-                    enabled: true,
-                    conditions: vec![crate::autoplay::AutoCondition::Always],
-                    action: crate::autoplay::AutoAction::TrainUnit {
-                        unit_type: u_type,
-                        count,
-                    },
-                });
+    // 4. Xây Barracks (Trại lính): Mở rộng dây chuyền sản xuất quân đội theo đà kinh tế
+    let barracks = engine.buildings.iter().filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::Barracks).count();
+    let under_construction_barracks = engine.buildings.iter().any(|b| {
+        b.team == Team::Enemy && b.building_type == BuildingType::Barracks && b.build_progress < 1.0
+    });
+    if !under_construction_barracks && engine.enemy_eco.minerals >= 150.0 {
+        let should_build_barracks = match barracks {
+            0 => true,
+            1 => enemy_workers >= 6,
+            2 => enemy_workers >= 10 && reactors >= 2,
+            3 => enemy_workers >= 12 && reactors >= 3,
+            4 => enemy_workers >= 14 && reactors >= 3,
+            5 => enemy_workers >= 14 && reactors >= 4,
+            6 => enemy_workers >= 14 && reactors >= 4,
+            7 => engine.enemy_eco.minerals >= 200.0,
+            8 => engine.enemy_eco.minerals >= 220.0,
+            9 => engine.enemy_eco.minerals >= 250.0,
+            _ => false,
+        };
+        if should_build_barracks {
+            if let Some((bx, by)) = crate::autoplay::find_team_build_spot(engine, Team::Enemy, BuildingType::Barracks) {
+                crate::autoplay::try_team_auto_build(engine, Team::Enemy, BuildingType::Barracks, bx, by);
             }
         }
     }
-}
 
-fn direct_defend_base(engine: &mut GameEngine, base_pos: (f32, f32)) {
-    let nearest_enemy_unit = engine
-        .units
-        .iter()
-        .filter(|u| u.team == Team::Player)
-        .min_by(|a, b| {
-            let da = (a.x - base_pos.0).powi(2) + (a.y - base_pos.1).powi(2);
-            let db = (b.x - base_pos.0).powi(2) + (b.y - base_pos.1).powi(2);
-            da.partial_cmp(&db).unwrap()
-        })
-        .map(|u| (u.x, u.y));
-
-    let threat_target = nearest_enemy_unit.unwrap_or(base_pos);
-
-    for u in engine.units.iter_mut() {
-        if u.team == Team::Enemy && u.unit_type != UnitType::Engineer {
-            u.order = UnitOrder::AttackMove {
-                x: threat_target.0,
-                y: threat_target.1,
-            };
+    // 4.5. Xây TurretTower phòng tuyến căn cứ nếu có năng lượng
+    let turrets = engine.buildings.iter().filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::TurretTower).count();
+    let under_construction_turrets = engine.buildings.iter().any(|b| {
+        b.team == Team::Enemy && b.building_type == BuildingType::TurretTower && b.build_progress < 1.0
+    });
+    if turrets < 10 && !under_construction_turrets && engine.enemy_eco.minerals >= 100.0 && engine.enemy_eco.energy >= 50.0 {
+        if let Some((bx, by)) = crate::autoplay::find_team_build_spot(engine, Team::Enemy, BuildingType::TurretTower) {
+            crate::autoplay::try_team_auto_build(engine, Team::Enemy, BuildingType::TurretTower, bx, by);
         }
     }
-}
 
-fn direct_stage_units(engine: &mut GameEngine) {
-    let rally = engine.ai_state.rally_point;
-    let combat_units: Vec<u32> = engine
-        .units
-        .iter()
-        .filter(|u| u.team == Team::Enemy && u.unit_type != UnitType::Engineer)
+    // 4.8. Luôn chủ động nâng cấp cây công nghệ khi có năng lượng thừa để mở khóa quân hạng nặng
+    if engine.enemy_tech.active_researches.len() < 2 && engine.enemy_eco.energy >= 100.0 {
+        let tech_priorities = [
+            "dark_matter_rockets",
+            "focused_laser",
+            "energy_shielding",
+            "overcharged_reactors",
+            "titan_alloy_plating",
+            "celestial_flying_swords",
+            "golden_bell_shield",
+            "acid_banelings",
+            "hive_proliferation",
+        ];
+        for &t in &tech_priorities {
+            if !crate::simulation::is_tech_unlocked(&engine.enemy_tech, t)
+                && !engine.enemy_tech.active_researches.iter().any(|r| r.tech_id == t)
+            {
+                if crate::simulation::process_start_research(
+                    &mut engine.enemy_tech,
+                    &mut engine.enemy_eco,
+                    &engine.config,
+                    t,
+                ) {
+                    break;
+                }
+            }
+        }
+    }
+
+    // 5. Luôn duy trì sản xuất quân tại mọi trại lính rảnh rỗi (Never let Barracks idle!)
+    execute_bot_continuous_recruitment(engine);
+
+    // 6. Điều phối quân sự thông minh:
+    let enemy_combat = engine.units.iter().filter(|u| u.team == Team::Enemy && u.unit_type != UnitType::Engineer).count();
+    let _player_combat = engine.units.iter().filter(|u| u.team == Team::Player && u.unit_type != UnitType::Engineer).count();
+
+    // 6.1. Nếu căn cứ Bot bị đe dọa trực tiếp (<750px), lập tức kéo quân về phòng thủ
+    let has_threat = engine.units.iter().any(|u| {
+        u.team == Team::Player && ((u.x - base_pos.0).powi(2) + (u.y - base_pos.1).powi(2)) < 750.0_f32.powi(2)
+    });
+    if has_threat {
+        command_bot_military(engine, MilitaryCommand::DefendBase);
+        return;
+    }
+
+    // 6.2. Đòn timing attack áp đảo & Duy trì áp lực tấn công liên tục:
+    let has_siege_tech = engine.enemy_tech.dark_matter_rockets || engine.enemy_tech.focused_laser;
+    let assault_threshold = if has_siege_tech { 16 } else { 22 };
+
+    let is_on_offensive = enemy_combat >= assault_threshold || engine.units.iter().any(|u| {
+        u.team == Team::Enemy && u.unit_type != UnitType::Engineer && (u.x < 1400.0 || u.y > 1100.0)
+    });
+
+    if is_on_offensive {
+        command_bot_military(engine, MilitaryCommand::AllOutAssault);
+        return;
+    }
+
+    // 6.3. Khi chưa đủ quân số công thành và chưa tiến công, chỉ đưa các lính mới tại căn cứ (x > 1600) về điểm tập kết rally
+    let idle_combat_units: Vec<u32> = engine.units.iter()
+        .filter(|u| u.team == Team::Enemy && u.unit_type != UnitType::Engineer && u.order == UnitOrder::Idle && u.x > 1600.0)
         .map(|u| u.id)
         .collect();
-
-    for (i, uid) in combat_units.iter().enumerate() {
+    for (i, uid) in idle_combat_units.iter().enumerate() {
         if let Some(u) = engine.units.iter_mut().find(|u| u.id == *uid) {
-            if matches!(u.order, UnitOrder::Idle) {
-                let offset_x = ((i % 5) as f32 - 2.0) * 26.0;
-                let offset_y = ((i / 5) as f32) * 26.0;
-                u.order = UnitOrder::MoveTo {
-                    x: rally.0 + offset_x,
-                    y: rally.1 + offset_y,
-                };
-            }
-        }
-    }
-}
-
-fn direct_all_out_attack(engine: &mut GameEngine) {
-    let player_target = engine
-        .buildings
-        .iter()
-        .find(|b| b.team == Team::Player && b.building_type == BuildingType::CommandCenter)
-        .map(|b| (b.x, b.y))
-        .or_else(|| {
-            engine
-                .buildings
-                .iter()
-                .find(|b| b.team == Team::Player)
-                .map(|b| (b.x, b.y))
-        })
-        .unwrap_or((250.0, 2050.0));
-
-    let combat_units: Vec<u32> = engine
-        .units
-        .iter()
-        .filter(|u| u.team == Team::Enemy && u.unit_type != UnitType::Engineer)
-        .map(|u| u.id)
-        .collect();
-
-    for (i, uid) in combat_units.iter().enumerate() {
-        if let Some(u) = engine.units.iter_mut().find(|u| u.id == *uid) {
-            let offset_x = ((i % 6) as f32 - 2.5) * 28.0;
-            let offset_y = ((i / 6) as f32) * 28.0;
-            u.order = UnitOrder::AttackMove {
-                x: player_target.0 + offset_x,
-                y: player_target.1 + offset_y,
-            };
-        }
-    }
-}
-
-fn direct_retreat_units(engine: &mut GameEngine) {
-    let retreat_point = (2150.0, 350.0);
-    for u in engine.units.iter_mut() {
-        if u.team == Team::Enemy && u.unit_type != UnitType::Engineer {
+            let offset_x = ((i % 5) as f32 - 2.0) * 25.0;
+            let offset_y = ((i / 5) as f32) * 25.0;
             u.order = UnitOrder::MoveTo {
-                x: retreat_point.0,
-                y: retreat_point.1,
+                x: 1750.0 + offset_x,
+                y: 650.0 + offset_y,
             };
         }
     }
 }
 
-fn execute_active_strategy(engine: &mut GameEngine) {
-    match engine.ai_state.current_action {
-        BotStrategicAction::ManualDefendAndRepair => {
+fn execute_bot_continuous_recruitment(engine: &mut GameEngine) {
+    if engine.enemy_eco.supply >= engine.enemy_eco.max_supply {
+        return;
+    }
+
+    let enemy_combat = engine.units.iter().filter(|u| u.team == Team::Enemy && u.unit_type != UnitType::Engineer).count();
+
+    // Giữ quỹ dự phòng khoáng sản cho nghiên cứu công nghệ tối thượng (Dark Matter Rockets 220 min)
+    let needs_tech = !engine.enemy_tech.dark_matter_rockets || !engine.enemy_tech.energy_shielding;
+    let mineral_reserve = if needs_tech && enemy_combat >= 6 { 230.0 } else if enemy_combat >= 6 { 100.0 } else { 0.0 };
+
+    let completed_barracks: Vec<u32> = engine.buildings.iter()
+        .filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::Barracks && b.build_progress >= 1.0 && b.training_queue.len() < 2)
+        .map(|b| b.id)
+        .collect();
+
+    for bid in completed_barracks {
+        if engine.enemy_eco.supply >= engine.enemy_eco.max_supply {
+            break;
+        }
+
+        let mut recruited = false;
+        let priority_units = [
+            UnitType::DarkRocketeer,
+            UnitType::LaserMarksman,
+            UnitType::Vanguard,
+            UnitType::BehemothTitan,
+            UnitType::VoidWarlock,
+            UnitType::TaoistSwordmaster,
+            UnitType::AcidBaneling,
+        ];
+
+        for &u_type in &priority_units {
+            if !crate::autoplay::can_train_unit(&engine.enemy_tech, u_type) {
+                continue;
+            }
+            let (mut min_cost, mut en_cost) = engine.config.get_unit_cost(u_type);
+            if engine.enemy_tech.hive_proliferation {
+                min_cost *= 0.65;
+                en_cost *= 0.65;
+            }
+            if engine.enemy_eco.minerals >= mineral_reserve + min_cost && engine.enemy_eco.energy >= en_cost {
+                engine.enemy_eco.minerals -= min_cost;
+                engine.enemy_eco.energy -= en_cost;
+                if let Some(b) = engine.buildings.iter_mut().find(|b| b.id == bid) {
+                    b.training_queue.push(u_type);
+                    recruited = true;
+                    break;
+                }
+            }
+        }
+
+        // Tuyển lính cơ bản (Rifleman / ShockTrooper) nếu còn tiền VƯỢT TRÊN mức quỹ dự phòng mineral_reserve
+        if !recruited {
+            let basic_units = [UnitType::ShockTrooper, UnitType::Rifleman];
+            for &u_type in &basic_units {
+                let (mut min_cost, _) = engine.config.get_unit_cost(u_type);
+                if engine.enemy_tech.hive_proliferation {
+                    min_cost *= 0.65;
+                }
+                if engine.enemy_eco.minerals >= mineral_reserve + min_cost {
+                    engine.enemy_eco.minerals -= min_cost;
+                    if let Some(b) = engine.buildings.iter_mut().find(|b| b.id == bid) {
+                        b.training_queue.push(u_type);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn execute_bot_eco(engine: &mut GameEngine, try_expansion: bool) {
+    let enemy_workers = engine.units.iter().filter(|u| u.team == Team::Enemy && u.unit_type == UnitType::Engineer).count();
+    let enemy_ccs = engine.buildings.iter().filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::CommandCenter).count();
+
+    // Mua thợ mỏ nếu còn thiếu (< 16 thợ)
+    if enemy_workers < 16 && engine.enemy_eco.supply < engine.enemy_eco.max_supply {
+        let (w_cost, _) = engine.config.get_unit_cost(UnitType::Engineer);
+        if engine.enemy_eco.minerals >= w_cost {
+            if let Some(cc) = engine.buildings.iter_mut().find(|b| {
+                b.team == Team::Enemy && b.building_type == BuildingType::CommandCenter && b.build_progress >= 1.0 && b.training_queue.len() < 2
+            }) {
+                engine.enemy_eco.minerals -= w_cost;
+                cc.training_queue.push(UnitType::Engineer);
+            }
+        }
+    }
+
+    // Xây CommandCenter mở rộng mỏ phụ nếu có đủ tiền
+    if try_expansion && enemy_ccs < 2 && engine.enemy_eco.minerals >= 400.0 {
+        if let Some((bx, by)) = crate::autoplay::find_team_build_spot(engine, Team::Enemy, BuildingType::CommandCenter) {
+            crate::autoplay::try_team_auto_build(engine, Team::Enemy, BuildingType::CommandCenter, bx, by);
+        }
+    }
+}
+
+fn execute_bot_infrastructure(engine: &mut GameEngine) {
+    let reactors = engine.buildings.iter().filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::PowerReactor).count();
+    let converters = engine.buildings.iter().filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::EnergyConverter).count();
+    let barracks = engine.buildings.iter().filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::Barracks).count();
+
+    // Xây Barracks (trại lính) nếu còn ít (< 4 trại lính)
+    if barracks < 4 {
+        let (barracks_cost, _) = engine.config.get_building_cost(BuildingType::Barracks);
+        if engine.enemy_eco.minerals >= barracks_cost {
+            let under_construction = engine.buildings.iter().any(|b| {
+                b.team == Team::Enemy && b.building_type == BuildingType::Barracks && b.build_progress < 1.0
+            });
+            if !under_construction {
+                if let Some((bx, by)) = crate::autoplay::find_team_build_spot(engine, Team::Enemy, BuildingType::Barracks) {
+                    crate::autoplay::try_team_auto_build(engine, Team::Enemy, BuildingType::Barracks, bx, by);
+                }
+            }
+        }
+    }
+
+    // Xây PowerReactor nếu năng lượng thấp hoặc ít lò (< 8 lò)
+    if reactors < 8 {
+        let (reactor_cost, _) = engine.config.get_building_cost(BuildingType::PowerReactor);
+        if engine.enemy_eco.minerals >= reactor_cost {
+            let under_construction = engine.buildings.iter().any(|b| {
+                b.team == Team::Enemy && b.building_type == BuildingType::PowerReactor && b.build_progress < 1.0
+            });
+            if !under_construction {
+                if let Some((bx, by)) = crate::autoplay::find_team_build_spot(engine, Team::Enemy, BuildingType::PowerReactor) {
+                    crate::autoplay::try_team_auto_build(engine, Team::Enemy, BuildingType::PowerReactor, bx, by);
+                }
+            }
+        }
+    }
+
+    // Xây EnergyConverter khi có nhiều hơn 3 Reactor
+    if reactors >= 3 && converters < (reactors / 3) {
+        let (conv_m, conv_e) = engine.config.get_building_cost(BuildingType::EnergyConverter);
+        if engine.enemy_eco.minerals >= conv_m && engine.enemy_eco.energy >= conv_e {
+            let under_construction = engine.buildings.iter().any(|b| {
+                b.team == Team::Enemy && b.building_type == BuildingType::EnergyConverter && b.build_progress < 1.0
+            });
+            if !under_construction {
+                if let Some((bx, by)) = crate::autoplay::find_team_build_spot(engine, Team::Enemy, BuildingType::EnergyConverter) {
+                    crate::autoplay::try_team_auto_build(engine, Team::Enemy, BuildingType::EnergyConverter, bx, by);
+                }
+            }
+        }
+    }
+}
+
+fn execute_bot_defense(engine: &mut GameEngine) {
+    let turrets = engine.buildings.iter().filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::TurretTower).count();
+    if turrets < 6 {
+        let (turret_m, turret_e) = engine.config.get_building_cost(BuildingType::TurretTower);
+        if engine.enemy_eco.minerals >= turret_m && engine.enemy_eco.energy >= turret_e {
+            if let Some((bx, by)) = crate::autoplay::find_team_build_spot(engine, Team::Enemy, BuildingType::TurretTower) {
+                crate::autoplay::try_team_auto_build(engine, Team::Enemy, BuildingType::TurretTower, bx, by);
+            }
+        }
+    }
+}
+
+fn try_bot_research(engine: &mut GameEngine, tech_chain: &[&str]) {
+    for &tech_id in tech_chain {
+        if !crate::simulation::is_tech_unlocked(&engine.enemy_tech, tech_id)
+            && !engine.enemy_tech.active_researches.iter().any(|r| r.tech_id == tech_id)
+        {
+            crate::simulation::process_start_research(
+                &mut engine.enemy_tech,
+                &mut engine.enemy_eco,
+                &engine.config,
+                tech_id,
+            );
+            break;
+        }
+    }
+}
+
+fn execute_bot_training(engine: &mut GameEngine, candidate_units: &[UnitType]) {
+    if engine.enemy_eco.supply >= engine.enemy_eco.max_supply {
+        return;
+    }
+
+    let completed_barracks: Vec<u32> = engine.buildings.iter()
+        .filter(|b| b.team == Team::Enemy && b.building_type == BuildingType::Barracks && b.build_progress >= 1.0 && b.training_queue.len() < 2)
+        .map(|b| b.id)
+        .collect();
+
+    for bid in completed_barracks {
+        if engine.enemy_eco.supply >= engine.enemy_eco.max_supply {
+            break;
+        }
+
+        for &u_type in candidate_units {
+            if u_type == UnitType::Engineer || !crate::autoplay::can_train_unit(&engine.enemy_tech, u_type) {
+                continue;
+            }
+
+            let (mut min_cost, mut en_cost) = engine.config.get_unit_cost(u_type);
+            if engine.enemy_tech.hive_proliferation {
+                min_cost *= 0.65;
+                en_cost *= 0.65;
+            }
+
+            if engine.enemy_eco.minerals >= min_cost && engine.enemy_eco.energy >= en_cost {
+                engine.enemy_eco.minerals -= min_cost;
+                engine.enemy_eco.energy -= en_cost;
+                if let Some(b) = engine.buildings.iter_mut().find(|b| b.id == bid) {
+                    b.training_queue.push(u_type);
+                    break;
+                }
+            }
+        }
+    }
+}
+
+enum MilitaryCommand {
+    DefendBase,
+    HarassWorkers,
+    HarassOrAttack,
+    AllOutAssault,
+    Regroup,
+}
+
+fn command_bot_military(engine: &mut GameEngine, cmd: MilitaryCommand) {
+    let combat_unit_ids: Vec<u32> = engine.units.iter()
+        .filter(|u| u.team == Team::Enemy && u.unit_type != UnitType::Engineer)
+        .map(|u| u.id)
+        .collect();
+
+    if combat_unit_ids.is_empty() {
+        return;
+    }
+
+    match cmd {
+        MilitaryCommand::DefendBase => {
             let base_pos = (2150.0, 350.0);
-            direct_defend_base(engine, base_pos);
+            let nearest_threat = engine.units.iter()
+                .filter(|u| u.team == Team::Player)
+                .min_by(|a, b| {
+                    let da = (a.x - base_pos.0).powi(2) + (a.y - base_pos.1).powi(2);
+                    let db = (b.x - base_pos.0).powi(2) + (b.y - base_pos.1).powi(2);
+                    da.partial_cmp(&db).unwrap()
+                })
+                .map(|u| (u.x, u.y))
+                .unwrap_or(base_pos);
+
+            for uid in combat_unit_ids {
+                if let Some(u) = engine.units.iter_mut().find(|u| u.id == uid) {
+                    u.order = UnitOrder::AttackMove { x: nearest_threat.0, y: nearest_threat.1 };
+                }
+            }
         }
-        BotStrategicAction::ManualAllOutAttack => {
-            direct_all_out_attack(engine);
+        MilitaryCommand::HarassWorkers => {
+            // Tìm thợ mỏ hoặc mỏ quặng người chơi đang khai thác
+            let player_worker_pos = engine.units.iter()
+                .find(|u| u.team == Team::Player && u.unit_type == UnitType::Engineer)
+                .map(|u| (u.x, u.y))
+                .unwrap_or((300.0, 1950.0));
+
+            for (i, uid) in combat_unit_ids.iter().enumerate() {
+                if let Some(u) = engine.units.iter_mut().find(|u| u.id == *uid) {
+                    let offset_x = ((i % 4) as f32 - 1.5) * 25.0;
+                    let offset_y = ((i / 4) as f32) * 25.0;
+                    u.order = UnitOrder::AttackMove {
+                        x: player_worker_pos.0 + offset_x,
+                        y: player_worker_pos.1 + offset_y,
+                    };
+                }
+            }
         }
-        BotStrategicAction::ManualRetreatAndRegroup => {
-            direct_retreat_units(engine);
+        MilitaryCommand::HarassOrAttack | MilitaryCommand::AllOutAssault => {
+            // Tác chiến tổng lực: Bao vây và dồn sát thương tiêu diệt nhà chính Player (CommandCenter)
+            let target = engine.buildings.iter()
+                .find(|b| b.team == Team::Player && b.building_type == BuildingType::CommandCenter)
+                .map(|b| (b.x, b.y))
+                .unwrap_or((250.0, 2050.0));
+
+            for (i, uid) in combat_unit_ids.iter().enumerate() {
+                if let Some(u) = engine.units.iter_mut().find(|u| u.id == *uid) {
+                    // Không ngắt nhịp nếu đơn vị đang bận khai hỏa vào mục tiêu (AttackTarget)
+                    if let UnitOrder::AttackTarget { .. } = u.order {
+                        continue;
+                    }
+                    // Nếu đang AttackMove về mục tiêu căn cứ rồi thì không làm gián đoạn
+                    if let UnitOrder::AttackMove { x, y } = u.order {
+                        let d_sq = (x - target.0).powi(2) + (y - target.1).powi(2);
+                        if d_sq < 90.0_f32.powi(2) {
+                            continue;
+                        }
+                    }
+
+                    // Tản nhẹ tọa độ xung quanh nhà chính để bao vây toàn diện
+                    let angle = (i as f32) * 0.45;
+                    let radius = 40.0 + ((i % 4) as f32) * 15.0;
+                    let target_x = (target.0 + angle.cos() * radius).clamp(60.0, 2340.0);
+                    let target_y = (target.1 + angle.sin() * radius).clamp(60.0, 2340.0);
+
+                    u.order = UnitOrder::AttackMove {
+                        x: target_x,
+                        y: target_y,
+                    };
+                }
+            }
         }
-        _ => {}
+        MilitaryCommand::Regroup => {
+            let rally = (1750.0, 650.0);
+            for (i, uid) in combat_unit_ids.iter().enumerate() {
+                if let Some(u) = engine.units.iter_mut().find(|u| u.id == *uid) {
+                    if let UnitOrder::AttackTarget { .. } = u.order {
+                        continue;
+                    }
+                    if let UnitOrder::MoveTo { x, y } = u.order {
+                        let d_sq = (x - rally.0).powi(2) + (y - rally.1).powi(2);
+                        if d_sq < 100.0_f32.powi(2) {
+                            continue;
+                        }
+                    }
+                    let offset_x = ((i % 5) as f32 - 2.0) * 25.0;
+                    let offset_y = ((i / 5) as f32) * 25.0;
+                    u.order = UnitOrder::MoveTo {
+                        x: rally.0 + offset_x,
+                        y: rally.1 + offset_y,
+                    };
+                }
+            }
+        }
     }
 }
 
@@ -463,9 +782,7 @@ mod tests {
     #[test]
     fn test_ai_state_default() {
         let state = AiState::default();
-        assert_eq!(state.attack_wave, 0);
-        assert!(!state.is_attacking);
-        assert_eq!(state.current_action, BotStrategicAction::AutoEcoExpand);
+        assert_eq!(state.current_action, BotStrategicAction::ExpandEco);
     }
 
     #[test]
@@ -477,7 +794,7 @@ mod tests {
 
     #[test]
     fn test_strategic_action_mapping() {
-        for idx in 0..10 {
+        for idx in 0..11 {
             let action = BotStrategicAction::from_index(idx);
             assert_eq!(action.to_index(), idx);
         }

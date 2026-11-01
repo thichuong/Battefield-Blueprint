@@ -142,7 +142,10 @@ impl AutoPlayConfig {
                     id: "card_prod_reactor".to_string(),
                     name: "Xây 2 PowerReactor".to_string(),
                     enabled: true,
-                    conditions: vec![AutoCondition::Always],
+                    conditions: vec![AutoCondition::BuildingCountLessThan {
+                        building_type: "PowerReactor".to_string(),
+                        count: 10,
+                    }],
                     action: AutoAction::BuildStructure {
                         building_type: "PowerReactor".to_string(),
                         count: 2,
@@ -152,7 +155,10 @@ impl AutoPlayConfig {
                     id: "card_prod_turret".to_string(),
                     name: "Xây 2 TurretTower".to_string(),
                     enabled: true,
-                    conditions: vec![AutoCondition::Always],
+                    conditions: vec![AutoCondition::BuildingCountLessThan {
+                        building_type: "TurretTower".to_string(),
+                        count: 8,
+                    }],
                     action: AutoAction::BuildStructure {
                         building_type: "TurretTower".to_string(),
                         count: 2,
@@ -172,7 +178,10 @@ impl AutoPlayConfig {
                     id: "card_prod_barracks".to_string(),
                     name: "Xây 1 Barracks".to_string(),
                     enabled: true,
-                    conditions: vec![AutoCondition::Always],
+                    conditions: vec![AutoCondition::BuildingCountLessThan {
+                        building_type: "Barracks".to_string(),
+                        count: 6,
+                    }],
                     action: AutoAction::BuildStructure {
                         building_type: "Barracks".to_string(),
                         count: 1,
@@ -219,9 +228,9 @@ impl AutoPlayConfig {
                 },
                 AutoCard {
                     id: "card_mil_shock".to_string(),
-                    name: "Mua ShockTrooper (>500 Khoáng)".to_string(),
+                    name: "Mua ShockTrooper (>150 Khoáng)".to_string(),
                     enabled: true,
-                    conditions: vec![AutoCondition::MineralsGreaterThan { amount: 500.0 }],
+                    conditions: vec![AutoCondition::MineralsGreaterThan { amount: 150.0 }],
                     action: AutoAction::TrainUnit {
                         unit_type: "ShockTrooper".to_string(),
                         count: 1,
@@ -229,9 +238,9 @@ impl AutoPlayConfig {
                 },
                 AutoCard {
                     id: "card_mil_rifle".to_string(),
-                    name: "Mua Rifleman (>500 Khoáng)".to_string(),
+                    name: "Mua Rifleman (>150 Khoáng)".to_string(),
                     enabled: true,
-                    conditions: vec![AutoCondition::MineralsGreaterThan { amount: 500.0 }],
+                    conditions: vec![AutoCondition::MineralsGreaterThan { amount: 150.0 }],
                     action: AutoAction::TrainUnit {
                         unit_type: "Rifleman".to_string(),
                         count: 1,
@@ -239,11 +248,11 @@ impl AutoPlayConfig {
                 },
                 AutoCard {
                     id: "card_mil_attack".to_string(),
-                    name: "Tự động tấn công (>40 Lính)".to_string(),
+                    name: "Tự động tấn công (>20 Lính)".to_string(),
                     enabled: true,
                     conditions: vec![AutoCondition::UnitCountGreaterThan {
                         unit_type: "Combat".to_string(),
-                        count: 40,
+                        count: 20,
                     }],
                     action: AutoAction::AttackWave,
                 },
@@ -462,6 +471,7 @@ pub fn can_train_unit(tech: &TechTreeState, u_type: UnitType) -> bool {
     }
 }
 
+#[allow(dead_code)]
 fn execute_action(engine: &mut GameEngine, loop_idx: usize, action: &AutoAction, dt: f32) -> bool {
     execute_action_for_team(engine, Team::Player, loop_idx, action, dt)
 }
@@ -835,6 +845,7 @@ fn count_team_units(engine: &GameEngine, team: Team, unit_type: &str) -> usize {
     }
 }
 
+#[allow(dead_code)]
 fn count_player_units(engine: &GameEngine, unit_type: &str) -> usize {
     if unit_type.eq_ignore_ascii_case("combat") {
         engine
@@ -999,6 +1010,14 @@ pub fn find_defense_line_spot_for_team(
             (sx - obs_cx).abs() < clearance_x && (sy - obs_cy).abs() < clearance_y
         });
         if collides_obstacles {
+            continue;
+        }
+
+        // Không thể đặt móng công trình đè lên đầu quân địch đang giao chiến
+        let collides_enemies = engine.units.iter().any(|u| {
+            u.team != team && ((sx - u.x).powi(2) + (sy - u.y).powi(2)).sqrt() < 80.0
+        });
+        if collides_enemies {
             continue;
         }
 
@@ -1199,6 +1218,13 @@ pub fn find_team_build_spot(
                     (cand_x - obs_cx).abs() < clearance_x && (cand_y - obs_cy).abs() < clearance_y
                 });
                 if collides_obstacles {
+                    continue;
+                }
+
+                let collides_enemies = engine.units.iter().any(|u| {
+                    u.team != team && ((cand_x - u.x).powi(2) + (cand_y - u.y).powi(2)).sqrt() < 80.0
+                });
+                if collides_enemies {
                     continue;
                 }
 

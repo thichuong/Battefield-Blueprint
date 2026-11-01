@@ -51,9 +51,8 @@ pub fn step(engine: &mut GameEngine, dt: f32) {
         crate::ai::update_ai(engine);
     }
 
-    // 10.5 Cập nhật Chế độ Tự Động (Auto-Play) cho Player & Enemy
+    // 10.5 Cập nhật Chế độ Tự Động (Auto-Play) cho Player
     crate::autoplay::update_team_autoplay(engine, Team::Player, dt);
-    crate::autoplay::update_team_autoplay(engine, Team::Enemy, dt);
 
     // 11. Kiểm tra Điều kiện Thắng / Thua
     check_game_over(engine);
@@ -628,8 +627,8 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                 }
             }
             UnitOrder::AttackMove { x, y } => {
-                // Tự động tìm mục tiêu lính hoặc nhà trên đường di chuyển qua Spatial Grid
-                let scan_range = (unit.attack_range * 1.6).max(260.0);
+                // Tự động tìm mục tiêu lính hoặc nhà trên đường di chuyển qua Spatial Grid (Ưu tiên tháp pháo & lính)
+                let scan_range = (unit.attack_range * 2.2).max(380.0);
                 if let Some((target_id, is_building, _)) = spatial_grid.find_nearest_enemy(
                     glam::Vec2::new(unit.x, unit.y),
                     scan_range,
@@ -967,7 +966,20 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                         }
                     }
                 } else {
-                    unit.order = UnitOrder::Idle;
+                    // Mục tiêu đã bị hạ gục! Nếu là đơn vị chiến đấu, tiếp tục AttackMove về căn cứ đối phương
+                    if unit.unit_type != UnitType::Engineer {
+                        let enemy_base_target = if unit.team == Team::Player {
+                            (2150.0, 350.0)
+                        } else {
+                            (250.0, 2050.0)
+                        };
+                        unit.order = UnitOrder::AttackMove {
+                            x: enemy_base_target.0,
+                            y: enemy_base_target.1,
+                        };
+                    } else {
+                        unit.order = UnitOrder::Idle;
+                    }
                 }
             }
         }
@@ -1052,19 +1064,25 @@ fn update_buildings(engine: &mut GameEngine, dt: f32) {
                     && ((*x - b.x).powi(2) + (*y - b.y).powi(2)).sqrt()
                         <= crate::config::WORKER_BUILD_RANGE
             });
-            b.build_progress = calculate_building_construction_step(
+            let next_progress = calculate_building_construction_step(
                 b.build_progress,
                 b.under_attack_timer,
                 is_worker_near,
                 dt,
             );
-            b.hp = b.max_hp * b.build_progress;
+            let added_hp = b.max_hp * (next_progress - b.build_progress).max(0.0);
+            b.build_progress = next_progress;
+            b.hp = (b.hp + added_hp).min(b.max_hp * b.build_progress);
         } else {
             // Huấn luyện lính
             if !b.training_queue.is_empty() {
                 b.training_timer += dt;
                 let mut required_time = engine.config.get_unit_training_time(b.training_queue[0]);
-                if b.team == Team::Player && engine.player_tech.hive_proliferation {
+                let has_hive = match b.team {
+                    Team::Player => engine.player_tech.hive_proliferation,
+                    Team::Enemy => engine.enemy_tech.hive_proliferation,
+                };
+                if has_hive {
                     required_time *= 0.65;
                 }
                 if b.training_timer >= required_time {

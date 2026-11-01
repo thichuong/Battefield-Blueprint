@@ -9,6 +9,7 @@ pub struct GridEntity {
     pub pos: Vec2,
     pub radius: f32,
     pub is_building: bool,
+    pub is_threat: bool,
 }
 
 pub struct SpatialGrid {
@@ -51,15 +52,19 @@ impl SpatialGrid {
                 pos: Vec2::new(u.x, u.y),
                 radius: 12.0,
                 is_building: false,
+                is_threat: u.unit_type != crate::components::UnitType::Engineer,
             });
         }
         for b in buildings {
+            let is_threat = b.building_type == crate::components::BuildingType::TurretTower
+                || b.building_type == crate::components::BuildingType::CommandCenter;
             self.insert(GridEntity {
                 id: b.id,
                 team: b.team,
                 pos: Vec2::new(b.x, b.y),
                 radius: b.width.max(b.height) * 0.5,
                 is_building: true,
+                is_threat,
             });
         }
     }
@@ -82,7 +87,7 @@ impl SpatialGrid {
         self.cells[idx].push(entity);
     }
 
-    /// Tìm mục tiêu kẻ địch gần nhất trong bán kính max_range
+    /// Tìm mục tiêu kẻ địch gần nhất trong bán kính max_range (Ưu tiên đe dọa vũ trang: lính, tháp pháo, CC)
     pub fn find_nearest_enemy(
         &self,
         pos: Vec2,
@@ -94,8 +99,10 @@ impl SpatialGrid {
         let min_r = (((pos.y - max_range) / CELL_SIZE).max(0.0) as usize).min(ROWS - 1);
         let max_r = (((pos.y + max_range) / CELL_SIZE).max(0.0) as usize).min(ROWS - 1);
 
-        let mut best_target: Option<(u32, bool, f32)> = None;
-        let mut best_dist_sq = max_range * max_range;
+        let mut best_threat: Option<(u32, bool, f32)> = None;
+        let mut best_threat_dist_sq = max_range * max_range;
+        let mut best_other: Option<(u32, bool, f32)> = None;
+        let mut best_other_dist_sq = max_range * max_range;
 
         for r in min_r..=max_r {
             for c in min_c..=max_c {
@@ -104,16 +111,25 @@ impl SpatialGrid {
                     if entity.team != my_team {
                         let d_sq = pos.distance_squared(entity.pos);
                         let total_range = max_range + entity.radius;
-                        if d_sq <= total_range * total_range && d_sq < best_dist_sq {
-                            best_dist_sq = d_sq;
-                            best_target = Some((entity.id, entity.is_building, d_sq.sqrt()));
+                        if d_sq <= total_range * total_range {
+                            if entity.is_threat {
+                                if d_sq < best_threat_dist_sq {
+                                    best_threat_dist_sq = d_sq;
+                                    best_threat = Some((entity.id, entity.is_building, d_sq.sqrt()));
+                                }
+                            } else {
+                                if d_sq < best_other_dist_sq {
+                                    best_other_dist_sq = d_sq;
+                                    best_other = Some((entity.id, entity.is_building, d_sq.sqrt()));
+                                }
+                            }
                         }
                     }
                 }
             }
         }
 
-        best_target
+        best_threat.or(best_other)
     }
 
     /// Tìm tất cả thực thể trong bán kính radius

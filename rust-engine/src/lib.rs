@@ -277,13 +277,17 @@ impl GameEngine {
         self.mouse_down_start = (0.0, 0.0);
         self.keys_down.clear();
 
-        // 7. Reset bộ đếm thời gian và ID
+        // 7. Reset bộ đếm thời gian và ID, nhưng BẢO TỒN não bộ RL (rl_brain) đã học
         self.next_id = 100;
         self.game_time = 0.0;
         self.is_paused = false;
         self.game_over = false;
         self.ai_think_timer = 0.0;
+        let preserved_brain = self.ai_state.rl_brain.clone();
+        let training_enabled = self.ai_state.training_enabled;
         self.ai_state = crate::ai::AiState::default();
+        self.ai_state.rl_brain = preserved_brain;
+        self.ai_state.training_enabled = training_enabled;
         self.minerals_mined_accumulator = 0.0;
         self.income_calc_timer = 0.0;
         self.enemy_autoplay = crate::autoplay::AutoPlayState::default_for_enemy();
