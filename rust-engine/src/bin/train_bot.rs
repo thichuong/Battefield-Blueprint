@@ -1,11 +1,20 @@
-use rust_engine::ai::extract_state_vector;
+use rust_engine::ai::{extract_state_vector, update_ai_for_team};
+use rust_engine::autoplay::{
+    adapt_training_autoplay_mid_match, create_training_autoplay_config, AutoTrainingArchetype,
+};
 use rust_engine::components::{BuildingType, Team, UnitType};
-use rust_engine::rl::BotStrategicAction;
+use rust_engine::rl::{BotStrategicAction, RlBrain};
 use rust_engine::GameEngine;
 use std::env;
 use std::fs::File;
 use std::io::Write;
 use std::time::Instant;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MatchMode {
+    VsAuto(AutoTrainingArchetype),
+    BotSelfPlay,
+}
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -41,17 +50,28 @@ fn main() {
     }
 
     println!("============================================================");
-    println!("🧠 BATTLEFIELD BLUEPRINT // DIRECT RL BOT TRAINER");
-    println!("   Episodes:       {}", total_episodes);
-    println!("   Fast-Forward dt: {:.3}s/step", time_scale_dt);
-    println!("   Max Game Time:  {:.0}s", max_game_time);
-    println!("   Output Model:   {}", output_path);
+    println!("🧠 BATTLEFIELD BLUEPRINT // ADAPTIVE RL BOT & SELF-PLAY TRAINER");
+    println!("   Episodes:           {}", total_episodes);
+    println!("   Fast-Forward dt:    {:.3}s/step", time_scale_dt);
+    println!("   Max Game Time:      {:.0}s", max_game_time);
+    println!("   Output Model:       {}", output_path);
+    println!("   Auto Archetypes:    5 Dynamic Branches + Mid-Match Adaptation");
+    println!("   Schedule:           Unlock Self-Play on Auto Wins -> Interleaved Matches");
     println!("============================================================");
 
     let start_wall_time = Instant::now();
-    let mut wins = 0;
-    let mut losses = 0;
-    let mut draws = 0;
+    let mut total_wins = 0;
+    let mut total_losses = 0;
+    let mut total_draws = 0;
+
+    let mut auto_wins = 0;
+    let mut auto_matches = 0;
+
+    let mut selfplay_wins = 0;
+    let mut selfplay_matches = 0;
+
+    let mut self_play_unlocked = false;
+    let mut champion_pool: Vec<RlBrain> = Vec::new();
     let mut action_counts = [0usize; 11];
 
     let mut engine = GameEngine::new_headless();
@@ -64,39 +84,59 @@ fn main() {
         engine.is_paused = false;
         engine.ai_state.training_enabled = true;
 
-        // Player chạy Auto-Play Sparring
-        engine.autoplay.config.enabled = true;
-        match episode % 4 {
-            0 => {
-                // Sparring: Rush
-                engine.autoplay.config.priority_techs = vec![];
+        // Xác định thể thức thi đấu vòng này (Xen kẽ nếu đã mở khóa Self-Play)
+        let mode = if !self_play_unlocked {
+            let arch_idx = (episode % 5) as usize;
+            let arch = match arch_idx {
+                0 => AutoTrainingArchetype::ScienceArtillery,
+                1 => AutoTrainingArchetype::MagicCelestialVoid,
+                2 => AutoTrainingArchetype::MonsterSwarmBehemoth,
+                3 => AutoTrainingArchetype::BioBlitzRush,
+                _ => AutoTrainingArchetype::MacroFortress,
+            };
+            MatchMode::VsAuto(arch)
+        } else {
+            // Đã mở khóa Self-Play: 2 trận Bot-vs-Bot xen kẽ 1 trận Adaptive Auto
+            if episode % 3 != 0 {
+                MatchMode::BotSelfPlay
+            } else {
+                let arch_idx = (episode % 5) as usize;
+                let arch = match arch_idx {
+                    0 => AutoTrainingArchetype::ScienceArtillery,
+                    1 => AutoTrainingArchetype::MagicCelestialVoid,
+                    2 => AutoTrainingArchetype::MonsterSwarmBehemoth,
+                    3 => AutoTrainingArchetype::BioBlitzRush,
+                    _ => AutoTrainingArchetype::MacroFortress,
+                };
+                MatchMode::VsAuto(arch)
             }
-            1 => {
-                // Sparring: Science Tech
-                engine.autoplay.config.priority_techs = vec![
-                    "focused_laser".to_string(),
-                    "energy_shielding".to_string(),
-                    "dark_matter_rockets".to_string(),
-                ];
+        };
+
+        let mut player_bot_state = rust_engine::ai::AiState::default();
+
+        match mode {
+            MatchMode::VsAuto(arch) => {
+                auto_matches += 1;
+                engine.autoplay.config = create_training_autoplay_config(Team::Player, arch);
             }
-            2 => {
-                // Sparring: Magic Tech
-                engine.autoplay.config.priority_techs = vec![
-                    "celestial_flying_swords".to_string(),
-                    "golden_bell_shield".to_string(),
-                ];
-            }
-            _ => {
-                // Sparring: Swarm Eco
-                engine.autoplay.config.priority_techs = vec![
-                    "optical_drills".to_string(),
-                    "acid_banelings".to_string(),
-                ];
+            MatchMode::BotSelfPlay => {
+                selfplay_matches += 1;
+                engine.autoplay.config.enabled = false;
+
+                // Lấy đối thủ từ Champion Pool (bản sao não bot mạnh qua các thế hệ)
+                if let Some(champ) = champion_pool.last() {
+                    player_bot_state.rl_brain = champ.clone();
+                } else {
+                    player_bot_state.rl_brain = engine.ai_state.rl_brain.clone();
+                }
+                player_bot_state.training_enabled = false;
+                player_bot_state.rl_brain.epsilon = 0.05; // Đánh chuẩn xác để làm sparring partner
             }
         }
 
         let mut ep_reward = 0.0_f32;
         let mut last_print_t = 0.0_f32;
+        let mut mid_adapt_timer = 0.0_f32;
 
         while !engine.game_over && engine.game_time < max_game_time {
             let prev_state = extract_state_vector(&engine);
@@ -107,7 +147,22 @@ fn main() {
             let prev_p_workers = count_workers(&engine, Team::Player);
             let prev_p_bldgs = count_buildings(&engine, Team::Player);
 
+            // 1. Tùy biến giữa trận cho Auto (nếu đang ở chế độ VsAuto)
+            if let MatchMode::VsAuto(_) = mode {
+                mid_adapt_timer += time_scale_dt;
+                if mid_adapt_timer >= 1.5 {
+                    mid_adapt_timer = 0.0;
+                    adapt_training_autoplay_mid_match(&mut engine, Team::Player);
+                }
+            }
+
+            // 2. Chạy bước mô phỏng engine
             rust_engine::simulation::step(&mut engine, time_scale_dt);
+
+            // 3. Nếu là Bot-vs-Bot: Cập nhật thêm AI cho Player Bot
+            if let MatchMode::BotSelfPlay = mode {
+                update_ai_for_team(&mut engine, Team::Player, &mut player_bot_state);
+            }
 
             if episode == 1 && engine.game_time - last_print_t >= 30.0 {
                 last_print_t = engine.game_time;
@@ -126,22 +181,22 @@ fn main() {
             let action = engine.ai_state.current_action;
             action_counts[action.to_index()] += 1;
 
-            // --- REWARD SHAPING MẠNH MẼ CHO BOT THÔNG MINH ---
+            // --- REWARD SHAPING MẠNH MẼ CHO LEARNER BOT ---
             let mut step_reward = 0.0_f32;
 
-            // 1. Khuyến khích diệt thợ mỏ và triệt tiêu kinh tế người chơi
+            // 1. Khuyến khích diệt thợ mỏ và triệt tiêu kinh tế đối thủ
             let cur_p_workers = count_workers(&engine, Team::Player);
             if prev_p_workers > cur_p_workers {
                 step_reward += (prev_p_workers - cur_p_workers) as f32 * 10.0;
             }
 
-            // 2. Thưởng khi phá hủy công trình của Player (Đặc biệt là Barracks / Turrets / CC)
+            // 2. Thưởng khi phá hủy công trình của đối thủ
             let cur_p_bldgs = count_buildings(&engine, Team::Player);
             if prev_p_bldgs > cur_p_bldgs {
                 step_reward += (prev_p_bldgs - cur_p_bldgs) as f32 * 30.0;
             }
 
-            // 3. Tiêu diệt lính chiến đấu Player
+            // 3. Tiêu diệt lính chiến đấu đối thủ
             let cur_combat_player = count_combat_units(&engine, Team::Player);
             if prev_combat_player > cur_combat_player {
                 step_reward += (prev_combat_player - cur_combat_player) as f32 * 4.0;
@@ -163,7 +218,7 @@ fn main() {
                 step_reward -= 150.0;
             }
 
-            // 5. Phạt nhẹ thời gian để tránh Bot dây dưa không chịu tấn công dứt điểm
+            // 5. Phạt nhẹ thời gian để tránh Bot dây dưa
             step_reward -= 0.015;
 
             // 6. Thưởng thắng trận dứt khoát
@@ -190,37 +245,66 @@ fn main() {
 
         let p_cc_count = count_ccs(&engine, Team::Player);
         let e_cc_count = count_ccs(&engine, Team::Enemy);
-        let p_comb = count_combat_units(&engine, Team::Player);
-        let e_comb = count_combat_units(&engine, Team::Enemy);
-        let p_w = count_workers(&engine, Team::Player);
-        let e_w = count_workers(&engine, Team::Enemy);
-        let p_b = count_buildings(&engine, Team::Player);
-        let e_b = count_buildings(&engine, Team::Enemy);
+        let is_learner_win = e_cc_count > 0 && p_cc_count == 0;
+        let is_learner_loss = p_cc_count > 0 && e_cc_count == 0;
 
-        if episode <= 5 {
-            println!(
-                "   [Ep {:2} End] Time: {:.1}s | Bot: CC={} B={} W={} Mil={} | Player: CC={} B={} W={} Mil={}",
-                episode, engine.game_time, e_cc_count, e_b, e_w, e_comb, p_cc_count, p_b, p_w, p_comb
-            );
-        }
-
-        if e_cc_count > 0 && p_cc_count == 0 {
-            wins += 1;
-        } else if p_cc_count > 0 && e_cc_count == 0 {
-            losses += 1;
+        if is_learner_win {
+            total_wins += 1;
+            match mode {
+                MatchMode::VsAuto(_) => {
+                    auto_wins += 1;
+                    // Sau khi thắng Auto, kích hoạt Self-Play và thêm vào Champion Pool
+                    if !self_play_unlocked {
+                        self_play_unlocked = true;
+                        champion_pool.push(engine.ai_state.rl_brain.clone());
+                        println!(
+                            "   🔥 [MILESTONE] Bot đã thắng Auto chuyên sâu (Ep {})! MỞ KHÓA BOT SELF-PLAY VỚI VÒNG ĐẤU XEN KẼ!",
+                            episode
+                        );
+                    }
+                }
+                MatchMode::BotSelfPlay => {
+                    selfplay_wins += 1;
+                    // Khi thắng đối thủ Self-Play, cập nhật não vào Champion Pool (tối đa giữ 5 đời vô địch)
+                    champion_pool.push(engine.ai_state.rl_brain.clone());
+                    if champion_pool.len() > 5 {
+                        champion_pool.remove(0);
+                    }
+                }
+            }
+        } else if is_learner_loss {
+            total_losses += 1;
         } else {
-            draws += 1;
+            total_draws += 1;
         }
 
         engine.ai_state.rl_brain.epsilon = (engine.ai_state.rl_brain.epsilon * 0.985).max(0.02);
 
-        if episode % 20 == 0 || episode == total_episodes {
+        if episode <= 5 || episode % 20 == 0 || episode == total_episodes {
+            let mode_str = match mode {
+                MatchMode::VsAuto(arch) => format!("Auto: {}", arch.name()),
+                MatchMode::BotSelfPlay => format!("Self-Play (Gen {})", champion_pool.len()),
+            };
             let elapsed_sec = start_wall_time.elapsed().as_secs_f32().max(0.001);
-            let win_rate = (wins as f32 / episode as f32) * 100.0;
+            let win_rate = (total_wins as f32 / episode as f32) * 100.0;
             let eps_per_sec = (episode as f32) / elapsed_sec;
+
             println!(
-                "Ep {:3}/{} | WinRate: {:5.1}% (W:{} L:{} D:{}) | Reward: {:+6.1} | Eps: {:.3} | Speed: {:.1} ep/s",
-                episode, total_episodes, win_rate, wins, losses, draws, ep_reward, engine.ai_state.rl_brain.epsilon, eps_per_sec
+                "Ep {:3}/{} [{:<30}] | Win: {:5.1}% (W:{} L:{} D:{}) | Auto: {}/{} | SelfPlay: {}/{} | Rew: {:+6.1} | Eps: {:.3} | Speed: {:.1} ep/s",
+                episode,
+                total_episodes,
+                mode_str,
+                win_rate,
+                total_wins,
+                total_losses,
+                total_draws,
+                auto_wins,
+                auto_matches,
+                selfplay_wins,
+                selfplay_matches,
+                ep_reward,
+                engine.ai_state.rl_brain.epsilon,
+                eps_per_sec
             );
         }
     }
@@ -233,6 +317,9 @@ fn main() {
     }
 
     let model_json = serde_json::to_string_pretty(&engine.ai_state.rl_brain).expect("Serialize RL Brain failed");
+    if let Some(parent) = std::path::Path::new(&output_path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
     let mut file = File::create(&output_path).expect("Could not create model output file");
     file.write_all(model_json.as_bytes()).expect("Could not write model file");
 

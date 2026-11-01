@@ -43,12 +43,25 @@ Dự án kết hợp kiến trúc hiệu năng cao giữa **Rust WebAssembly (Wa
   - 💀 **Vu Sư Hư Không (Void Warlock)**: Trượng bóng tối bắn cầu ma thuật bộc phá AoE.
   - 🦣 **Chiến Thú Khổng Lồ (Behemoth Titan)**: Stickman 650 HP to lớn, dậm chấn động diện rộng.
   - 🦗 **Bọ Nổ Cảm Tử (Acid Baneling)**: Bò 4 chân tốc độ cao, lao vào tự kích nổ axit AoE cực mạnh.
-- **Hệ thống Công trình Blueprint (5 Công trình)**:
+- **Hệ thống Công trình Blueprint (6 Công trình)**:
   - 🏢 **Trung tâm Chỉ huy (Command Center)**: Thu nhận khoáng sản, xin thợ mỏ.
   - 📦 **Trạm Tiếp vận (Supply Depot)**: Tăng giới hạn dân số (+8 Supply).
   - 🔋 **Lò Phản ứng Năng lượng (Power Reactor)**: Tự động gia tăng Năng lượng (Energy/s).
   - ⛺ **Trại Huấn luyện (Barracks)**: Huấn luyện các binh chủng chiến đấu có điểm tập kết (Rally Point).
   - 🗼 **Tháp Pháo Phòng thủ (Turret Tower)**: Tự động bắn hạ kẻ địch xâm phạm trong tầm ngắm.
+  - ⚡ **Trạm Chuyển Hóa Năng Lượng (Energy Converter)**: Tự động quy đổi năng lượng dư thừa thành khoáng sản vàng khi duy trì tỷ lệ điện/lò ổn định.
+- **Hệ thống Tự Động Hóa Auto-Play & Tuyến Phòng Thủ Tháp Canh (Auto-Play System)**:
+  - 📋 **Vòng lặp Thẻ bài (Loop Cards Engine)**: Thiết lập các vòng lặp độc lập (Sản xuất, Quân sự, v.v.) với điều kiện kích hoạt linh hoạt (giới hạn quân số, khoáng sản, năng lượng, trần supply, tỷ lệ lò phản ứng).
+  - 🛡️ **Tuyến Phòng Thủ Tháp Canh (Turret Defense Line)**: Kéo thả và tính toán vector tự động bố trí tháp pháo 1 đến 3 hàng chắn giữa các trục xung yếu của căn cứ.
+- **Hệ Thống Trí Tuệ Nhân Tạo & Huấn Luyện Tự Động (AI & RL Self-Play Trainer)**:
+  - 🧠 **Não bộ RL Q-Learning (`RlBrain`)**: Mạng nơ-ron học sâu trích xuất 24 chiều vector trạng thái chiến trường (kinh tế, supply, số lượng quân, công nghệ, khoảng cách đe dọa) và lựa chọn 11 nhánh hành động chiến lược.
+  - ⚔️ **Auto Chuyên Sâu & Tùy Biến Giữa Trận (Adaptive Deep Auto)**:
+    - 5 Archetype chiến thuật xoay tua: *Pháo binh Laser & Rocket*, *Tiên kiếm & Vu sư Hư không*, *Bọ nổ & Quái thú Titan*, *Bộ binh Đột kích*, *Đại công sự Kinh tế*.
+    - *Tùy biến giữa trận (Mid-Match Adaptation)*: Khi trận đấu diễn ra và công nghệ mới được nghiên cứu xong, Auto tự động phát hiện và bổ sung các thẻ mua binh chủng mới tương ứng, đồng thời chuyển dịch cơ cấu giảm lính cơ bản để dồn tài nguyên cho quân chủ lực.
+  - 🤖 **Bot-vs-Bot Self-Play & Champion Pool**:
+    - Ngay sau khi Bot thắng được Auto chuyên sâu, hệ thống tự động mở khóa chế độ **Bot tự đấu với nhau (Self-Play)**.
+    - Lưu trữ bản sao não bộ vào **Champion Pool** qua các thế hệ đối thủ ngày càng thông minh.
+    - **Thi đấu xen kẽ**: Các vòng đấu tự cọ xát Bot-vs-Bot được xen kẽ với các vòng Auto chuyên sâu để bot phát triển toàn diện cả tư duy đối kháng lẫn khả năng macro phòng thủ.
 - **Cây Công Nghệ 3 Nhánh (Tech Tree Modal)**:
   - *Kinh tế & Công trình*: Mũi khoan quang học, Lò phản ứng quá tải, Bản vẽ gia cố kiến trúc.
   - *Bộ binh & Vũ trang*: Khiên năng lượng, Đạn gia tốc từ trường, Bộ phản lực chân Exo-Boost.
@@ -59,30 +72,6 @@ Dự án kết hợp kiến trúc hiệu năng cao giữa **Rust WebAssembly (Wa
   - AI Skirmish tự động phát triển căn cứ, nâng cấp kinh tế và tổ chức các đợt càn quét người chơi.
 - **Web Audio Procedural Synth**:
   - Toàn bộ âm thanh (tiếng bíp lệnh, chém kiếm, đạn súng, laser, nghiên cứu, thắng/thua) được tổng hợp bằng code Web Audio API, không cần file mp3/wav ngoài.
-
----
-
-## 🎮 Hướng dẫn Điều khiển & Phím tắt
-
-| Thao tác | Phím tắt / Chuột | Tác dụng |
-| :--- | :--- | :--- |
-| **Di chuyển Camera** | `W`, `A`, `S`, `D` hoặc `Mũi tên` | Di chuyển góc nhìn chiến trường |
-| **Phóng to / Thu nhỏ** | `Cuộn chuột (Wheel)` | Zoom in / Zoom out từ 0.5x đến 2.0x |
-| **Quét chọn quân** | `Kéo chuột trái` | Quét hộp chọn nhiều đơn vị lính |
-| **Chọn đơn vị / Nhà** | `Click chuột trái` | Chọn một lính hoặc một công trình |
-| **Lệnh hành động** | `Click chuột phải` | Di chuyển đội hình / Khai thác mỏ / Tấn công mục tiêu / Đặt cờ tập kết |
-| **Cây Công Nghệ** | Phím `T` hoặc Nút trên HUD | Mở bảng sơ đồ Cây Công Nghệ 3 nhánh |
-| **Cài đặt & Tạm dừng** | Phím `ESC` hoặc Nút trên HUD | Mở bảng Cài đặt (Âm lượng, Tốc độ camera, Auto-pause) |
-| **Tạm dừng nhanh** | Phím `Space` | Tạm dừng / Tiếp tục trận đấu |
-
----
-
-## 🛠️ Cài đặt & Khởi chạy dự án
-
-### Yêu cầu môi trường
-- [Rust](https://www.rust-lang.org/) (hỗ trợ target `wasm32-unknown-unknown`)
-- `wasm-bindgen-cli` (`cargo install wasm-bindgen-cli`)
-- [Node.js](https://nodejs.org/) (phiên bản 18+ trở lên) & `npm`
 
 ### Các bước cài đặt
 
@@ -107,4 +96,15 @@ Dự án kết hợp kiến trúc hiệu năng cao giữa **Rust WebAssembly (Wa
    ```bash
    npm run build
    ```
+
+5. **Huấn luyện AI Bot (RL Trainer & Self-Play)**:
+   Bạn có thể tự chạy trình giả lập huấn luyện siêu tốc (Headless Simulation ~30-70 ep/s) để huấn luyện bộ não AI và cập nhật trọng số mới:
+   ```bash
+   # Huấn luyện 60 trận với bước nhảy thời gian 0.15s/step
+   ./train_bot.sh 60 0.15
+
+   # Hoặc chạy trực tiếp qua cargo binary
+   cargo run --release --manifest-path rust-engine/Cargo.toml --bin train_bot -- --episodes 100 --dt 0.15 --output assets/rl_model.json
+   ```
+   Sau khi huấn luyện xong, chạy `./build-wasm.sh` để biên dịch lại gói WASM và nhúng trọng số mới vào trò chơi.
 
