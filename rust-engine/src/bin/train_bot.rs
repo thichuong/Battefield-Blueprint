@@ -376,6 +376,24 @@ fn main() {
     file.write_all(model_json.as_bytes()).expect("Could not write model file");
 
     println!("✅ ĐÃ XUẤT MODEL RA FILE: {}", output_path);
+
+    // Tự động đồng bộ giữa thư mục gốc dự án và rust-engine/assets
+    if output_path == "assets/rl_model.json" {
+        let alt_engine_path = "rust-engine/assets/rl_model.json";
+        if std::path::Path::new("rust-engine/assets").exists() {
+            if let Ok(mut alt_file) = File::create(alt_engine_path) {
+                let _ = alt_file.write_all(model_json.as_bytes());
+                println!("🔄 Đã tự động đồng bộ vào: {}", alt_engine_path);
+            }
+        }
+        let alt_parent_path = "../assets/rl_model.json";
+        if std::path::Path::new("../assets").exists() {
+            if let Ok(mut alt_file) = File::create(alt_parent_path) {
+                let _ = alt_file.write_all(model_json.as_bytes());
+                println!("🔄 Đã tự động đồng bộ vào: {}", alt_parent_path);
+            }
+        }
+    }
     println!("⏱️  Tổng thời gian huấn luyện: {:.2}s", start_wall_time.elapsed().as_secs_f32());
     println!("============================================================");
 }
