@@ -10,7 +10,6 @@ import { Bot } from 'lucide-react';
 
 const defaultAutoPlay: AutoPlayConfig = {
   enabled: false,
-  auto_supply: true,
   priority_techs: [],
   turret_defense: {
     enabled: true,
@@ -27,33 +26,34 @@ const defaultAutoPlay: AutoPlayConfig = {
       enabled: true,
       current_card_index: 0,
       current_card_progress: 0,
+      card_timer: 0,
       cards: [
         {
           id: 'card_prod_worker',
           name: 'Mua 2 Thợ Mỏ (Engineer)',
           enabled: true,
-          condition: { type: 'UnitCountLessThan', unit_type: 'Engineer', count: 7 },
+          conditions: [{ type: 'UnitCountLessThan', unit_type: 'Engineer', count: 7 }],
           action: { type: 'TrainUnit', unit_type: 'Engineer', count: 2 },
         },
         {
           id: 'card_prod_reactor',
           name: 'Xây 2 PowerReactor',
           enabled: true,
-          condition: { type: 'Always' },
+          conditions: [{ type: 'Always' }],
           action: { type: 'BuildStructure', building_type: 'PowerReactor', count: 2 },
         },
         {
           id: 'card_prod_turret',
           name: 'Xây 2 TurretTower',
           enabled: true,
-          condition: { type: 'Always' },
+          conditions: [{ type: 'Always' }],
           action: { type: 'BuildStructure', building_type: 'TurretTower', count: 2 },
         },
         {
           id: 'card_prod_tech',
           name: 'Nâng cấp Cây Công Nghệ',
           enabled: true,
-          condition: { type: 'Always' },
+          conditions: [{ type: 'Always' }],
           action: {
             type: 'ResearchTech',
             tech_id: 'dark_matter_rockets',
@@ -64,15 +64,22 @@ const defaultAutoPlay: AutoPlayConfig = {
           id: 'card_prod_barracks',
           name: 'Xây 1 Barracks',
           enabled: true,
-          condition: { type: 'Always' },
+          conditions: [{ type: 'Always' }],
           action: { type: 'BuildStructure', building_type: 'Barracks', count: 1 },
         },
         {
           id: 'card_prod_converter',
           name: 'Xây EnergyConverter',
           enabled: true,
-          condition: { type: 'ReactorPerConverterRatio' },
+          conditions: [{ type: 'ReactorPerConverterRatio' }],
           action: { type: 'BuildStructure', building_type: 'EnergyConverter', count: 1 },
+        },
+        {
+          id: 'card_prod_delay',
+          name: 'Tạm nghỉ công trình (Delay 5s)',
+          enabled: true,
+          conditions: [{ type: 'Always' }],
+          action: { type: 'Delay', seconds: 5.0 },
         },
       ],
     },
@@ -82,26 +89,34 @@ const defaultAutoPlay: AutoPlayConfig = {
       enabled: true,
       current_card_index: 0,
       current_card_progress: 0,
+      card_timer: 0,
       cards: [
+        {
+          id: 'card_mil_supply',
+          name: 'Xây SupplyDepot tránh kẹt',
+          enabled: true,
+          conditions: [{ type: 'SupplyNearCap' }],
+          action: { type: 'BuildStructure', building_type: 'SupplyDepot', count: 1 },
+        },
         {
           id: 'card_mil_shock',
           name: 'Tự động mua ShockTrooper',
           enabled: true,
-          condition: { type: 'MineralsGreaterThan', amount: 500 },
+          conditions: [{ type: 'MineralsGreaterThan', amount: 500 }],
           action: { type: 'TrainUnit', unit_type: 'ShockTrooper', count: 1 },
         },
         {
           id: 'card_mil_rifle',
           name: 'Tự động mua Rifleman',
           enabled: true,
-          condition: { type: 'MineralsGreaterThan', amount: 500 },
+          conditions: [{ type: 'MineralsGreaterThan', amount: 500 }],
           action: { type: 'TrainUnit', unit_type: 'Rifleman', count: 1 },
         },
         {
           id: 'card_mil_attack',
           name: 'Tự động tấn công (>40 lính)',
           enabled: true,
-          condition: { type: 'UnitCountGreaterThan', unit_type: 'Combat', count: 40 },
+          conditions: [{ type: 'UnitCountGreaterThan', unit_type: 'Combat', count: 40 }],
           action: { type: 'AttackWave' },
         },
       ],
@@ -499,6 +514,7 @@ export const App: React.FC = () => {
         isOpen={isAutoPlayOpen}
         onClose={() => setIsAutoPlayOpen(false)}
         autoPlayConfig={gameState.autoplay_state}
+        techState={gameState.tech_state}
         onUpdateConfig={handleUpdateAutoPlayConfig}
       />
 

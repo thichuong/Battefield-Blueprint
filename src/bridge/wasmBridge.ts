@@ -59,6 +59,7 @@ export interface ActiveResearch {
 export interface AutoCondition {
   type:
     | 'Always'
+    | 'SupplyNearCap'
     | 'UnitCountLessThan'
     | 'UnitCountGreaterThan'
     | 'MineralsGreaterThan'
@@ -72,19 +73,20 @@ export interface AutoCondition {
 }
 
 export interface AutoAction {
-  type: 'TrainUnit' | 'BuildStructure' | 'ResearchTech' | 'AttackWave';
+  type: 'TrainUnit' | 'BuildStructure' | 'ResearchTech' | 'AttackWave' | 'Delay';
   unit_type?: string;
   building_type?: string;
   tech_id?: string;
   use_priority_queue?: boolean;
   count?: number;
+  seconds?: number;
 }
 
 export interface AutoCard {
   id: string;
   name: string;
   enabled: boolean;
-  condition: AutoCondition;
+  conditions: AutoCondition[];
   action: AutoAction;
 }
 
@@ -94,6 +96,7 @@ export interface AutoLoop {
   enabled: boolean;
   current_card_index: number;
   current_card_progress: number;
+  card_timer?: number;
   cards: AutoCard[];
 }
 
@@ -108,7 +111,6 @@ export interface TurretDefenseLine {
 
 export interface AutoPlayConfig {
   enabled: boolean;
-  auto_supply: boolean;
   priority_techs: string[];
   turret_defense: TurretDefenseLine;
   loops: AutoLoop[];

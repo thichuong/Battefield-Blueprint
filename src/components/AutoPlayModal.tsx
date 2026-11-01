@@ -11,6 +11,7 @@ import {
   RotateCcw,
   Shield,
   MapPin,
+  Clock,
 } from 'lucide-react';
 import {
   AutoPlayConfig,
@@ -19,6 +20,7 @@ import {
   AutoCondition,
   AutoAction,
   TurretDefenseLine,
+  TechState,
 } from '../bridge/wasmBridge';
 import { TurretDefenseModal } from './TurretDefenseModal';
 
@@ -26,19 +28,40 @@ interface AutoPlayModalProps {
   isOpen: boolean;
   onClose: () => void;
   autoPlayConfig: AutoPlayConfig;
+  techState?: TechState;
   onUpdateConfig: (newConfig: AutoPlayConfig) => void;
 }
+
+const ALL_UNIT_TYPES = [
+  { id: 'Engineer', name: 'Engineer (Thợ mỏ)', requiresTech: null },
+  { id: 'ShockTrooper', name: 'ShockTrooper (Kiếm)', requiresTech: null },
+  { id: 'Rifleman', name: 'Rifleman (Súng)', requiresTech: null },
+  { id: 'Vanguard', name: 'Vanguard (Khiên)', requiresTech: 'energy_shielding' },
+  { id: 'LaserMarksman', name: 'LaserMarksman (Laser)', requiresTech: 'focused_laser' },
+  { id: 'DarkRocketeer', name: 'DarkRocketeer (Rocket)', requiresTech: 'dark_matter_rockets' },
+  { id: 'TaoistSwordmaster', name: 'TaoistSwordmaster (Phi kiếm)', requiresTech: 'celestial_flying_swords' },
+  { id: 'VoidWarlock', name: 'VoidWarlock (Vu sư)', requiresTech: 'void_cataclysm' },
+  { id: 'BehemothTitan', name: 'BehemothTitan (Titan)', requiresTech: 'behemoth_mutation' },
+  { id: 'AcidBaneling', name: 'AcidBaneling (Bọ nổ)', requiresTech: 'acid_banelings' },
+];
 
 export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
   isOpen,
   onClose,
   autoPlayConfig,
+  techState,
   onUpdateConfig,
 }) => {
   const [selectedLoopIndex, setSelectedLoopIndex] = useState<number>(0);
   const [isDefenseModalOpen, setIsDefenseModalOpen] = useState<boolean>(false);
 
   if (!isOpen) return null;
+
+  const availableUnits = ALL_UNIT_TYPES.filter((u) => {
+    if (!u.requiresTech) return true;
+    if (!techState) return true;
+    return !!(techState as any)[u.requiresTech];
+  });
 
   const handleUpdateDefenseLine = (newLine: TurretDefenseLine) => {
     onUpdateConfig({
@@ -53,13 +76,6 @@ export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
     onUpdateConfig({
       ...autoPlayConfig,
       enabled: !autoPlayConfig.enabled,
-    });
-  };
-
-  const handleToggleAutoSupply = () => {
-    onUpdateConfig({
-      ...autoPlayConfig,
-      auto_supply: !autoPlayConfig.auto_supply,
     });
   };
 
@@ -83,6 +99,7 @@ export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
       enabled: true,
       current_card_index: 0,
       current_card_progress: 0,
+      card_timer: 0,
       cards: [],
     };
     onUpdateConfig({
@@ -104,14 +121,15 @@ export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
 
   const handleAddCard = () => {
     if (!activeLoop) return;
+    const defaultUnit = availableUnits.length > 1 ? availableUnits[1].id : 'ShockTrooper';
     const newCard: AutoCard = {
       id: `card_${Date.now()}`,
       name: 'Nhiệm vụ mới',
       enabled: true,
-      condition: { type: 'Always' },
+      conditions: [{ type: 'Always' }],
       action: {
         type: 'TrainUnit',
-        unit_type: 'ShockTrooper',
+        unit_type: defaultUnit,
         count: 1,
       },
     };
@@ -178,12 +196,58 @@ export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
     });
   };
 
-  const handleUpdateCardCondition = (cardIdx: number, newCond: AutoCondition) => {
+  const handleAddCondition = (cardIdx: number) => {
     if (!activeLoop) return;
+    const card = activeLoop.cards[cardIdx];
+    const newConditions = [...card.conditions, { type: 'Always' as const }];
     const newCards = [...activeLoop.cards];
     newCards[cardIdx] = {
-      ...newCards[cardIdx],
-      condition: newCond,
+      ...card,
+      conditions: newConditions,
+    };
+    const newLoops = [...autoPlayConfig.loops];
+    newLoops[selectedLoopIndex] = {
+      ...activeLoop,
+      cards: newCards,
+    };
+    onUpdateConfig({
+      ...autoPlayConfig,
+      loops: newLoops,
+    });
+  };
+
+  const handleUpdateCardCondition = (cardIdx: number, condIdx: number, newCond: AutoCondition) => {
+    if (!activeLoop) return;
+    const card = activeLoop.cards[cardIdx];
+    const newConditions = [...card.conditions];
+    newConditions[condIdx] = newCond;
+    const newCards = [...activeLoop.cards];
+    newCards[cardIdx] = {
+      ...card,
+      conditions: newConditions,
+    };
+    const newLoops = [...autoPlayConfig.loops];
+    newLoops[selectedLoopIndex] = {
+      ...activeLoop,
+      cards: newCards,
+    };
+    onUpdateConfig({
+      ...autoPlayConfig,
+      loops: newLoops,
+    });
+  };
+
+  const handleDeleteCondition = (cardIdx: number, condIdx: number) => {
+    if (!activeLoop) return;
+    const card = activeLoop.cards[cardIdx];
+    let newConditions = card.conditions.filter((_, idx) => idx !== condIdx);
+    if (newConditions.length === 0) {
+      newConditions = [{ type: 'Always' }];
+    }
+    const newCards = [...activeLoop.cards];
+    newCards[cardIdx] = {
+      ...card,
+      conditions: newConditions,
     };
     const newLoops = [...autoPlayConfig.loops];
     newLoops[selectedLoopIndex] = {
@@ -217,7 +281,6 @@ export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
   const handleResetDefaults = () => {
     const defaultCfg: AutoPlayConfig = {
       enabled: false,
-      auto_supply: true,
       priority_techs: [],
       turret_defense: {
         enabled: true,
@@ -234,33 +297,34 @@ export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
           enabled: true,
           current_card_index: 0,
           current_card_progress: 0,
+          card_timer: 0,
           cards: [
             {
               id: 'card_prod_worker',
               name: 'Mua 2 Thợ Mỏ (Engineer)',
               enabled: true,
-              condition: { type: 'UnitCountLessThan', unit_type: 'Engineer', count: 7 },
+              conditions: [{ type: 'UnitCountLessThan', unit_type: 'Engineer', count: 7 }],
               action: { type: 'TrainUnit', unit_type: 'Engineer', count: 2 },
             },
             {
               id: 'card_prod_reactor',
               name: 'Xây 2 PowerReactor',
               enabled: true,
-              condition: { type: 'Always' },
+              conditions: [{ type: 'Always' }],
               action: { type: 'BuildStructure', building_type: 'PowerReactor', count: 2 },
             },
             {
               id: 'card_prod_turret',
               name: 'Xây 2 TurretTower',
               enabled: true,
-              condition: { type: 'Always' },
+              conditions: [{ type: 'Always' }],
               action: { type: 'BuildStructure', building_type: 'TurretTower', count: 2 },
             },
             {
               id: 'card_prod_tech',
               name: 'Nâng cấp Cây Công Nghệ',
               enabled: true,
-              condition: { type: 'Always' },
+              conditions: [{ type: 'Always' }],
               action: {
                 type: 'ResearchTech',
                 tech_id: 'dark_matter_rockets',
@@ -271,15 +335,22 @@ export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
               id: 'card_prod_barracks',
               name: 'Xây 1 Barracks',
               enabled: true,
-              condition: { type: 'Always' },
+              conditions: [{ type: 'Always' }],
               action: { type: 'BuildStructure', building_type: 'Barracks', count: 1 },
             },
             {
               id: 'card_prod_converter',
               name: 'Xây EnergyConverter',
               enabled: true,
-              condition: { type: 'ReactorPerConverterRatio' },
+              conditions: [{ type: 'ReactorPerConverterRatio' }],
               action: { type: 'BuildStructure', building_type: 'EnergyConverter', count: 1 },
+            },
+            {
+              id: 'card_prod_delay',
+              name: 'Tạm nghỉ công trình (Delay 5s)',
+              enabled: true,
+              conditions: [{ type: 'Always' }],
+              action: { type: 'Delay', seconds: 5.0 },
             },
           ],
         },
@@ -289,26 +360,34 @@ export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
           enabled: true,
           current_card_index: 0,
           current_card_progress: 0,
+          card_timer: 0,
           cards: [
+            {
+              id: 'card_mil_supply',
+              name: 'Xây SupplyDepot tránh kẹt',
+              enabled: true,
+              conditions: [{ type: 'SupplyNearCap' }],
+              action: { type: 'BuildStructure', building_type: 'SupplyDepot', count: 1 },
+            },
             {
               id: 'card_mil_shock',
               name: 'Tự động mua ShockTrooper',
               enabled: true,
-              condition: { type: 'MineralsGreaterThan', amount: 500 },
+              conditions: [{ type: 'MineralsGreaterThan', amount: 500 }],
               action: { type: 'TrainUnit', unit_type: 'ShockTrooper', count: 1 },
             },
             {
               id: 'card_mil_rifle',
               name: 'Tự động mua Rifleman',
               enabled: true,
-              condition: { type: 'MineralsGreaterThan', amount: 500 },
+              conditions: [{ type: 'MineralsGreaterThan', amount: 500 }],
               action: { type: 'TrainUnit', unit_type: 'Rifleman', count: 1 },
             },
             {
               id: 'card_mil_attack',
               name: 'Tự động tấn công (>40 lính)',
               enabled: true,
-              condition: { type: 'UnitCountGreaterThan', unit_type: 'Combat', count: 40 },
+              conditions: [{ type: 'UnitCountGreaterThan', unit_type: 'Combat', count: 40 }],
               action: { type: 'AttackWave' },
             },
           ],
@@ -359,21 +438,10 @@ export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
               )}
             </button>
 
-            {/* Auto Supply Checkbox */}
-            <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] font-mono text-slate-300 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-700/80">
-              <input
-                type="checkbox"
-                checked={autoPlayConfig.auto_supply}
-                onChange={handleToggleAutoSupply}
-                className="w-3.5 h-3.5 accent-emerald-400 cursor-pointer"
-              />
-              <span>Tự xây Supply tránh kẹt</span>
-            </label>
-
             {/* Reset Defaults */}
             <button
               onClick={handleResetDefaults}
-              className="p-1.5 text-slate-400 hover:text-amber-300 rounded-lg hover:bg-slate-800 transition-colors title='Khôi phục cấu hình mặc định'"
+              className="p-1.5 text-slate-400 hover:text-amber-300 rounded-lg hover:bg-slate-800 transition-colors"
               title="Khôi phục mặc định"
             >
               <RotateCcw className="w-4 h-4" />
@@ -382,7 +450,7 @@ export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
             {/* Close */}
             <button
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+              className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -427,7 +495,7 @@ export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
                         e.stopPropagation();
                         handleDeleteLoop(idx);
                       }}
-                      className="text-slate-500 hover:text-rose-400 ml-1"
+                      className="text-slate-500 hover:text-rose-400 ml-1 cursor-pointer"
                     >
                       ×
                     </button>
@@ -492,6 +560,8 @@ export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
                 card.enabled &&
                 activeLoop.current_card_index === cardIdx;
 
+              const isDelayAction = card.action.type === 'Delay';
+
               return (
                 <div
                   key={card.id}
@@ -508,12 +578,23 @@ export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
                       <span className="w-6 h-6 rounded-md bg-slate-800 text-emerald-400 flex items-center justify-center font-mono text-xs font-bold border border-slate-700">
                         #{cardIdx + 1}
                       </span>
-                      <span className="font-mono text-sm font-bold text-slate-200">
-                        {card.name}
-                      </span>
+                      <input
+                        type="text"
+                        value={card.name}
+                        onChange={(e) => {
+                          const newCards = [...activeLoop.cards];
+                          newCards[cardIdx] = { ...newCards[cardIdx], name: e.target.value };
+                          const newLoops = [...autoPlayConfig.loops];
+                          newLoops[selectedLoopIndex] = { ...activeLoop, cards: newCards };
+                          onUpdateConfig({ ...autoPlayConfig, loops: newLoops });
+                        }}
+                        className="bg-transparent border border-transparent hover:border-slate-700 focus:border-emerald-500 focus:bg-slate-900/80 px-2 py-0.5 rounded font-mono text-sm font-bold text-slate-200 outline-none w-72"
+                      />
                       {isCurrent && (
                         <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-400 text-emerald-300 font-mono text-[10px] font-bold animate-pulse">
-                          ĐANG CHẠY ({activeLoop.current_card_progress} / {card.action.count || 1})
+                          {isDelayAction
+                            ? `ĐANG CHỜ (${(activeLoop.card_timer || 0).toFixed(1)}s / ${(card.action.seconds || 5).toFixed(1)}s)`
+                            : `ĐANG CHẠY (${activeLoop.current_card_progress} / ${card.action.count || 1})`}
                         </span>
                       )}
                     </div>
@@ -522,7 +603,7 @@ export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
                       <button
                         onClick={() => handleMoveCard(cardIdx, 'up')}
                         disabled={cardIdx === 0}
-                        className="p-1 text-slate-400 hover:text-white disabled:opacity-30 disabled:hover:text-slate-400"
+                        className="p-1 text-slate-400 hover:text-white disabled:opacity-30 disabled:hover:text-slate-400 cursor-pointer"
                         title="Di chuyển lên"
                       >
                         <ChevronUp className="w-4 h-4" />
@@ -530,14 +611,14 @@ export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
                       <button
                         onClick={() => handleMoveCard(cardIdx, 'down')}
                         disabled={cardIdx === activeLoop.cards.length - 1}
-                        className="p-1 text-slate-400 hover:text-white disabled:opacity-30 disabled:hover:text-slate-400"
+                        className="p-1 text-slate-400 hover:text-white disabled:opacity-30 disabled:hover:text-slate-400 cursor-pointer"
                         title="Di chuyển xuống"
                       >
                         <ChevronDown className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => handleToggleCard(cardIdx)}
-                        className={`px-2 py-1 rounded font-mono text-[10px] font-bold ${
+                        className={`px-2 py-1 rounded font-mono text-[10px] font-bold cursor-pointer ${
                           card.enabled
                             ? 'bg-emerald-950 border border-emerald-600 text-emerald-300'
                             : 'bg-slate-800 text-slate-500'
@@ -547,7 +628,7 @@ export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
                       </button>
                       <button
                         onClick={() => handleDeleteCard(cardIdx)}
-                        className="p-1 text-slate-500 hover:text-rose-400 ml-2"
+                        className="p-1 text-slate-500 hover:text-rose-400 ml-2 cursor-pointer"
                         title="Xóa thẻ"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -557,165 +638,233 @@ export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
 
                   {/* Chi tiết Điều Kiện & Hành Động của Card */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3 pt-3 border-t border-slate-800/80 font-mono text-xs">
-                    {/* Cột 1: ĐIỀU KIỆN (Condition) */}
-                    <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-800">
-                      <div className="text-[10px] text-slate-400 font-bold mb-1.5 flex items-center gap-1 text-amber-400">
-                        <span>🔍 ĐIỀU KIỆN KÍCH HOẠT:</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={card.condition.type}
-                          onChange={(e) => {
-                            const t = e.target.value as any;
-                            if (t === 'Always') {
-                              handleUpdateCardCondition(cardIdx, { type: 'Always' });
-                            } else if (t === 'UnitCountLessThan') {
-                              handleUpdateCardCondition(cardIdx, {
-                                type: 'UnitCountLessThan',
-                                unit_type: 'Engineer',
-                                count: 7,
-                              });
-                            } else if (t === 'UnitCountGreaterThan') {
-                              handleUpdateCardCondition(cardIdx, {
-                                type: 'UnitCountGreaterThan',
-                                unit_type: 'Combat',
-                                count: 40,
-                              });
-                            } else if (t === 'MineralsGreaterThan') {
-                              handleUpdateCardCondition(cardIdx, {
-                                type: 'MineralsGreaterThan',
-                                amount: 500,
-                              });
-                            } else if (t === 'ReactorPerConverterRatio') {
-                              handleUpdateCardCondition(cardIdx, {
-                                type: 'ReactorPerConverterRatio',
-                              });
-                            } else if (t === 'BuildingCountLessThan') {
-                              handleUpdateCardCondition(cardIdx, {
-                                type: 'BuildingCountLessThan',
-                                building_type: 'PowerReactor',
-                                count: 6,
-                              });
-                            }
-                          }}
-                          className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1 outline-none"
-                        >
-                          <option value="Always">Luôn thực hiện (Tuần tự)</option>
-                          <option value="BuildingCountLessThan">Số lượng công trình &lt; X</option>
-                          <option value="UnitCountLessThan">Số đơn vị &lt; X</option>
-                          <option value="UnitCountGreaterThan">Số đơn vị &gt; X</option>
-                          <option value="MineralsGreaterThan">Khoáng sản &gt; X</option>
-                          <option value="ReactorPerConverterRatio">PowerReactor // 4 &gt; EnergyConverter</option>
-                        </select>
+                    {/* Cột 1: DANH SÁCH ĐIỀU KIỆN (Conditions List) */}
+                    <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-800 flex flex-col justify-between">
+                      <div>
+                        <div className="text-[10px] text-slate-400 font-bold mb-2 flex items-center justify-between text-amber-400">
+                          <span className="flex items-center gap-1">
+                            <span>🔍 ĐIỀU KIỆN KÍCH HOẠT ({card.conditions.length}):</span>
+                          </span>
+                          <button
+                            onClick={() => handleAddCondition(cardIdx)}
+                            className="text-[10px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-950/50 border border-emerald-700/60 cursor-pointer"
+                            title="Thêm điều kiện lọc vào thẻ này"
+                          >
+                            <Plus className="w-3 h-3" />
+                            <span>Thêm ĐK</span>
+                          </button>
+                        </div>
 
-                        {card.condition.type === 'BuildingCountLessThan' && (
-                          <div className="flex items-center gap-1">
-                            <select
-                              value={card.condition.building_type || 'PowerReactor'}
-                              onChange={(e) =>
-                                handleUpdateCardCondition(cardIdx, {
-                                  ...card.condition,
-                                  building_type: e.target.value,
-                                })
-                              }
-                              className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-1.5 py-1 outline-none"
-                            >
-                              <option value="CommandCenter">Nhà Chính (CommandCenter)</option>
-                              <option value="PowerReactor">PowerReactor</option>
-                              <option value="TurretTower">TurretTower</option>
-                              <option value="Barracks">Barracks</option>
-                              <option value="EnergyConverter">EnergyConverter</option>
-                              <option value="SupplyDepot">SupplyDepot</option>
-                            </select>
-                            <span>&lt;</span>
-                            <input
-                              type="number"
-                              min="1"
-                              max="100"
-                              value={card.condition.count ?? 6}
-                              onChange={(e) =>
-                                handleUpdateCardCondition(cardIdx, {
-                                  ...card.condition,
-                                  count: parseInt(e.target.value) || 1,
-                                })
-                              }
-                              className="w-14 bg-slate-900 border border-slate-700 px-1.5 py-1 text-xs rounded"
-                            />
-                          </div>
-                        )}
+                        <div className="space-y-2">
+                          {card.conditions.map((cond, condIdx) => (
+                            <div key={condIdx} className="flex flex-wrap items-center gap-1.5 bg-slate-900/80 p-1.5 rounded border border-slate-800">
+                              <span className="text-[10px] text-slate-500 font-mono">
+                                #{condIdx + 1}
+                              </span>
+                              <select
+                                value={cond.type}
+                                onChange={(e) => {
+                                  const t = e.target.value as any;
+                                  if (t === 'Always') {
+                                    handleUpdateCardCondition(cardIdx, condIdx, { type: 'Always' });
+                                  } else if (t === 'SupplyNearCap') {
+                                    handleUpdateCardCondition(cardIdx, condIdx, { type: 'SupplyNearCap' });
+                                  } else if (t === 'UnitCountLessThan') {
+                                    handleUpdateCardCondition(cardIdx, condIdx, {
+                                      type: 'UnitCountLessThan',
+                                      unit_type: 'Engineer',
+                                      count: 7,
+                                    });
+                                  } else if (t === 'UnitCountGreaterThan') {
+                                    handleUpdateCardCondition(cardIdx, condIdx, {
+                                      type: 'UnitCountGreaterThan',
+                                      unit_type: 'Combat',
+                                      count: 40,
+                                    });
+                                  } else if (t === 'MineralsGreaterThan') {
+                                    handleUpdateCardCondition(cardIdx, condIdx, {
+                                      type: 'MineralsGreaterThan',
+                                      amount: 500,
+                                    });
+                                  } else if (t === 'EnergyGreaterThan') {
+                                    handleUpdateCardCondition(cardIdx, condIdx, {
+                                      type: 'EnergyGreaterThan',
+                                      amount: 100,
+                                    });
+                                  } else if (t === 'ReactorPerConverterRatio') {
+                                    handleUpdateCardCondition(cardIdx, condIdx, {
+                                      type: 'ReactorPerConverterRatio',
+                                    });
+                                  } else if (t === 'BuildingCountLessThan') {
+                                    handleUpdateCardCondition(cardIdx, condIdx, {
+                                      type: 'BuildingCountLessThan',
+                                      building_type: 'PowerReactor',
+                                      count: 6,
+                                    });
+                                  }
+                                }}
+                                className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1 outline-none"
+                              >
+                                <option value="Always">Luôn thực hiện</option>
+                                <option value="SupplyNearCap">⚠️ Sắp đầy dân số (Cần xây Supply)</option>
+                                <option value="BuildingCountLessThan">Số lượng công trình &lt; X</option>
+                                <option value="UnitCountLessThan">Số đơn vị &lt; X</option>
+                                <option value="UnitCountGreaterThan">Số đơn vị &gt; X</option>
+                                <option value="MineralsGreaterThan">Khoáng sản &gt; X</option>
+                                <option value="EnergyGreaterThan">Năng lượng &gt; X</option>
+                                <option value="ReactorPerConverterRatio">PowerReactor // 4 &gt; EnergyConverter</option>
+                              </select>
 
-                        {card.condition.type === 'UnitCountLessThan' && (
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="text"
-                              value={card.condition.unit_type || 'Engineer'}
-                              onChange={(e) =>
-                                handleUpdateCardCondition(cardIdx, {
-                                  ...card.condition,
-                                  unit_type: e.target.value,
-                                })
-                              }
-                              className="w-20 bg-slate-900 border border-slate-700 px-1.5 py-1 text-xs rounded"
-                            />
-                            <span>&lt;</span>
-                            <input
-                              type="number"
-                              value={card.condition.count ?? 7}
-                              onChange={(e) =>
-                                handleUpdateCardCondition(cardIdx, {
-                                  ...card.condition,
-                                  count: parseInt(e.target.value) || 0,
-                                })
-                              }
-                              className="w-14 bg-slate-900 border border-slate-700 px-1.5 py-1 text-xs rounded"
-                            />
-                          </div>
-                        )}
+                              {cond.type === 'BuildingCountLessThan' && (
+                                <div className="flex items-center gap-1">
+                                  <select
+                                    value={cond.building_type || 'PowerReactor'}
+                                    onChange={(e) =>
+                                      handleUpdateCardCondition(cardIdx, condIdx, {
+                                        ...cond,
+                                        building_type: e.target.value,
+                                      })
+                                    }
+                                    className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded px-1.5 py-1 outline-none"
+                                  >
+                                    <option value="CommandCenter">Nhà Chính</option>
+                                    <option value="PowerReactor">PowerReactor</option>
+                                    <option value="TurretTower">TurretTower</option>
+                                    <option value="Barracks">Barracks</option>
+                                    <option value="EnergyConverter">EnergyConverter</option>
+                                    <option value="SupplyDepot">SupplyDepot</option>
+                                  </select>
+                                  <span>&lt;</span>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max="100"
+                                    value={cond.count ?? 6}
+                                    onChange={(e) =>
+                                      handleUpdateCardCondition(cardIdx, condIdx, {
+                                        ...cond,
+                                        count: parseInt(e.target.value) || 1,
+                                      })
+                                    }
+                                    className="w-14 bg-slate-950 border border-slate-700 px-1.5 py-1 text-xs rounded"
+                                  />
+                                </div>
+                              )}
 
-                        {card.condition.type === 'UnitCountGreaterThan' && (
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="text"
-                              value={card.condition.unit_type || 'Combat'}
-                              onChange={(e) =>
-                                handleUpdateCardCondition(cardIdx, {
-                                  ...card.condition,
-                                  unit_type: e.target.value,
-                                })
-                              }
-                              className="w-20 bg-slate-900 border border-slate-700 px-1.5 py-1 text-xs rounded"
-                            />
-                            <span>&gt;</span>
-                            <input
-                              type="number"
-                              value={card.condition.count ?? 40}
-                              onChange={(e) =>
-                                handleUpdateCardCondition(cardIdx, {
-                                  ...card.condition,
-                                  count: parseInt(e.target.value) || 0,
-                                })
-                              }
-                              className="w-14 bg-slate-900 border border-slate-700 px-1.5 py-1 text-xs rounded"
-                            />
-                          </div>
-                        )}
+                              {cond.type === 'UnitCountLessThan' && (
+                                <div className="flex items-center gap-1">
+                                  <select
+                                    value={cond.unit_type || 'Engineer'}
+                                    onChange={(e) =>
+                                      handleUpdateCardCondition(cardIdx, condIdx, {
+                                        ...cond,
+                                        unit_type: e.target.value,
+                                      })
+                                    }
+                                    className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded px-1.5 py-1 outline-none"
+                                  >
+                                    <option value="Combat">Lính chiến đấu (Combat)</option>
+                                    {ALL_UNIT_TYPES.map((u) => (
+                                      <option key={u.id} value={u.id}>
+                                        {u.id}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <span>&lt;</span>
+                                  <input
+                                    type="number"
+                                    value={cond.count ?? 7}
+                                    onChange={(e) =>
+                                      handleUpdateCardCondition(cardIdx, condIdx, {
+                                        ...cond,
+                                        count: parseInt(e.target.value) || 0,
+                                      })
+                                    }
+                                    className="w-14 bg-slate-950 border border-slate-700 px-1.5 py-1 text-xs rounded"
+                                  />
+                                </div>
+                              )}
 
-                        {card.condition.type === 'MineralsGreaterThan' && (
-                          <div className="flex items-center gap-1">
-                            <span>Khoáng &gt;</span>
-                            <input
-                              type="number"
-                              value={card.condition.amount ?? 500}
-                              onChange={(e) =>
-                                handleUpdateCardCondition(cardIdx, {
-                                  ...card.condition,
-                                  amount: parseFloat(e.target.value) || 0,
-                                })
-                              }
-                              className="w-16 bg-slate-900 border border-slate-700 px-1.5 py-1 text-xs rounded"
-                            />
-                          </div>
-                        )}
+                              {cond.type === 'UnitCountGreaterThan' && (
+                                <div className="flex items-center gap-1">
+                                  <select
+                                    value={cond.unit_type || 'Combat'}
+                                    onChange={(e) =>
+                                      handleUpdateCardCondition(cardIdx, condIdx, {
+                                        ...cond,
+                                        unit_type: e.target.value,
+                                      })
+                                    }
+                                    className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded px-1.5 py-1 outline-none"
+                                  >
+                                    <option value="Combat">Lính chiến đấu (Combat)</option>
+                                    {ALL_UNIT_TYPES.map((u) => (
+                                      <option key={u.id} value={u.id}>
+                                        {u.id}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <span>&gt;</span>
+                                  <input
+                                    type="number"
+                                    value={cond.count ?? 40}
+                                    onChange={(e) =>
+                                      handleUpdateCardCondition(cardIdx, condIdx, {
+                                        ...cond,
+                                        count: parseInt(e.target.value) || 0,
+                                      })
+                                    }
+                                    className="w-14 bg-slate-950 border border-slate-700 px-1.5 py-1 text-xs rounded"
+                                  />
+                                </div>
+                              )}
+
+                              {cond.type === 'MineralsGreaterThan' && (
+                                <div className="flex items-center gap-1">
+                                  <span>Khoáng &gt;</span>
+                                  <input
+                                    type="number"
+                                    value={cond.amount ?? 500}
+                                    onChange={(e) =>
+                                      handleUpdateCardCondition(cardIdx, condIdx, {
+                                        ...cond,
+                                        amount: parseFloat(e.target.value) || 0,
+                                      })
+                                    }
+                                    className="w-16 bg-slate-950 border border-slate-700 px-1.5 py-1 text-xs rounded"
+                                  />
+                                </div>
+                              )}
+
+                              {cond.type === 'EnergyGreaterThan' && (
+                                <div className="flex items-center gap-1">
+                                  <span>Năng lượng &gt;</span>
+                                  <input
+                                    type="number"
+                                    value={cond.amount ?? 100}
+                                    onChange={(e) =>
+                                      handleUpdateCardCondition(cardIdx, condIdx, {
+                                        ...cond,
+                                        amount: parseFloat(e.target.value) || 0,
+                                      })
+                                    }
+                                    className="w-16 bg-slate-950 border border-slate-700 px-1.5 py-1 text-xs rounded"
+                                  />
+                                </div>
+                              )}
+
+                              {card.conditions.length > 1 && (
+                                <button
+                                  onClick={() => handleDeleteCondition(cardIdx, condIdx)}
+                                  className="text-slate-500 hover:text-rose-400 p-0.5 ml-auto cursor-pointer"
+                                  title="Xóa điều kiện này"
+                                >
+                                  ×
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
 
@@ -724,15 +873,16 @@ export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
                       <div className="text-[10px] text-slate-400 font-bold mb-1.5 flex items-center gap-1 text-cyan-400">
                         <span>⚡ NHIỆM VỤ KHI THỎA ĐIỀU KIỆN:</span>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <select
                           value={card.action.type}
                           onChange={(e) => {
                             const t = e.target.value as any;
                             if (t === 'TrainUnit') {
+                              const defaultUnit = availableUnits.length > 1 ? availableUnits[1].id : 'ShockTrooper';
                               handleUpdateCardAction(cardIdx, {
                                 type: 'TrainUnit',
-                                unit_type: 'ShockTrooper',
+                                unit_type: defaultUnit,
                                 count: 1,
                               });
                             } else if (t === 'BuildStructure') {
@@ -749,6 +899,8 @@ export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
                               });
                             } else if (t === 'AttackWave') {
                               handleUpdateCardAction(cardIdx, { type: 'AttackWave' });
+                            } else if (t === 'Delay') {
+                              handleUpdateCardAction(cardIdx, { type: 'Delay', seconds: 5.0 });
                             }
                           }}
                           className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1 outline-none"
@@ -757,30 +909,52 @@ export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
                           <option value="BuildStructure">Xây Công Trình</option>
                           <option value="ResearchTech">Nâng Cấp Công Nghệ</option>
                           <option value="AttackWave">Tự Động Tấn Công</option>
+                          <option value="Delay">⏳ Tạm Nghỉ (Delay)</option>
                         </select>
+
+                        {card.action.type === 'Delay' && (
+                          <div className="flex items-center gap-1 text-amber-300">
+                            <Clock className="w-3.5 h-3.5" />
+                            <span>Chờ:</span>
+                            <input
+                              type="number"
+                              min="0.5"
+                              step="0.5"
+                              value={card.action.seconds ?? 5.0}
+                              onChange={(e) =>
+                                handleUpdateCardAction(cardIdx, {
+                                  ...card.action,
+                                  seconds: parseFloat(e.target.value) || 1.0,
+                                })
+                              }
+                              className="w-16 bg-slate-900 border border-slate-700 px-1 py-1 text-xs rounded"
+                            />
+                            <span>giây</span>
+                          </div>
+                        )}
 
                         {card.action.type === 'TrainUnit' && (
                           <div className="flex items-center gap-1">
                             <select
-                              value={card.action.unit_type || 'ShockTrooper'}
+                              value={card.action.unit_type || (availableUnits[0]?.id || 'ShockTrooper')}
                               onChange={(e) =>
                                 handleUpdateCardAction(cardIdx, {
                                   ...card.action,
                                   unit_type: e.target.value,
                                 })
                               }
-                              className="bg-slate-900 border border-slate-700 text-xs rounded px-2 py-1"
+                              className="bg-slate-900 border border-slate-700 text-xs rounded px-2 py-1 max-w-[200px]"
                             >
-                              <option value="Engineer">Engineer (Thợ mỏ)</option>
-                              <option value="ShockTrooper">ShockTrooper (Kiếm)</option>
-                              <option value="Rifleman">Rifleman (Súng)</option>
-                              <option value="Vanguard">Vanguard (Khiên)</option>
-                              <option value="LaserMarksman">LaserMarksman</option>
-                              <option value="DarkRocketeer">DarkRocketeer</option>
+                              {availableUnits.map((u) => (
+                                <option key={u.id} value={u.id}>
+                                  {u.name}
+                                </option>
+                              ))}
                             </select>
                             <span>SL:</span>
                             <input
                               type="number"
+                              min="1"
                               value={card.action.count ?? 1}
                               onChange={(e) =>
                                 handleUpdateCardAction(cardIdx, {
@@ -805,16 +979,17 @@ export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
                               }
                               className="bg-slate-900 border border-slate-700 text-xs rounded px-2 py-1"
                             >
+                              <option value="SupplyDepot">SupplyDepot (Tiếp vận)</option>
+                              <option value="PowerReactor">PowerReactor (Lò năng lượng)</option>
+                              <option value="TurretTower">TurretTower (Tháp pháo)</option>
+                              <option value="Barracks">Barracks (Trại lính)</option>
+                              <option value="EnergyConverter">EnergyConverter (Đổi khoáng)</option>
                               <option value="CommandCenter">Nhà Chính (CommandCenter)</option>
-                              <option value="PowerReactor">PowerReactor</option>
-                              <option value="TurretTower">TurretTower</option>
-                              <option value="Barracks">Barracks</option>
-                              <option value="EnergyConverter">EnergyConverter</option>
-                              <option value="SupplyDepot">SupplyDepot</option>
                             </select>
                             <span>SL:</span>
                             <input
                               type="number"
+                              min="1"
                               value={card.action.count ?? 1}
                               onChange={(e) =>
                                 handleUpdateCardAction(cardIdx, {
@@ -895,7 +1070,7 @@ export const AutoPlayModal: React.FC<AutoPlayModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-bold transition-all"
+            className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-bold transition-all cursor-pointer"
           >
             ĐÓNG [ESC / B]
           </button>

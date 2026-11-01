@@ -1,4 +1,5 @@
 use crate::components::{BuildingType, Team, UnitOrder, UnitType};
+use crate::resources::TechTreeState;
 use crate::GameEngine;
 use serde::{Deserialize, Serialize};
 
@@ -6,6 +7,7 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "type")]
 pub enum AutoCondition {
     Always,
+    SupplyNearCap,
     UnitCountLessThan { unit_type: String, count: usize },
     UnitCountGreaterThan { unit_type: String, count: usize },
     MineralsGreaterThan { amount: f32 },
@@ -30,6 +32,9 @@ pub enum AutoAction {
         use_priority_queue: bool,
     },
     AttackWave,
+    Delay {
+        seconds: f32,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -37,7 +42,7 @@ pub struct AutoCard {
     pub id: String,
     pub name: String,
     pub enabled: bool,
-    pub condition: AutoCondition,
+    pub conditions: Vec<AutoCondition>,
     pub action: AutoAction,
 }
 
@@ -48,6 +53,8 @@ pub struct AutoLoop {
     pub enabled: bool,
     pub current_card_index: usize,
     pub current_card_progress: u32,
+    #[serde(default)]
+    pub card_timer: f32,
     pub cards: Vec<AutoCard>,
 }
 
@@ -79,7 +86,6 @@ impl Default for TurretDefenseLine {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AutoPlayConfig {
     pub enabled: bool,
-    pub auto_supply: bool,
     pub priority_techs: Vec<String>,
     #[serde(default)]
     pub turret_defense: TurretDefenseLine,
@@ -96,15 +102,16 @@ impl Default for AutoPlayConfig {
             enabled: true,
             current_card_index: 0,
             current_card_progress: 0,
+            card_timer: 0.0,
             cards: vec![
                 AutoCard {
                     id: "card_prod_worker".to_string(),
                     name: "Mua 2 Thợ Mỏ".to_string(),
                     enabled: true,
-                    condition: AutoCondition::UnitCountLessThan {
+                    conditions: vec![AutoCondition::UnitCountLessThan {
                         unit_type: "Engineer".to_string(),
                         count: 7,
-                    },
+                    }],
                     action: AutoAction::TrainUnit {
                         unit_type: "Engineer".to_string(),
                         count: 2,
@@ -114,7 +121,7 @@ impl Default for AutoPlayConfig {
                     id: "card_prod_reactor".to_string(),
                     name: "Xây 2 PowerReactor".to_string(),
                     enabled: true,
-                    condition: AutoCondition::Always,
+                    conditions: vec![AutoCondition::Always],
                     action: AutoAction::BuildStructure {
                         building_type: "PowerReactor".to_string(),
                         count: 2,
@@ -124,7 +131,7 @@ impl Default for AutoPlayConfig {
                     id: "card_prod_turret".to_string(),
                     name: "Xây 2 TurretTower".to_string(),
                     enabled: true,
-                    condition: AutoCondition::Always,
+                    conditions: vec![AutoCondition::Always],
                     action: AutoAction::BuildStructure {
                         building_type: "TurretTower".to_string(),
                         count: 2,
@@ -134,7 +141,7 @@ impl Default for AutoPlayConfig {
                     id: "card_prod_tech".to_string(),
                     name: "Nâng cấp Công Nghệ".to_string(),
                     enabled: true,
-                    condition: AutoCondition::Always,
+                    conditions: vec![AutoCondition::Always],
                     action: AutoAction::ResearchTech {
                         tech_id: "dark_matter_rockets".to_string(),
                         use_priority_queue: true,
@@ -144,7 +151,7 @@ impl Default for AutoPlayConfig {
                     id: "card_prod_barracks".to_string(),
                     name: "Xây 1 Barracks".to_string(),
                     enabled: true,
-                    condition: AutoCondition::Always,
+                    conditions: vec![AutoCondition::Always],
                     action: AutoAction::BuildStructure {
                         building_type: "Barracks".to_string(),
                         count: 1,
@@ -154,11 +161,18 @@ impl Default for AutoPlayConfig {
                     id: "card_prod_converter".to_string(),
                     name: "Xây EnergyConverter (Tỷ lệ 4:1)".to_string(),
                     enabled: true,
-                    condition: AutoCondition::ReactorPerConverterRatio,
+                    conditions: vec![AutoCondition::ReactorPerConverterRatio],
                     action: AutoAction::BuildStructure {
                         building_type: "EnergyConverter".to_string(),
                         count: 1,
                     },
+                },
+                AutoCard {
+                    id: "card_prod_delay".to_string(),
+                    name: "Tạm nghỉ công trình (Delay 5s)".to_string(),
+                    enabled: true,
+                    conditions: vec![AutoCondition::Always],
+                    action: AutoAction::Delay { seconds: 5.0 },
                 },
             ],
         };
@@ -170,12 +184,23 @@ impl Default for AutoPlayConfig {
             enabled: true,
             current_card_index: 0,
             current_card_progress: 0,
+            card_timer: 0.0,
             cards: vec![
+                AutoCard {
+                    id: "card_mil_supply".to_string(),
+                    name: "Xây SupplyDepot tránh kẹt".to_string(),
+                    enabled: true,
+                    conditions: vec![AutoCondition::SupplyNearCap],
+                    action: AutoAction::BuildStructure {
+                        building_type: "SupplyDepot".to_string(),
+                        count: 1,
+                    },
+                },
                 AutoCard {
                     id: "card_mil_shock".to_string(),
                     name: "Mua ShockTrooper (>500 Khoáng)".to_string(),
                     enabled: true,
-                    condition: AutoCondition::MineralsGreaterThan { amount: 500.0 },
+                    conditions: vec![AutoCondition::MineralsGreaterThan { amount: 500.0 }],
                     action: AutoAction::TrainUnit {
                         unit_type: "ShockTrooper".to_string(),
                         count: 1,
@@ -185,7 +210,7 @@ impl Default for AutoPlayConfig {
                     id: "card_mil_rifle".to_string(),
                     name: "Mua Rifleman (>500 Khoáng)".to_string(),
                     enabled: true,
-                    condition: AutoCondition::MineralsGreaterThan { amount: 500.0 },
+                    conditions: vec![AutoCondition::MineralsGreaterThan { amount: 500.0 }],
                     action: AutoAction::TrainUnit {
                         unit_type: "Rifleman".to_string(),
                         count: 1,
@@ -195,10 +220,10 @@ impl Default for AutoPlayConfig {
                     id: "card_mil_attack".to_string(),
                     name: "Tự động tấn công (>40 Lính)".to_string(),
                     enabled: true,
-                    condition: AutoCondition::UnitCountGreaterThan {
+                    conditions: vec![AutoCondition::UnitCountGreaterThan {
                         unit_type: "Combat".to_string(),
                         count: 40,
-                    },
+                    }],
                     action: AutoAction::AttackWave,
                 },
             ],
@@ -206,7 +231,6 @@ impl Default for AutoPlayConfig {
 
         Self {
             enabled: false,
-            auto_supply: true,
             priority_techs: Vec::new(),
             turret_defense,
             loops: vec![production_loop, military_loop],
@@ -237,60 +261,23 @@ pub fn update_autoplay(engine: &mut GameEngine, dt: f32) {
     }
 
     engine.autoplay.timer += dt;
-    if engine.autoplay.timer < 0.3 {
+    if engine.autoplay.timer < 0.25 {
         return;
     }
+    let elapsed = engine.autoplay.timer;
     engine.autoplay.timer = 0.0;
 
-    // 1. Tự động tránh kẹt dân số (Auto Supply Depot) nếu bật
-    if engine.autoplay.config.auto_supply {
-        check_and_build_supply(engine);
-    }
-
-    // 2. Chạy từng loop
+    // Chạy từng loop
     let num_loops = engine.autoplay.config.loops.len();
     for loop_idx in 0..num_loops {
         if !engine.autoplay.config.loops[loop_idx].enabled {
             continue;
         }
-        step_loop(engine, loop_idx);
+        step_loop(engine, loop_idx, elapsed);
     }
 }
 
-fn check_and_build_supply(engine: &mut GameEngine) {
-    if engine.player_eco.max_supply >= 200 {
-        return;
-    }
-    let depot_under_construction = engine
-        .buildings
-        .iter()
-        .filter(|b| {
-            b.team == Team::Player
-                && b.building_type == BuildingType::SupplyDepot
-                && b.build_progress < 1.0
-        })
-        .count();
-
-    if depot_under_construction >= 2 {
-        return;
-    }
-
-    let need_depot = (engine.player_eco.supply + 2 >= engine.player_eco.max_supply)
-        || (engine.player_eco.minerals >= 350.0
-            && engine.player_eco.supply + 6 >= engine.player_eco.max_supply);
-
-    let (cost_m, cost_e) = engine.config.get_building_cost(BuildingType::SupplyDepot);
-    if need_depot
-        && engine.player_eco.minerals >= cost_m
-        && engine.player_eco.energy >= cost_e
-    {
-        if let Some((bx, by)) = find_player_build_spot(engine, BuildingType::SupplyDepot) {
-            try_player_auto_build(engine, BuildingType::SupplyDepot, bx, by);
-        }
-    }
-}
-
-fn step_loop(engine: &mut GameEngine, loop_idx: usize) {
+fn step_loop(engine: &mut GameEngine, loop_idx: usize, dt: f32) {
     let loop_data = &engine.autoplay.config.loops[loop_idx];
     if loop_data.cards.is_empty() {
         return;
@@ -305,16 +292,21 @@ fn step_loop(engine: &mut GameEngine, loop_idx: usize) {
         return;
     }
 
-    // Kiểm tra điều kiện
-    let condition_met = evaluate_condition(engine, &card.condition);
-    if !condition_met {
+    // Kiểm tra tất cả điều kiện
+    let all_conditions_met = if card.conditions.is_empty() {
+        true
+    } else {
+        card.conditions.iter().all(|c| evaluate_condition(engine, c))
+    };
+
+    if !all_conditions_met {
         // Nếu điều kiện không đạt, bỏ qua thẻ để chuyển sang thẻ tiếp theo
         advance_loop_card(engine, loop_idx);
         return;
     }
 
     // Thực hiện hành động của thẻ
-    let action_completed = execute_action(engine, loop_idx, &card.action);
+    let action_completed = execute_action(engine, loop_idx, &card.action, dt);
     if action_completed {
         advance_loop_card(engine, loop_idx);
     }
@@ -323,6 +315,7 @@ fn step_loop(engine: &mut GameEngine, loop_idx: usize) {
 fn advance_loop_card(engine: &mut GameEngine, loop_idx: usize) {
     let loop_data = &mut engine.autoplay.config.loops[loop_idx];
     loop_data.current_card_progress = 0;
+    loop_data.card_timer = 0.0;
     if !loop_data.cards.is_empty() {
         loop_data.current_card_index = (loop_data.current_card_index + 1) % loop_data.cards.len();
     }
@@ -331,6 +324,28 @@ fn advance_loop_card(engine: &mut GameEngine, loop_idx: usize) {
 fn evaluate_condition(engine: &GameEngine, condition: &AutoCondition) -> bool {
     match condition {
         AutoCondition::Always => true,
+        AutoCondition::SupplyNearCap => {
+            if engine.player_eco.max_supply >= 200 {
+                return false;
+            }
+            let depot_under_construction = engine
+                .buildings
+                .iter()
+                .filter(|b| {
+                    b.team == Team::Player
+                        && b.building_type == BuildingType::SupplyDepot
+                        && b.build_progress < 1.0
+                })
+                .count();
+
+            if depot_under_construction >= 2 {
+                return false;
+            }
+
+            (engine.player_eco.supply + 2 >= engine.player_eco.max_supply)
+                || (engine.player_eco.minerals >= 350.0
+                    && engine.player_eco.supply + 6 >= engine.player_eco.max_supply)
+        }
         AutoCondition::UnitCountLessThan { unit_type, count } => {
             let actual = count_player_units(engine, unit_type);
             actual < *count
@@ -379,8 +394,29 @@ fn evaluate_condition(engine: &GameEngine, condition: &AutoCondition) -> bool {
     }
 }
 
-fn execute_action(engine: &mut GameEngine, loop_idx: usize, action: &AutoAction) -> bool {
+pub fn can_train_unit(tech: &TechTreeState, u_type: UnitType) -> bool {
+    match u_type {
+        UnitType::Engineer | UnitType::ShockTrooper | UnitType::Rifleman => true,
+        UnitType::Vanguard => tech.energy_shielding,
+        UnitType::LaserMarksman => tech.focused_laser,
+        UnitType::DarkRocketeer => tech.dark_matter_rockets,
+        UnitType::TaoistSwordmaster => tech.celestial_flying_swords,
+        UnitType::VoidWarlock => tech.void_cataclysm,
+        UnitType::BehemothTitan => tech.behemoth_mutation,
+        UnitType::AcidBaneling => tech.acid_banelings,
+    }
+}
+
+fn execute_action(engine: &mut GameEngine, loop_idx: usize, action: &AutoAction, dt: f32) -> bool {
     match action {
+        AutoAction::Delay { seconds } => {
+            let timer = engine.autoplay.config.loops[loop_idx].card_timer + dt;
+            engine.autoplay.config.loops[loop_idx].card_timer = timer;
+            if timer >= *seconds {
+                return true;
+            }
+            false
+        }
         AutoAction::TrainUnit { unit_type, count } => {
             let u_type = parse_unit_type(unit_type);
             let u_type = match u_type {
@@ -388,12 +424,21 @@ fn execute_action(engine: &mut GameEngine, loop_idx: usize, action: &AutoAction)
                 None => return true, // Loại unit không hợp lệ, bỏ qua
             };
 
+            // Nếu lính này chưa được mở khóa nghiên cứu thì bỏ qua thẻ này
+            if !can_train_unit(&engine.player_tech, u_type) {
+                return true;
+            }
+
             // Nếu kịch trần dân số, chờ có supply hoặc xây supply
             if engine.player_eco.supply >= engine.player_eco.max_supply {
                 return false;
             }
 
-            let (min_cost, en_cost) = engine.config.get_unit_cost(u_type);
+            let (mut min_cost, mut en_cost) = engine.config.get_unit_cost(u_type);
+            if engine.player_tech.hive_proliferation {
+                min_cost *= 0.65;
+                en_cost *= 0.65;
+            }
             if engine.player_eco.minerals < min_cost || engine.player_eco.energy < en_cost {
                 return false; // Chờ đủ tiền
             }
@@ -403,6 +448,16 @@ fn execute_action(engine: &mut GameEngine, loop_idx: usize, action: &AutoAction)
                 UnitType::Engineer => BuildingType::CommandCenter,
                 _ => BuildingType::Barracks,
             };
+
+            // Kiểm tra xem có nhà loại này hoàn thành chưa
+            let has_building = engine
+                .buildings
+                .iter()
+                .any(|b| b.team == Team::Player && b.building_type == target_btype && b.build_progress >= 1.0);
+            if !has_building {
+                // Chưa có nhà, bỏ qua thẻ để tránh kẹt loop
+                return true;
+            }
 
             let maybe_b_id = engine
                 .buildings
@@ -1040,9 +1095,21 @@ mod tests {
         assert!(!config.enabled);
         assert_eq!(config.loops.len(), 2);
         assert_eq!(config.loops[0].name, "Sản Xuất");
-        assert_eq!(config.loops[0].cards.len(), 6);
+        assert_eq!(config.loops[0].cards.len(), 7);
         assert_eq!(config.loops[1].name, "Quân Sự");
-        assert_eq!(config.loops[1].cards.len(), 3);
+        assert_eq!(config.loops[1].cards.len(), 4);
+    }
+
+    #[test]
+    fn test_can_train_unit_tech_requirements() {
+        let mut tech = TechTreeState::default();
+        assert!(can_train_unit(&tech, UnitType::Engineer));
+        assert!(can_train_unit(&tech, UnitType::ShockTrooper));
+        assert!(can_train_unit(&tech, UnitType::Rifleman));
+        assert!(!can_train_unit(&tech, UnitType::Vanguard));
+
+        tech.energy_shielding = true;
+        assert!(can_train_unit(&tech, UnitType::Vanguard));
     }
 
     #[test]
