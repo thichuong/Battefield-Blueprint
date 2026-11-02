@@ -1,10 +1,10 @@
-use rust_engine::ai::extract_state_vector_for_team;
+use rust_engine::ai::{compute_ai_step_reward, extract_state_vector_for_team, RewardSnapshot};
 use rust_engine::autoplay::{
     adapt_training_autoplay_mid_match, create_training_autoplay_config, AutoTrainingArchetype,
 };
-use rust_engine::components::{BuildingType, FormationType, PlayerSlotConfig, Team, UnitType, MAX_PLAYERS};
+use rust_engine::components::{BuildingType, PlayerSlotConfig, Team, UnitType, MAX_PLAYERS};
 use rust_engine::cuda_accel::{CudaDeviceManager, GpuBatchTrainer, TransitionSample};
-use rust_engine::rl::{AiGameMode, BotStrategicAction, RlBrain, ACTION_DIM, FORMATION_DIM, STATE_DIM, DEFAULT_HIDDEN_SIZE, DEFAULT_HIDDEN2_SIZE};
+use rust_engine::rl::{AiGameMode, RlBrain, ACTION_DIM, FORMATION_DIM, STATE_DIM, DEFAULT_HIDDEN_SIZE, DEFAULT_HIDDEN2_SIZE};
 use rust_engine::GameEngine;
 use std::env;
 use std::fs::File;
@@ -329,15 +329,7 @@ fn train_mode(scenario: Scenario, config: &TrainConfig) -> RlBrain {
 
         while !engine.game_over && engine.game_time < max_game_time {
             let prev_state = extract_state_vector_for_team(&engine, learner_team);
-            let prev_opp_combat = count_hostile_combat(&engine, learner_team);
-            let prev_my_combat = count_ally_combat(&engine, learner_team);
-            let prev_opp_bldgs = count_hostile_buildings(&engine, learner_team);
-            let prev_opp_turrets = count_hostile_turrets(&engine, learner_team);
-            let prev_opp_ccs = count_hostile_ccs(&engine, learner_team);
-            let prev_my_ccs = count_ally_ccs(&engine, learner_team);
-            let prev_my_reactors = count_ally_reactors(&engine, learner_team);
-            let prev_my_converters = count_ally_converters(&engine, learner_team);
-            let prev_my_unlocked = rust_engine::ai::count_unlocked_techs(engine.team_tech(learner_team));
+            let prev_snap = RewardSnapshot::capture(&engine, learner_team);
 
             mid_adapt_timer += time_scale_dt;
             if mid_adapt_timer >= 2.0 {
@@ -353,147 +345,24 @@ fn train_mode(scenario: Scenario, config: &TrainConfig) -> RlBrain {
             rust_engine::simulation::step(&mut engine, time_scale_dt);
 
             let cur_state = extract_state_vector_for_team(&engine, learner_team);
+            let cur_snap = RewardSnapshot::capture(&engine, learner_team);
             let action = engine.team_ai(learner_team).current_action;
             let formation = engine.team_ai(learner_team).current_formation;
             action_counts[action.to_index()] += 1;
             formation_counts[formation.to_index()] += 1;
 
-            // --- REWARD CALCULATION ---
-            let mut step_reward = 0.0_f32;
-
-            // 1. Khắc chế AoE bằng Formation
-            let opp_aoe_threat = prev_state[22];
-            if opp_aoe_threat > 0.15 {
-                if formation == FormationType::Scatter {
-                    step_reward += 1.2;
-                } else if formation == FormationType::Line || formation == FormationType::Box {
-                    step_reward -= 0.6;
-                }
-            }
-
-            // 2. Thưởng phối hợp đội hình theo hành động chiến lược
-            match action {
-                BotStrategicAction::AllOutAssault | BotStrategicAction::SiegeArtilleryPush => {
-                    if formation == FormationType::Wedge || formation == FormationType::Line {
-                        step_reward += 0.8;
-                    }
-                }
-                BotStrategicAction::HarassEconomy | BotStrategicAction::FocusWeakestEnemy => {
-                    if formation == FormationType::Column || formation == FormationType::Wedge {
-                        step_reward += 0.9;
-                    }
-                }
-                BotStrategicAction::DefendAndCounter | BotStrategicAction::CoordinateAllySupport => {
-                    if formation == FormationType::Circle || formation == FormationType::Box {
-                        step_reward += 0.7;
-                    }
-                }
-                _ => {}
-            }
-
-            // 3. Phá hủy công trình thù địch & Tháp pháo
-            let cur_opp_bldgs = count_hostile_buildings(&engine, learner_team);
-            if prev_opp_bldgs > cur_opp_bldgs {
-                step_reward += (prev_opp_bldgs - cur_opp_bldgs) as f32 * 25.0;
-            }
-            let cur_opp_turrets = count_hostile_turrets(&engine, learner_team);
-            if prev_opp_turrets > cur_opp_turrets {
-                step_reward += (prev_opp_turrets - cur_opp_turrets) as f32 * 35.0;
-            }
-
-            // 4. Diệt lính thù địch vs Mất lính phe mình
-            let cur_opp_combat = count_hostile_combat(&engine, learner_team);
-            if prev_opp_combat > cur_opp_combat {
-                step_reward += (prev_opp_combat - cur_opp_combat) as f32 * 3.5;
-            }
-            let cur_my_combat = count_ally_combat(&engine, learner_team);
-            if prev_my_combat > cur_my_combat {
-                step_reward -= (prev_my_combat - cur_my_combat) as f32 * 1.5;
-            }
-
-            // 5. Phá hủy / Mất nhà chính
-            let cur_opp_ccs = count_hostile_ccs(&engine, learner_team);
-            if prev_opp_ccs > cur_opp_ccs {
-                step_reward += (prev_opp_ccs - cur_opp_ccs) as f32 * 150.0;
-            }
-            let cur_my_ccs = count_ally_ccs(&engine, learner_team);
-            if prev_my_ccs > cur_my_ccs {
-                step_reward -= (prev_my_ccs - cur_my_ccs) as f32 * 150.0;
-            }
-
-            // 6. Thưởng tiến độ công nghệ
-            let cur_my_unlocked = rust_engine::ai::count_unlocked_techs(engine.team_tech(learner_team));
-            if cur_my_unlocked > prev_my_unlocked {
-                step_reward += (cur_my_unlocked - prev_my_unlocked) as f32 * 16.0;
-                if cur_my_unlocked == 19 {
-                    step_reward += 60.0;
-                }
-            }
-
-            // 7. Thưởng duy trì cơ cấu binh chủng đa dạng (Combined Arms)
-            let count_my_u = |ut: UnitType| -> usize {
-                engine.units.iter().filter(|u| u.team == learner_team && u.unit_type == ut).count()
-            };
-            let has_frontline = count_my_u(UnitType::BehemothTitan) > 0 || count_my_u(UnitType::Vanguard) > 0;
-            let has_artillery = count_my_u(UnitType::DarkRocketeer) > 0 || count_my_u(UnitType::LaserMarksman) > 0;
-            let has_magic = count_my_u(UnitType::VoidWarlock) > 0 || count_my_u(UnitType::TaoistSwordmaster) > 0;
-            if has_frontline && has_artillery && has_magic {
-                step_reward += 0.35;
-            }
-
-            // --- 8. PHẦN THƯỞNG KHUYẾN KHÍCH FARM TÀI NGUYÊN (POWER REACTOR & ENERGY CONVERTER) ---
-            let cur_my_reactors = count_ally_reactors(&engine, learner_team);
-            if cur_my_reactors > prev_my_reactors {
-                let diff = (cur_my_reactors - prev_my_reactors) as f32;
-                step_reward += diff * 12.0; // Thưởng ngay 12 điểm cho mỗi PowerReactor mới
-            }
-
-            let cur_my_converters = count_ally_converters(&engine, learner_team);
-            if cur_my_converters > prev_my_converters {
-                let diff = (cur_my_converters - prev_my_converters) as f32;
-                step_reward += diff * 20.0; // Thưởng lớn 20 điểm cho mỗi EnergyConverter mới
-            }
-
-            // Thưởng theo lưu lượng sản sinh năng lượng
-            let my_eco = engine.team_eco(learner_team);
-            let energy_rate = my_eco.energy_per_sec;
-            if energy_rate > 10.0 {
-                step_reward += (energy_rate / 60.0).clamp(0.0, 1.5) * 0.4;
-            }
-
-            // Thưởng đặc biệt khi đạt "chuỗi chuyển hóa năng lượng thặng dư thành khoáng sản"
-            // Khi Năng lượng vượt ngưỡng 1000.0 và có EnergyConverter hoạt động
-            if my_eco.energy > rust_engine::config::ENERGY_CONVERSION_THRESHOLD && cur_my_converters > 0 {
-                step_reward += 0.65; // Thưởng liên tục khi bộ máy chuyển hóa điện -> vàng hoạt động!
-                if cur_my_reactors >= 4 {
-                    step_reward += 0.35;
-                }
-            }
-
-            // Thưởng khi bot AI ra quyết định phát triển hạ tầng kinh tế (ExpandEco / BuildInfrastructure)
-            if matches!(action, BotStrategicAction::ExpandEco | BotStrategicAction::BuildInfrastructure) {
-                if cur_my_reactors < 16 || cur_my_converters < 6 {
-                    step_reward += 0.5;
-                }
-            }
-
-            // Phạt nhẹ thời gian trôi
-            step_reward -= 0.01;
+            // --- TÍNH TOÁN REWARD CHUẨN ĐỒNG BỘ TỪ AI.RS (Ưu tiên mở rộng căn cứ, TurretTower, hạ tầng & phạt spam AcidBaneling) ---
+            let step_reward = compute_ai_step_reward(
+                &prev_snap,
+                &cur_snap,
+                action,
+                formation,
+                engine.game_over,
+                engine.game_time,
+                max_game_time,
+            );
 
             let is_done = engine.game_over || engine.game_time >= max_game_time;
-            if engine.game_over {
-                let any_hostile_alive = cur_opp_ccs > 0;
-                let any_ally_alive = cur_my_ccs > 0;
-
-                if !any_hostile_alive && any_ally_alive {
-                    step_reward += 500.0 + (max_game_time - engine.game_time) * 0.2;
-                } else if !any_ally_alive {
-                    step_reward -= 300.0;
-                }
-            } else if engine.game_time >= max_game_time {
-                step_reward -= 60.0;
-            }
-
             ep_reward += step_reward;
 
             // Đẩy transition vào GPU Batch Trainer
@@ -608,10 +477,12 @@ fn save_mode_model(scenario: Scenario, brain: &RlBrain) {
     }
 }
 
+#[allow(dead_code)]
 fn count_hostile_combat(engine: &GameEngine, my_team: Team) -> usize {
     engine.units.iter().filter(|u| engine.are_hostile(my_team, u.team) && u.unit_type != UnitType::Engineer).count()
 }
 
+#[allow(dead_code)]
 fn count_ally_combat(engine: &GameEngine, my_team: Team) -> usize {
     engine.units.iter().filter(|u| engine.are_allies(my_team, u.team) && u.unit_type != UnitType::Engineer).count()
 }
@@ -624,18 +495,22 @@ fn count_ally_ccs(engine: &GameEngine, my_team: Team) -> usize {
     engine.buildings.iter().filter(|b| engine.are_allies(my_team, b.team) && b.building_type == BuildingType::CommandCenter).count()
 }
 
+#[allow(dead_code)]
 fn count_ally_reactors(engine: &GameEngine, my_team: Team) -> usize {
     engine.buildings.iter().filter(|b| engine.are_allies(my_team, b.team) && b.building_type == BuildingType::PowerReactor).count()
 }
 
+#[allow(dead_code)]
 fn count_ally_converters(engine: &GameEngine, my_team: Team) -> usize {
     engine.buildings.iter().filter(|b| engine.are_allies(my_team, b.team) && b.building_type == BuildingType::EnergyConverter).count()
 }
 
+#[allow(dead_code)]
 fn count_hostile_buildings(engine: &GameEngine, my_team: Team) -> usize {
     engine.buildings.iter().filter(|b| engine.are_hostile(my_team, b.team)).count()
 }
 
+#[allow(dead_code)]
 fn count_hostile_turrets(engine: &GameEngine, my_team: Team) -> usize {
     engine.buildings.iter().filter(|b| engine.are_hostile(my_team, b.team) && b.building_type == BuildingType::TurretTower).count()
 }

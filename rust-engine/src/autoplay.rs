@@ -179,7 +179,7 @@ impl AutoPlayConfig {
                     enabled: true,
                     conditions: vec![AutoCondition::BuildingCountLessThan {
                         building_type: "TurretTower".to_string(),
-                        count: 8,
+                        count: 12,
                     }],
                     action: AutoAction::BuildStructure {
                         building_type: "TurretTower".to_string(),
@@ -1512,7 +1512,7 @@ pub fn adapt_training_autoplay_mid_match(engine: &mut GameEngine, team: Team) {
 
         // Tự động thêm thẻ mở rộng CommandCenter phụ nếu có nhiều khoáng sản và đủ phát triển
         let has_expand_card = prod_loop.cards.iter().any(|c| c.id == "card_prod_expand_cc");
-        if !has_expand_card && (game_time > 120.0 || eco_minerals >= 380.0) {
+        if !has_expand_card && (game_time > 60.0 || eco_minerals >= 350.0) {
             prod_loop.cards.insert(
                 1,
                 AutoCard {
@@ -1522,7 +1522,7 @@ pub fn adapt_training_autoplay_mid_match(engine: &mut GameEngine, team: Team) {
                     conditions: vec![
                         AutoCondition::BuildingCountLessThan {
                             building_type: "CommandCenter".to_string(),
-                            count: 2,
+                            count: 4,
                         },
                         AutoCondition::MineralsGreaterThan { amount: 380.0 },
                     ],
@@ -1606,8 +1606,8 @@ pub fn adapt_training_autoplay_mid_match(engine: &mut GameEngine, team: Team) {
                 tech.acid_banelings,
                 "card_prod_baneling",
                 "Mua AcidBaneling (Bọ Nổ Axit Cảm Tử)",
-                40.0,
-                6,
+                250.0,
+                2,
             ),
         ];
 
@@ -1834,13 +1834,13 @@ mod tests {
         let config = create_training_autoplay_config(Team::Player, AutoTrainingArchetype::MacroFortress);
         engine.autoplay.config = config;
 
-        // Giả lập đã xây đủ 10 PowerReactor, 8 TurretTower, 6 Barracks
+        // Giả lập đã xây đủ 10 PowerReactor, 12 TurretTower, 6 Barracks
         let mut b_id = 1;
         for _ in 0..10 {
             b_id += 1;
             engine.buildings.push(engine.config.create_building(b_id, Team::Player, BuildingType::PowerReactor, 600.0, 4200.0, true));
         }
-        for _ in 0..8 {
+        for _ in 0..12 {
             b_id += 1;
             engine.buildings.push(engine.config.create_building(b_id, Team::Player, BuildingType::TurretTower, 700.0, 4100.0, true));
         }
@@ -1857,7 +1857,7 @@ mod tests {
         let turret_card = prod_loop.cards.iter().find(|c| c.id == "card_prod_turret").unwrap();
         let barracks_card = prod_loop.cards.iter().find(|c| c.id == "card_prod_barracks").unwrap();
 
-        // Kiểm tra các giới hạn đã được gấp đôi: 10 -> 20, 8 -> 16, 6 -> 12
+        // Kiểm tra các giới hạn đã được gấp đôi: 10 -> 20, 12 -> 24, 6 -> 12
         let reactor_cap = reactor_card.conditions.iter().find_map(|c| match c {
             AutoCondition::BuildingCountLessThan { building_type, count } if building_type == "PowerReactor" => Some(*count),
             _ => None,
@@ -1868,7 +1868,7 @@ mod tests {
             AutoCondition::BuildingCountLessThan { building_type, count } if building_type == "TurretTower" => Some(*count),
             _ => None,
         }).unwrap();
-        assert_eq!(turret_cap, 16);
+        assert_eq!(turret_cap, 24);
 
         let barracks_cap = barracks_card.conditions.iter().find_map(|c| match c {
             AutoCondition::BuildingCountLessThan { building_type, count } if building_type == "Barracks" => Some(*count),

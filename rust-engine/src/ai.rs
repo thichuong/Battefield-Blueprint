@@ -20,6 +20,267 @@ pub struct AiState {
     pub training_enabled: bool,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct RewardSnapshot {
+    pub my_ccs: usize,
+    pub my_turrets: usize,
+    pub my_reactors: usize,
+    pub my_converters: usize,
+    pub my_barracks: usize,
+    pub my_depots: usize,
+    pub my_total_buildings: usize,
+    pub my_combat: usize,
+    pub my_banelings: usize,
+    pub my_unlocked_techs: usize,
+    pub opp_ccs: usize,
+    pub opp_turrets: usize,
+    pub opp_buildings: usize,
+    pub opp_combat: usize,
+    pub energy_rate: f32,
+    pub energy: f32,
+    pub opp_aoe_threat: f32,
+    pub has_frontline: bool,
+    pub has_artillery: bool,
+    pub has_magic: bool,
+}
+
+impl RewardSnapshot {
+    pub fn capture(engine: &GameEngine, team: Team) -> Self {
+        let mut snap = Self::default();
+
+        let my_eco = engine.team_eco(team);
+        snap.energy_rate = my_eco.energy_per_sec;
+        snap.energy = my_eco.energy;
+        snap.my_unlocked_techs = count_unlocked_techs(engine.team_tech(team));
+
+        for b in &engine.buildings {
+            let is_hostile = engine.are_hostile(team, b.team);
+            if b.team == team {
+                snap.my_total_buildings += 1;
+                match b.building_type {
+                    BuildingType::CommandCenter => snap.my_ccs += 1,
+                    BuildingType::TurretTower => snap.my_turrets += 1,
+                    BuildingType::PowerReactor => snap.my_reactors += 1,
+                    BuildingType::EnergyConverter => snap.my_converters += 1,
+                    BuildingType::Barracks => snap.my_barracks += 1,
+                    BuildingType::SupplyDepot => snap.my_depots += 1,
+                }
+            } else if is_hostile {
+                snap.opp_buildings += 1;
+                match b.building_type {
+                    BuildingType::CommandCenter => snap.opp_ccs += 1,
+                    BuildingType::TurretTower => snap.opp_turrets += 1,
+                    _ => {}
+                }
+            }
+        }
+
+        let mut opp_aoe_count = 0;
+        for u in &engine.units {
+            let is_hostile = engine.are_hostile(team, u.team);
+            if u.team == team {
+                if u.unit_type != UnitType::Engineer {
+                    snap.my_combat += 1;
+                    match u.unit_type {
+                        UnitType::BehemothTitan | UnitType::Vanguard | UnitType::ShockTrooper => {
+                            snap.has_frontline = true;
+                        }
+                        UnitType::DarkRocketeer | UnitType::LaserMarksman | UnitType::Rifleman => {
+                            snap.has_artillery = true;
+                        }
+                        UnitType::VoidWarlock | UnitType::TaoistSwordmaster => {
+                            snap.has_magic = true;
+                        }
+                        UnitType::AcidBaneling => {
+                            snap.my_banelings += 1;
+                        }
+                        _ => {}
+                    }
+                }
+            } else if is_hostile && u.unit_type != UnitType::Engineer {
+                snap.opp_combat += 1;
+                if matches!(u.unit_type, UnitType::DarkRocketeer | UnitType::VoidWarlock | UnitType::AcidBaneling | UnitType::BehemothTitan) {
+                    opp_aoe_count += 1;
+                }
+            }
+        }
+
+        snap.opp_aoe_threat = (opp_aoe_count as f32 / 8.0).clamp(0.0, 2.0);
+        snap
+    }
+}
+
+pub fn compute_ai_step_reward(
+    prev: &RewardSnapshot,
+    cur: &RewardSnapshot,
+    action: BotStrategicAction,
+    formation: FormationType,
+    game_over: bool,
+    game_time: f32,
+    max_game_time: f32,
+) -> f32 {
+    let mut reward = 0.0_f32;
+
+    // 1. MỞ RỘNG CĂN CỨ // COMMAND CENTER (+85 điểm / nhà chính mới)
+    if cur.my_ccs > prev.my_ccs {
+        reward += (cur.my_ccs - prev.my_ccs) as f32 * 85.0;
+    }
+    // Phạt nặng khi mất nhà chính
+    if prev.my_ccs > cur.my_ccs {
+        reward -= (prev.my_ccs - cur.my_ccs) as f32 * 180.0;
+    }
+    // Thưởng duy trì quy mô đa căn cứ
+    if cur.my_ccs >= 2 {
+        reward += (cur.my_ccs - 1) as f32 * 1.0;
+    }
+
+    // 2. PHÁT TRIỂN HỆ THỐNG PHÒNG THỦ TURRET TOWER (+24 điểm / tháp mới)
+    if cur.my_turrets > prev.my_turrets {
+        reward += (cur.my_turrets - prev.my_turrets) as f32 * 24.0;
+    }
+    // Thưởng duy trì lưới tháp pháo phòng ngự
+    if cur.my_turrets > 0 {
+        reward += (cur.my_turrets as f32 * 0.20).min(3.0);
+    }
+    // Thưởng phá tháp pháo đối phương
+    if prev.opp_turrets > cur.opp_turrets {
+        reward += (prev.opp_turrets - cur.opp_turrets) as f32 * 35.0;
+    }
+
+    // 3. XÂY DỰNG CÁC CÔNG TRÌNH HẠ TẦNG KHÁC
+    if cur.my_converters > prev.my_converters {
+        reward += (cur.my_converters - prev.my_converters) as f32 * 25.0;
+    }
+    if cur.my_barracks > prev.my_barracks {
+        reward += (cur.my_barracks - prev.my_barracks) as f32 * 18.0;
+    }
+    if cur.my_reactors > prev.my_reactors {
+        reward += (cur.my_reactors - prev.my_reactors) as f32 * 15.0;
+    }
+    if cur.my_depots > prev.my_depots {
+        reward += (cur.my_depots - prev.my_depots) as f32 * 10.0;
+    }
+    // Thưởng tổng số công trình tăng thêm
+    if cur.my_total_buildings > prev.my_total_buildings {
+        reward += (cur.my_total_buildings - prev.my_total_buildings) as f32 * 8.0;
+    }
+    // Thưởng duy trì quy mô công trình tổng thể (Base Scale)
+    reward += (cur.my_total_buildings as f32 * 0.15).min(4.5);
+    if cur.my_total_buildings > cur.opp_buildings {
+        reward += 0.4;
+    }
+
+    // 4. CHUỖI SẢN XUẤT VÀ CHUYỂN HÓA NĂNG LƯỢNG
+    if cur.energy_rate > 10.0 {
+        reward += (cur.energy_rate / 60.0).clamp(0.0, 1.5) * 0.4;
+    }
+    if cur.energy > crate::config::ENERGY_CONVERSION_THRESHOLD && cur.my_converters > 0 {
+        reward += 0.65;
+        if cur.my_reactors >= 4 {
+            reward += 0.35;
+        }
+    }
+
+    // 5. THƯỞNG HÀNH ĐỘNG CHIẾN LƯỢC MỞ RỘNG VÀ XÂY DỰNG
+    match action {
+        BotStrategicAction::ExpandEco => {
+            if cur.my_ccs < 4 {
+                reward += 0.8;
+            }
+        }
+        BotStrategicAction::BuildInfrastructure => {
+            if cur.my_reactors < 16 || cur.my_converters < 6 {
+                reward += 0.6;
+            }
+        }
+        BotStrategicAction::BuildDefenseGrid => {
+            if cur.my_turrets < 16 {
+                reward += 0.6;
+            }
+        }
+        _ => {}
+    }
+
+    // 6. GIẢM SỬ DỤNG VÀ PHẠT LẠM DỤNG ACID BANELING
+    // AcidBaneling nổ xong tự mất, spam quá nhiều gây kiệt quệ tài nguyên
+    if cur.my_banelings > 2 {
+        reward -= (cur.my_banelings - 2) as f32 * 1.5;
+    }
+    if action == BotStrategicAction::MilitarySwarmRush && cur.my_ccs < 2 {
+        reward -= 1.5;
+    }
+
+    // 7. KHẮC CHẾ AOE VÀ TƯƠNG THÍCH ĐỘI HÌNH
+    if prev.opp_aoe_threat > 0.15 {
+        if formation == FormationType::Scatter {
+            reward += 1.2;
+        } else if formation == FormationType::Line || formation == FormationType::Box {
+            reward -= 0.6;
+        }
+    }
+    match action {
+        BotStrategicAction::AllOutAssault | BotStrategicAction::SiegeArtilleryPush => {
+            if formation == FormationType::Wedge || formation == FormationType::Line {
+                reward += 0.8;
+            }
+        }
+        BotStrategicAction::HarassEconomy | BotStrategicAction::FocusWeakestEnemy => {
+            if formation == FormationType::Column || formation == FormationType::Wedge {
+                reward += 0.9;
+            }
+        }
+        BotStrategicAction::DefendAndCounter | BotStrategicAction::CoordinateAllySupport => {
+            if formation == FormationType::Circle || formation == FormationType::Box {
+                reward += 0.7;
+            }
+        }
+        _ => {}
+    }
+
+    // 8. TỔN THẤT VÀ TIÊU DIỆT LỰC LƯỢNG
+    if prev.opp_buildings > cur.opp_buildings {
+        reward += (prev.opp_buildings - cur.opp_buildings) as f32 * 25.0;
+    }
+    if prev.opp_combat > cur.opp_combat {
+        reward += (prev.opp_combat - cur.opp_combat) as f32 * 3.5;
+    }
+    if prev.my_combat > cur.my_combat {
+        reward -= (prev.my_combat - cur.my_combat) as f32 * 1.5;
+    }
+    if prev.opp_ccs > cur.opp_ccs {
+        reward += (prev.opp_ccs - cur.opp_ccs) as f32 * 150.0;
+    }
+
+    // 9. CÔNG NGHỆ VÀ BINH CHỦNG PHỐI HỢP
+    if cur.my_unlocked_techs > prev.my_unlocked_techs {
+        reward += (cur.my_unlocked_techs - prev.my_unlocked_techs) as f32 * 16.0;
+        if cur.my_unlocked_techs == 19 {
+            reward += 60.0;
+        }
+    }
+    if cur.has_frontline && cur.has_artillery && cur.has_magic {
+        reward += 0.35;
+    }
+
+    // Phạt thời gian trôi nhẹ
+    reward -= 0.01;
+
+    // 10. KẾT QUẢ TRẬN ĐẤU
+    if game_over {
+        let any_hostile_alive = cur.opp_ccs > 0;
+        let any_ally_alive = cur.my_ccs > 0;
+        if !any_hostile_alive && any_ally_alive {
+            reward += 500.0 + (max_game_time - game_time) * 0.2;
+        } else if !any_ally_alive {
+            reward -= 300.0;
+        }
+    } else if game_time >= max_game_time {
+        reward -= 60.0;
+    }
+
+    reward
+}
+
 impl Default for AiState {
     fn default() -> Self {
         Self {
@@ -685,11 +946,11 @@ pub fn apply_strategic_action_for_team(engine: &mut GameEngine, team: Team, acti
             execute_team_training(engine, team, &[UnitType::VoidWarlock, UnitType::TaoistSwordmaster, UnitType::DarkRocketeer, UnitType::Rifleman]);
         }
         BotStrategicAction::TechMonsterBranch => {
-            try_team_research(engine, team, &["primeval_scales", "behemoth_mutation", "acid_banelings", "hive_proliferation"]);
-            execute_team_training(engine, team, &[UnitType::BehemothTitan, UnitType::AcidBaneling, UnitType::VoidWarlock, UnitType::LaserMarksman, UnitType::ShockTrooper]);
+            try_team_research(engine, team, &["primeval_scales", "behemoth_mutation", "hive_proliferation", "acid_banelings"]);
+            execute_team_training(engine, team, &[UnitType::BehemothTitan, UnitType::VoidWarlock, UnitType::LaserMarksman, UnitType::Vanguard, UnitType::ShockTrooper, UnitType::AcidBaneling]);
         }
         BotStrategicAction::MilitarySwarmRush => {
-            execute_team_training(engine, team, &[UnitType::AcidBaneling, UnitType::ShockTrooper, UnitType::Rifleman, UnitType::DarkRocketeer]);
+            execute_team_training(engine, team, &[UnitType::ShockTrooper, UnitType::Rifleman, UnitType::DarkRocketeer, UnitType::Vanguard, UnitType::AcidBaneling]);
             command_team_military(engine, team, MilitaryCommand::HarassOrAttack);
         }
         BotStrategicAction::DefendAndCounter => {
@@ -698,7 +959,7 @@ pub fn apply_strategic_action_for_team(engine: &mut GameEngine, team: Team, acti
         }
         BotStrategicAction::HarassEconomy => {
             command_team_military(engine, team, MilitaryCommand::HarassWorkers);
-            execute_team_training(engine, team, &[UnitType::AcidBaneling, UnitType::TaoistSwordmaster, UnitType::ShockTrooper]);
+            execute_team_training(engine, team, &[UnitType::TaoistSwordmaster, UnitType::ShockTrooper, UnitType::LaserMarksman, UnitType::AcidBaneling]);
         }
         BotStrategicAction::AllOutAssault => {
             command_team_military(engine, team, MilitaryCommand::AllOutAssault);
@@ -737,7 +998,7 @@ pub fn apply_strategic_action_for_team(engine: &mut GameEngine, team: Team, acti
             let weakest = find_weakest_hostile_team(engine, team);
             let weakest_base = engine.base_pos(weakest);
             command_team_military(engine, team, MilitaryCommand::AttackSpecific(weakest_base));
-            execute_team_training(engine, team, &[UnitType::AcidBaneling, UnitType::TaoistSwordmaster, UnitType::DarkRocketeer, UnitType::LaserMarksman]);
+            execute_team_training(engine, team, &[UnitType::TaoistSwordmaster, UnitType::LaserMarksman, UnitType::DarkRocketeer, UnitType::ShockTrooper, UnitType::AcidBaneling]);
         }
     }
 }
@@ -752,7 +1013,7 @@ pub fn maintain_continuous_ai_reflexes_for_team(engine: &mut GameEngine, team: T
 
     let team_workers = engine.units.iter().filter(|u| u.team == team && u.unit_type == UnitType::Engineer).count();
     let team_ccs = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::CommandCenter).count();
-    let worker_target = if team_ccs > 1 { 22 } else { 14 };
+    let worker_target = (12 + team_ccs * 6).min(36);
 
     // 1. Duy trì sản xuất thợ mỏ cơ bản
     let (eco_supply, eco_max_supply, eco_minerals) = {
@@ -769,6 +1030,29 @@ pub fn maintain_continuous_ai_reflexes_for_team(engine: &mut GameEngine, team: T
             if let Some(cc) = engine.buildings.iter_mut().find(|b| b.id == bid) {
                 cc.training_queue.push(UnitType::Engineer);
             }
+        }
+    }
+
+    // 1.5. Chủ động mở rộng thêm CommandCenter (Khuyến khích tối đa 5 căn cứ)
+    let under_construction_ccs = engine.buildings.iter().filter(|b| {
+        b.team == team && b.building_type == BuildingType::CommandCenter && b.build_progress < 1.0
+    }).count();
+
+    let reactors = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::PowerReactor).count();
+    let eco_minerals = engine.team_eco(team).minerals;
+
+    let wants_cc_expand = match team_ccs {
+        0 => true,
+        1 => engine.game_time >= 50.0 || reactors >= 3 || eco_minerals >= 380.0,
+        2 => engine.game_time >= 150.0 || reactors >= 6 || eco_minerals >= 400.0,
+        3 => engine.game_time >= 270.0 || reactors >= 10 || eco_minerals >= 400.0,
+        4 => engine.game_time >= 400.0 || reactors >= 14 || eco_minerals >= 400.0,
+        _ => false,
+    };
+
+    if wants_cc_expand && under_construction_ccs == 0 && eco_minerals >= 400.0 {
+        if let Some((bx, by)) = crate::autoplay::find_team_build_spot(engine, team, BuildingType::CommandCenter) {
+            crate::autoplay::try_team_auto_build(engine, team, BuildingType::CommandCenter, bx, by);
         }
     }
 
@@ -793,7 +1077,6 @@ pub fn maintain_continuous_ai_reflexes_for_team(engine: &mut GameEngine, team: T
     }
 
     // 3. Xây Power Reactor
-    let reactors = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::PowerReactor).count();
     let under_construction_reactors = engine.buildings.iter().filter(|b| {
         b.team == team && b.building_type == BuildingType::PowerReactor && b.build_progress < 1.0
     }).count();
@@ -864,22 +1147,35 @@ pub fn maintain_continuous_ai_reflexes_for_team(engine: &mut GameEngine, team: T
         }
     }
 
-    // 4.5. Xây TurretTower
+    // 4.5. Xây TurretTower (Hiệu quả cao trên giá tiền: tăng trần lên 32 tháp, xây song song tới 2 tháp)
     let turrets = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::TurretTower).count();
-    let under_construction_turrets = engine.buildings.iter().any(|b| {
+    let under_construction_turrets = engine.buildings.iter().filter(|b| {
         b.team == team && b.building_type == BuildingType::TurretTower && b.build_progress < 1.0
-    });
-    if turrets < 10 && !under_construction_turrets && eco_min >= 100.0 && eco_en >= 50.0 {
+    }).count();
+
+    let max_turrets = (10 + team_ccs * 6).min(32);
+    let max_parallel_turrets = if eco_min >= 280.0 && eco_en >= 100.0 { 2 } else { 1 };
+
+    if turrets < max_turrets && under_construction_turrets < max_parallel_turrets && eco_min >= 125.0 && eco_en >= 50.0 {
         if let Some((bx, by)) = crate::autoplay::find_team_build_spot(engine, team, BuildingType::TurretTower) {
             crate::autoplay::try_team_auto_build(engine, team, BuildingType::TurretTower, bx, by);
         }
     }
 
-    // 4.8. Nghiên cứu công nghệ liên tục
+    // Tự động mở rộng hàng rào phòng thủ của team theo số lượng tháp đã xây
+    if turrets >= 12 && engine.team_autoplay(team).config.turret_defense.rows < 3 {
+        engine.team_autoplay_mut(team).config.turret_defense.rows = 3;
+    } else if turrets >= 5 && engine.team_autoplay(team).config.turret_defense.rows < 2 {
+        engine.team_autoplay_mut(team).config.turret_defense.rows = 2;
+    }
+
+    // 4.8. Nghiên cứu công nghệ liên tục (Ưu tiên kinh tế & công trình trước khi tới acid baneling)
     let (active_res_len, tech_en) = (engine.team_tech(team).active_researches.len(), engine.team_eco(team).energy);
     if active_res_len < crate::config::MAX_TOTAL_CONCURRENT_RESEARCH && tech_en >= 80.0 {
         let tech_priorities = [
             "optical_drills",
+            "overcharged_reactors",
+            "fortified_blueprints",
             "focused_laser",
             "energy_shielding",
             "dark_matter_rockets",
@@ -889,15 +1185,13 @@ pub fn maintain_continuous_ai_reflexes_for_team(engine: &mut GameEngine, team: T
             "void_cataclysm",
             "celestial_flying_swords",
             "golden_bell_shield",
-            "acid_banelings",
-            "hive_proliferation",
-            "overcharged_reactors",
+            "overload_strike",
             "titan_alloy_plating",
-            "fortified_blueprints",
             "magnetic_rounds",
             "exo_boosters",
             "superheated_blades",
-            "overload_strike",
+            "hive_proliferation",
+            "acid_banelings",
         ];
         for &t in &tech_priorities {
             let (needs_research, target) = {
@@ -1027,17 +1321,21 @@ pub fn execute_team_continuous_recruitment(engine: &mut GameEngine, team: Team) 
     let shields = count_unit(UnitType::Vanguard);
     let banelings = count_unit(UnitType::AcidBaneling);
 
+    let eco = engine.team_eco(team);
+    let baneling_quota = if eco.minerals >= 450.0 && eco.energy >= 200.0 { 2 } else { 1 };
+
+    // Sắp xếp thứ tự ưu tiên: Binh chủng chủ lực đứng trước, AcidBaneling đứng cuối với quota thấp
     let mut candidate_order = vec![
-        (UnitType::BehemothTitan, titans, 4),
-        (UnitType::DarkRocketeer, rockets, 6),
-        (UnitType::LaserMarksman, lasers, 5),
-        (UnitType::VoidWarlock, warlocks, 4),
-        (UnitType::TaoistSwordmaster, swords, 5),
-        (UnitType::Vanguard, shields, 4),
-        (UnitType::AcidBaneling, banelings, 6),
+        (UnitType::BehemothTitan, titans, 4, 1),
+        (UnitType::DarkRocketeer, rockets, 6, 2),
+        (UnitType::LaserMarksman, lasers, 5, 3),
+        (UnitType::VoidWarlock, warlocks, 4, 4),
+        (UnitType::TaoistSwordmaster, swords, 5, 5),
+        (UnitType::Vanguard, shields, 4, 6),
+        (UnitType::AcidBaneling, banelings, baneling_quota, 10),
     ];
-    candidate_order.sort_by_key(|&(_, cur, quota)| {
-        if cur >= quota { 100 + cur } else { cur }
+    candidate_order.sort_by_key(|&(_, cur, quota, prio)| {
+        if cur >= quota { 1000 + cur * 10 + prio } else { prio * 100 + cur }
     });
 
     for bid in completed_barracks {
@@ -1052,11 +1350,19 @@ pub fn execute_team_continuous_recruitment(engine: &mut GameEngine, team: Team) 
         let mut recruited = false;
         let tech = engine.team_tech(team).clone();
 
-        for &(u_type, cur_cnt, quota) in &candidate_order {
+        for &(u_type, cur_cnt, quota, _) in &candidate_order {
             if !crate::autoplay::can_train_unit(&tech, u_type) {
                 continue;
             }
-            if cur_cnt >= quota && candidate_order.iter().any(|&(other_u, other_c, other_q)| {
+            // Hạn chế chặt chẽ AcidBaneling: chỉ mua khi cực kỳ dư dả, không spam làm cạn kiệt tài nguyên
+            if u_type == UnitType::AcidBaneling {
+                let eco = engine.team_eco(team);
+                if cur_cnt >= quota || (cur_cnt >= 1 && eco.minerals < 350.0) {
+                    continue;
+                }
+            }
+
+            if cur_cnt >= quota && candidate_order.iter().any(|&(other_u, other_c, other_q, _)| {
                 other_c < other_q && crate::autoplay::can_train_unit(&tech, other_u)
             }) {
                 continue;
@@ -1103,13 +1409,14 @@ pub fn execute_team_continuous_recruitment(engine: &mut GameEngine, team: Team) 
 pub fn execute_team_eco(engine: &mut GameEngine, team: Team, try_expansion: bool) {
     let team_workers = engine.units.iter().filter(|u| u.team == team && u.unit_type == UnitType::Engineer).count();
     let team_ccs = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::CommandCenter).count();
+    let worker_target = (12 + team_ccs * 6).min(36);
 
     let (supply, max_supply, minerals) = {
         let eco = engine.team_eco(team);
         (eco.supply, eco.max_supply, eco.minerals)
     };
 
-    if team_workers < 16 && supply < max_supply {
+    if team_workers < worker_target && supply < max_supply {
         let (w_cost, _) = engine.config.get_unit_cost(UnitType::Engineer);
         if minerals >= w_cost {
             let cc_id = engine.buildings.iter().find(|b| {
@@ -1125,24 +1432,43 @@ pub fn execute_team_eco(engine: &mut GameEngine, team: Team, try_expansion: bool
         }
     }
 
-    if try_expansion && team_ccs < 2 && minerals >= 400.0 {
-        if let Some((bx, by)) = crate::autoplay::find_team_build_spot(engine, team, BuildingType::CommandCenter) {
-            crate::autoplay::try_team_auto_build(engine, team, BuildingType::CommandCenter, bx, by);
+    if try_expansion && team_ccs < 5 && minerals >= 400.0 {
+        let under_construction = engine.buildings.iter().any(|b| {
+            b.team == team && b.building_type == BuildingType::CommandCenter && b.build_progress < 1.0
+        });
+        if !under_construction {
+            if let Some((bx, by)) = crate::autoplay::find_team_build_spot(engine, team, BuildingType::CommandCenter) {
+                crate::autoplay::try_team_auto_build(engine, team, BuildingType::CommandCenter, bx, by);
+            }
         }
     }
 }
 
 pub fn execute_team_infrastructure(engine: &mut GameEngine, team: Team) {
+    let team_ccs = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::CommandCenter).count();
     let reactors = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::PowerReactor).count();
     let converters = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::EnergyConverter).count();
     let barracks = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::Barracks).count();
+    let turrets = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::TurretTower).count();
 
     let (minerals, energy) = {
         let eco = engine.team_eco(team);
         (eco.minerals, eco.energy)
     };
 
-    if barracks < 4 {
+    // Mở rộng thêm CommandCenter nếu có đủ điều kiện tài nguyên
+    if team_ccs < 5 && minerals >= 400.0 {
+        let under_construction_cc = engine.buildings.iter().any(|b| {
+            b.team == team && b.building_type == BuildingType::CommandCenter && b.build_progress < 1.0
+        });
+        if !under_construction_cc {
+            if let Some((bx, by)) = crate::autoplay::find_team_build_spot(engine, team, BuildingType::CommandCenter) {
+                crate::autoplay::try_team_auto_build(engine, team, BuildingType::CommandCenter, bx, by);
+            }
+        }
+    }
+
+    if barracks < 5 {
         let (barracks_cost, _) = engine.config.get_building_cost(BuildingType::Barracks);
         if minerals >= barracks_cost {
             let under_construction = engine.buildings.iter().any(|b| {
@@ -1185,15 +1511,40 @@ pub fn execute_team_infrastructure(engine: &mut GameEngine, team: Team) {
             }
         }
     }
+
+    // Bảo vệ hạ tầng bằng TurretTower
+    let max_turrets = (10 + team_ccs * 6).min(32);
+    if turrets < max_turrets {
+        let (turret_m, turret_e) = engine.config.get_building_cost(BuildingType::TurretTower);
+        if minerals >= turret_m && energy >= turret_e {
+            let under_construction = engine.buildings.iter().any(|b| {
+                b.team == team && b.building_type == BuildingType::TurretTower && b.build_progress < 1.0
+            });
+            if !under_construction {
+                if let Some((bx, by)) = crate::autoplay::find_team_build_spot(engine, team, BuildingType::TurretTower) {
+                    crate::autoplay::try_team_auto_build(engine, team, BuildingType::TurretTower, bx, by);
+                }
+            }
+        }
+    }
 }
 
 pub fn execute_team_defense(engine: &mut GameEngine, team: Team) {
+    let team_ccs = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::CommandCenter).count();
     let turrets = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::TurretTower).count();
+    let under_construction_turrets = engine.buildings.iter().filter(|b| {
+        b.team == team && b.building_type == BuildingType::TurretTower && b.build_progress < 1.0
+    }).count();
+
+    let max_turrets = (12 + team_ccs * 6).min(32);
     let (minerals, energy) = {
         let eco = engine.team_eco(team);
         (eco.minerals, eco.energy)
     };
-    if turrets < 6 {
+
+    let max_parallel = if minerals >= 280.0 && energy >= 100.0 { 2 } else { 1 };
+
+    if turrets < max_turrets && under_construction_turrets < max_parallel {
         let (turret_m, turret_e) = engine.config.get_building_cost(BuildingType::TurretTower);
         if minerals >= turret_m && energy >= turret_e {
             if let Some((bx, by)) = crate::autoplay::find_team_build_spot(engine, team, BuildingType::TurretTower) {
@@ -1542,5 +1893,56 @@ mod tests {
             let action = BotStrategicAction::from_index(idx);
             assert_eq!(action.to_index(), idx);
         }
+    }
+
+    #[test]
+    fn test_compute_ai_step_reward_cc_and_turrets() {
+        let mut prev = RewardSnapshot::default();
+        prev.my_ccs = 1;
+        prev.my_turrets = 2;
+        prev.my_total_buildings = 5;
+
+        let mut cur = prev.clone();
+        cur.my_ccs = 2; // Xây thêm 1 CC
+        cur.my_turrets = 4; // Xây thêm 2 tháp
+        cur.my_total_buildings = 8; // Tăng 3 công trình
+
+        let r = compute_ai_step_reward(
+            &prev,
+            &cur,
+            BotStrategicAction::ExpandEco,
+            FormationType::Line,
+            false,
+            120.0,
+            1800.0,
+        );
+
+        // CC mới (+85.0), 2 tháp mới (+48.0), duy trì CC (+1.0), duy trì tháp (+0.8),
+        // 3 nhà mới (+24.0), tổng nhà duy trì, action ExpandEco khi < 4 CC (+0.8)...
+        assert!(r > 150.0, "Reward should be substantial for expanding base & building turrets, got {}", r);
+    }
+
+    #[test]
+    fn test_compute_ai_step_reward_penalizes_excess_banelings() {
+        let mut prev = RewardSnapshot::default();
+        prev.my_banelings = 0;
+        prev.my_ccs = 1;
+
+        let mut cur = prev.clone();
+        cur.my_banelings = 5; // Quá nhiều baneling (vượt ngưỡng 2)
+
+        let r = compute_ai_step_reward(
+            &prev,
+            &cur,
+            BotStrategicAction::MilitarySwarmRush,
+            FormationType::Line,
+            false,
+            60.0,
+            1800.0,
+        );
+
+        // Phạt baneling vượt ngưỡng: -1.5 * (5 - 2) = -4.5
+        // Phạt SwarmRush khi my_ccs < 2: -1.5
+        assert!(r < 0.0, "Reward should be negative for spamming banelings without expansion, got {}", r);
     }
 }
