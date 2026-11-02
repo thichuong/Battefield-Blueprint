@@ -3,7 +3,8 @@ use rust_engine::autoplay::{
     adapt_training_autoplay_mid_match, create_training_autoplay_config, AutoTrainingArchetype,
 };
 use rust_engine::components::{BuildingType, FormationType, PlayerSlotConfig, Team, UnitType, MAX_PLAYERS};
-use rust_engine::rl::{AiGameMode, BotStrategicAction, RlBrain, ACTION_DIM, FORMATION_DIM, STATE_DIM};
+use rust_engine::cuda_accel::{CudaDeviceManager, GpuBatchTrainer, TransitionSample};
+use rust_engine::rl::{AiGameMode, BotStrategicAction, RlBrain, ACTION_DIM, FORMATION_DIM, STATE_DIM, DEFAULT_HIDDEN_SIZE, DEFAULT_HIDDEN2_SIZE};
 use rust_engine::GameEngine;
 use std::env;
 use std::fs::File;
@@ -178,12 +179,21 @@ fn main() {
         all_scenarios.to_vec()
     };
 
+    let gpu_avail = CudaDeviceManager::is_gpu_available();
+    let gpu_name = CudaDeviceManager::device_name();
+    let dummy_brain = RlBrain::default();
+    let total_params = dummy_brain.total_parameters();
+
     println!("============================================================");
     println!("🧠 BATTLEFIELD BLUEPRINT // PARALLEL MULTI-MODE RL TRAINER");
+    println!("   Hardware Device:    {}", if gpu_avail { format!("🚀 GPU ACCELERATED // {}", gpu_name) } else { "💻 CPU Fallback".to_string() });
+    println!("   Neural Architecture:Deep Dual-Head MLP ({} -> {} -> {} -> {} + {})", STATE_DIM, DEFAULT_HIDDEN_SIZE, DEFAULT_HIDDEN2_SIZE, ACTION_DIM, FORMATION_DIM);
+    println!("   Hidden Neurons:     {} neurons (Layer 1: {}, Layer 2: {})", DEFAULT_HIDDEN_SIZE + DEFAULT_HIDDEN2_SIZE, DEFAULT_HIDDEN_SIZE, DEFAULT_HIDDEN2_SIZE);
+    println!("   Total Parameters:   {} trainable weights & biases", total_params);
     println!("   Episodes per Mode:  {}", total_episodes);
     println!("   Fast-Forward dt:    {:.3}s/step (High-Speed Tick)", time_scale_dt);
     println!("   Max Game Time:      {:.0}s (Expanded Endgame Window)", max_game_time);
-    println!("   State Dimension:    {} inputs", STATE_DIM);
+    println!("   State Dimension:    {} inputs (Deep Economy & Resource Flow)", STATE_DIM);
     println!("   Action Dimension:   {} strategic actions", ACTION_DIM);
     println!("   Formation Dimension:{} formations", FORMATION_DIM);
     println!("   Parallel Branches:  {}", if parallel_modes { "ENABLED (Multi-threaded)" } else { "SEQUENTIAL" });
@@ -252,6 +262,8 @@ fn train_mode(scenario: Scenario, config: &TrainConfig) -> RlBrain {
     engine.ai_state.rl_brain.epsilon = 0.25;
 
     let learner_team = Team::Enemy; // Slot 1 là Agent chính
+
+    let mut gpu_trainer = GpuBatchTrainer::new(32);
 
     let start_time = Instant::now();
 
@@ -323,6 +335,8 @@ fn train_mode(scenario: Scenario, config: &TrainConfig) -> RlBrain {
             let prev_opp_turrets = count_hostile_turrets(&engine, learner_team);
             let prev_opp_ccs = count_hostile_ccs(&engine, learner_team);
             let prev_my_ccs = count_ally_ccs(&engine, learner_team);
+            let prev_my_reactors = count_ally_reactors(&engine, learner_team);
+            let prev_my_converters = count_ally_converters(&engine, learner_team);
             let prev_my_unlocked = rust_engine::ai::count_unlocked_techs(engine.team_tech(learner_team));
 
             mid_adapt_timer += time_scale_dt;
@@ -427,6 +441,42 @@ fn train_mode(scenario: Scenario, config: &TrainConfig) -> RlBrain {
                 step_reward += 0.35;
             }
 
+            // --- 8. PHẦN THƯỞNG KHUYẾN KHÍCH FARM TÀI NGUYÊN (POWER REACTOR & ENERGY CONVERTER) ---
+            let cur_my_reactors = count_ally_reactors(&engine, learner_team);
+            if cur_my_reactors > prev_my_reactors {
+                let diff = (cur_my_reactors - prev_my_reactors) as f32;
+                step_reward += diff * 12.0; // Thưởng ngay 12 điểm cho mỗi PowerReactor mới
+            }
+
+            let cur_my_converters = count_ally_converters(&engine, learner_team);
+            if cur_my_converters > prev_my_converters {
+                let diff = (cur_my_converters - prev_my_converters) as f32;
+                step_reward += diff * 20.0; // Thưởng lớn 20 điểm cho mỗi EnergyConverter mới
+            }
+
+            // Thưởng theo lưu lượng sản sinh năng lượng
+            let my_eco = engine.team_eco(learner_team);
+            let energy_rate = my_eco.energy_per_sec;
+            if energy_rate > 10.0 {
+                step_reward += (energy_rate / 60.0).clamp(0.0, 1.5) * 0.4;
+            }
+
+            // Thưởng đặc biệt khi đạt "chuỗi chuyển hóa năng lượng thặng dư thành khoáng sản"
+            // Khi Năng lượng vượt ngưỡng 1000.0 và có EnergyConverter hoạt động
+            if my_eco.energy > rust_engine::config::ENERGY_CONVERSION_THRESHOLD && cur_my_converters > 0 {
+                step_reward += 0.65; // Thưởng liên tục khi bộ máy chuyển hóa điện -> vàng hoạt động!
+                if cur_my_reactors >= 4 {
+                    step_reward += 0.35;
+                }
+            }
+
+            // Thưởng khi bot AI ra quyết định phát triển hạ tầng kinh tế (ExpandEco / BuildInfrastructure)
+            if matches!(action, BotStrategicAction::ExpandEco | BotStrategicAction::BuildInfrastructure) {
+                if cur_my_reactors < 16 || cur_my_converters < 6 {
+                    step_reward += 0.5;
+                }
+            }
+
             // Phạt nhẹ thời gian trôi
             step_reward -= 0.01;
 
@@ -445,14 +495,30 @@ fn train_mode(scenario: Scenario, config: &TrainConfig) -> RlBrain {
             }
 
             ep_reward += step_reward;
-            engine.team_ai_mut(learner_team).rl_brain.train_step_with_formation(
-                &prev_state,
-                action,
-                formation,
-                step_reward,
-                &cur_state,
-                is_done,
-            );
+
+            // Đẩy transition vào GPU Batch Trainer
+            gpu_trainer.push(TransitionSample {
+                state: prev_state.clone(),
+                action: action.to_index(),
+                formation: formation.to_index(),
+                reward: step_reward,
+                next_state: cur_state.clone(),
+                done: is_done,
+            });
+
+            if gpu_trainer.can_train() {
+                let brain = &mut engine.team_ai_mut(learner_team).rl_brain;
+                gpu_trainer.train_batch(brain);
+            } else {
+                engine.team_ai_mut(learner_team).rl_brain.train_step_with_formation(
+                    &prev_state,
+                    action,
+                    formation,
+                    step_reward,
+                    &cur_state,
+                    is_done,
+                );
+            }
 
             // Multi-Agent Sharing: Các slot AI khác phe đối địch nếu có RL brain cũng học từ kinh nghiệm đối kháng
             for slot_idx in 0..MAX_PLAYERS {
@@ -556,6 +622,14 @@ fn count_hostile_ccs(engine: &GameEngine, my_team: Team) -> usize {
 
 fn count_ally_ccs(engine: &GameEngine, my_team: Team) -> usize {
     engine.buildings.iter().filter(|b| engine.are_allies(my_team, b.team) && b.building_type == BuildingType::CommandCenter).count()
+}
+
+fn count_ally_reactors(engine: &GameEngine, my_team: Team) -> usize {
+    engine.buildings.iter().filter(|b| engine.are_allies(my_team, b.team) && b.building_type == BuildingType::PowerReactor).count()
+}
+
+fn count_ally_converters(engine: &GameEngine, my_team: Team) -> usize {
+    engine.buildings.iter().filter(|b| engine.are_allies(my_team, b.team) && b.building_type == BuildingType::EnergyConverter).count()
 }
 
 fn count_hostile_buildings(engine: &GameEngine, my_team: Team) -> usize {

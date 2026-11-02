@@ -1,10 +1,11 @@
 use crate::components::FormationType;
 use serde::{Deserialize, Serialize};
 
-pub const STATE_DIM: usize = 40;
+pub const STATE_DIM: usize = 64;
 pub const ACTION_DIM: usize = 15;
 pub const FORMATION_DIM: usize = 6;
-pub const DEFAULT_HIDDEN_SIZE: usize = 96;
+pub const DEFAULT_HIDDEN_SIZE: usize = 512;
+pub const DEFAULT_HIDDEN2_SIZE: usize = 256;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AiGameMode {
@@ -134,15 +135,26 @@ impl BotStrategicAction {
 pub struct RlBrain {
     pub input_size: usize,
     pub hidden_size: usize,
+    #[serde(default = "default_hidden2_size")]
+    pub hidden2_size: usize,
     pub output_size: usize,
+
     pub w1: Vec<Vec<f32>>, // [input_size][hidden_size]
     pub b1: Vec<f32>,      // [hidden_size]
-    pub w2: Vec<Vec<f32>>, // [hidden_size][output_size]
-    pub b2: Vec<f32>,      // [output_size]
+
     #[serde(default)]
-    pub w_form: Vec<Vec<f32>>, // [hidden_size][FORMATION_DIM]
+    pub w_h2: Vec<Vec<f32>>, // [hidden_size][hidden2_size]
+    #[serde(default)]
+    pub b_h2: Vec<f32>,      // [hidden2_size]
+
+    pub w2: Vec<Vec<f32>>, // [hidden2_size][output_size]
+    pub b2: Vec<f32>,      // [output_size]
+
+    #[serde(default)]
+    pub w_form: Vec<Vec<f32>>, // [hidden2_size][FORMATION_DIM]
     #[serde(default)]
     pub b_form: Vec<f32>,      // [FORMATION_DIM]
+
     #[serde(default = "default_learning_rate")]
     pub learning_rate: f32,
     #[serde(default = "default_gamma")]
@@ -151,6 +163,7 @@ pub struct RlBrain {
     pub epsilon: f32,
 }
 
+fn default_hidden2_size() -> usize { DEFAULT_HIDDEN2_SIZE }
 fn default_learning_rate() -> f32 { 0.015 }
 fn default_gamma() -> f32 { 0.95 }
 fn default_epsilon() -> f32 { 0.05 }
@@ -160,16 +173,18 @@ impl Default for RlBrain {
         if let Some(loaded) = Self::load_default_weights() {
             return loaded;
         }
-        Self::new_random(STATE_DIM, DEFAULT_HIDDEN_SIZE, ACTION_DIM)
+        Self::new_random(STATE_DIM, DEFAULT_HIDDEN_SIZE, DEFAULT_HIDDEN2_SIZE, ACTION_DIM)
     }
 }
 
 impl RlBrain {
-    pub fn new_random(input_size: usize, hidden_size: usize, output_size: usize) -> Self {
+    pub fn new_random(input_size: usize, hidden_size: usize, hidden2_size: usize, output_size: usize) -> Self {
         let mut rng = fastrand::Rng::with_seed(1337);
         let scale1 = (2.0 / (input_size as f32)).sqrt();
-        let scale2 = (2.0 / (hidden_size as f32)).sqrt();
+        let scale_h2 = (2.0 / (hidden_size as f32)).sqrt();
+        let scale2 = (2.0 / (hidden2_size as f32)).sqrt();
 
+        // Layer 1: input -> hidden
         let mut w1 = Vec::with_capacity(input_size);
         for _ in 0..input_size {
             let mut row = Vec::with_capacity(hidden_size);
@@ -178,23 +193,34 @@ impl RlBrain {
             }
             w1.push(row);
         }
-
         let b1 = vec![0.0; hidden_size];
 
-        let mut w2 = Vec::with_capacity(hidden_size);
+        // Layer 2: hidden -> hidden2
+        let mut w_h2 = Vec::with_capacity(hidden_size);
         for _ in 0..hidden_size {
+            let mut row = Vec::with_capacity(hidden2_size);
+            for _ in 0..hidden2_size {
+                row.push((rng.f32() * 2.0 - 1.0) * scale_h2);
+            }
+            w_h2.push(row);
+        }
+        let b_h2 = vec![0.0; hidden2_size];
+
+        // Action Head: hidden2 -> action
+        let mut w2 = Vec::with_capacity(hidden2_size);
+        for _ in 0..hidden2_size {
             let mut row = Vec::with_capacity(output_size);
             for _ in 0..output_size {
                 row.push((rng.f32() * 2.0 - 1.0) * scale2);
             }
             w2.push(row);
         }
-
         let b2 = vec![0.0; output_size];
 
-        let scale_form = (2.0 / (hidden_size as f32)).sqrt();
-        let mut w_form = Vec::with_capacity(hidden_size);
-        for _ in 0..hidden_size {
+        // Formation Head: hidden2 -> formation
+        let scale_form = (2.0 / (hidden2_size as f32)).sqrt();
+        let mut w_form = Vec::with_capacity(hidden2_size);
+        for _ in 0..hidden2_size {
             let mut row = Vec::with_capacity(FORMATION_DIM);
             for _ in 0..FORMATION_DIM {
                 row.push((rng.f32() * 2.0 - 1.0) * scale_form);
@@ -206,9 +232,12 @@ impl RlBrain {
         Self {
             input_size,
             hidden_size,
+            hidden2_size,
             output_size,
             w1,
             b1,
+            w_h2,
+            b_h2,
             w2,
             b2,
             w_form,
@@ -219,30 +248,61 @@ impl RlBrain {
         }
     }
 
-    /// Đảm bảo kích thước ma trận phù hợp với STATE_DIM (40) và ACTION_DIM (15)
+    /// Tổng số tham số (Weights + Biases) của mạng
+    pub fn total_parameters(&self) -> usize {
+        let mut count = 0;
+        for row in &self.w1 {
+            count += row.len();
+        }
+        count += self.b1.len();
+
+        for row in &self.w_h2 {
+            count += row.len();
+        }
+        count += self.b_h2.len();
+
+        for row in &self.w2 {
+            count += row.len();
+        }
+        count += self.b2.len();
+
+        for row in &self.w_form {
+            count += row.len();
+        }
+        count += self.b_form.len();
+
+        count
+    }
+
+    /// Đảm bảo kích thước ma trận phù hợp với STATE_DIM (64), DEFAULT_HIDDEN_SIZE (512), DEFAULT_HIDDEN2_SIZE (256)
     pub fn ensure_dimensions(self) -> Self {
         if self.input_size == STATE_DIM
             && self.output_size == ACTION_DIM
             && self.hidden_size == DEFAULT_HIDDEN_SIZE
+            && self.hidden2_size == DEFAULT_HIDDEN2_SIZE
             && self.w1.len() == STATE_DIM
-            && self.w2.len() == DEFAULT_HIDDEN_SIZE
+            && self.w1[0].len() == DEFAULT_HIDDEN_SIZE
+            && self.w_h2.len() == DEFAULT_HIDDEN_SIZE
+            && self.w_h2[0].len() == DEFAULT_HIDDEN2_SIZE
+            && self.w2.len() == DEFAULT_HIDDEN2_SIZE
             && self.w2[0].len() == ACTION_DIM
-            && self.w_form.len() == DEFAULT_HIDDEN_SIZE
+            && self.w_form.len() == DEFAULT_HIDDEN2_SIZE
             && self.w_form[0].len() == FORMATION_DIM
         {
             return self;
         }
 
         // Tạo bộ khung mới chuẩn kích thước
-        let mut target = Self::new_random(STATE_DIM, DEFAULT_HIDDEN_SIZE, ACTION_DIM);
+        let mut target = Self::new_random(STATE_DIM, DEFAULT_HIDDEN_SIZE, DEFAULT_HIDDEN2_SIZE, ACTION_DIM);
         target.learning_rate = self.learning_rate;
         target.gamma = self.gamma;
         target.epsilon = self.epsilon;
 
-        // Sao chép trọng số cũ sang ma trận mới
+        // Sao chép trọng số cũ sang ma trận mới (nếu có)
         let copy_inputs = self.input_size.min(STATE_DIM);
         let copy_hidden = self.hidden_size.min(DEFAULT_HIDDEN_SIZE);
-        let copy_actions = self.output_size.min(ACTION_DIM);
+        let copy_hidden2 = if self.hidden2_size > 0 { self.hidden2_size.min(DEFAULT_HIDDEN2_SIZE) } else { 0 };
+        let _copy_actions = self.output_size.min(ACTION_DIM);
 
         for i in 0..copy_inputs {
             for j in 0..copy_hidden {
@@ -255,25 +315,20 @@ impl RlBrain {
             if j < self.b1.len() {
                 target.b1[j] = self.b1[j];
             }
-            for k in 0..copy_actions {
-                if j < self.w2.len() && k < self.w2[j].len() {
-                    target.w2[j][k] = self.w2[j][k];
+        }
+
+        if !self.w_h2.is_empty() {
+            for j in 0..copy_hidden {
+                for k in 0..copy_hidden2 {
+                    if j < self.w_h2.len() && k < self.w_h2[j].len() {
+                        target.w_h2[j][k] = self.w_h2[j][k];
+                    }
                 }
             }
-            for f in 0..FORMATION_DIM {
-                if j < self.w_form.len() && f < self.w_form[j].len() {
-                    target.w_form[j][f] = self.w_form[j][f];
+            for k in 0..copy_hidden2 {
+                if k < self.b_h2.len() {
+                    target.b_h2[k] = self.b_h2[k];
                 }
-            }
-        }
-        for k in 0..copy_actions {
-            if k < self.b2.len() {
-                target.b2[k] = self.b2[k];
-            }
-        }
-        for f in 0..FORMATION_DIM {
-            if f < self.b_form.len() {
-                target.b_form[f] = self.b_form[f];
             }
         }
 
@@ -281,7 +336,6 @@ impl RlBrain {
     }
 
     pub fn load_for_mode(mode: AiGameMode) -> Self {
-        // Cố gắng nạp đúng model theo mode từ assets
         let model_str = match mode {
             AiGameMode::Duel1v1 => include_str!("../assets/rl_model_1v1.json"),
             AiGameMode::Team2v2 => include_str!("../assets/rl_model_2v2.json"),
@@ -307,8 +361,10 @@ impl RlBrain {
         }
     }
 
-    pub fn forward(&self, state: &[f32]) -> (Vec<f32>, Vec<f32>) {
-        let mut hidden = vec![0.0; self.hidden_size];
+    /// Forward pass qua 2 tầng ẩn: Layer 1 (512) -> Layer 2 (256) -> Heads
+    pub fn forward_all(&self, state: &[f32]) -> (Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>) {
+        // Layer 1: state [input_size] -> hidden1 [hidden_size]
+        let mut h1 = vec![0.0; self.hidden_size];
         for j in 0..self.hidden_size {
             let mut sum = self.b1[j];
             for i in 0..self.input_size {
@@ -316,38 +372,52 @@ impl RlBrain {
                     sum += state[i] * self.w1[i][j];
                 }
             }
-            hidden[j] = sum.max(0.0); // LeakyReLU / ReLU
+            // LeakyReLU: max(0.01 * sum, sum)
+            h1[j] = if sum >= 0.0 { sum } else { 0.01 * sum };
         }
 
-        let mut outputs = vec![0.0; self.output_size];
-        for k in 0..self.output_size {
-            let mut sum = self.b2[k];
+        // Layer 2: hidden1 [hidden_size] -> hidden2 [hidden2_size]
+        let mut h2 = vec![0.0; self.hidden2_size];
+        for k in 0..self.hidden2_size {
+            let mut sum = self.b_h2[k];
             for j in 0..self.hidden_size {
-                sum += hidden[j] * self.w2[j][k];
+                if j < self.w_h2.len() && k < self.w_h2[j].len() {
+                    sum += h1[j] * self.w_h2[j][k];
+                }
             }
-            outputs[k] = sum;
+            h2[k] = if sum >= 0.0 { sum } else { 0.01 * sum };
         }
 
-        (hidden, outputs)
+        // Action Head: hidden2 [hidden2_size] -> action_q [output_size]
+        let mut action_q = vec![0.0; self.output_size];
+        for o in 0..self.output_size {
+            let mut sum = self.b2[o];
+            for k in 0..self.hidden2_size {
+                if k < self.w2.len() && o < self.w2[k].len() {
+                    sum += h2[k] * self.w2[k][o];
+                }
+            }
+            action_q[o] = sum;
+        }
+
+        // Formation Head: hidden2 [hidden2_size] -> form_q [FORMATION_DIM]
+        let mut form_q = vec![0.0; FORMATION_DIM];
+        for f in 0..FORMATION_DIM {
+            let mut sum = self.b_form[f];
+            for k in 0..self.hidden2_size {
+                if k < self.w_form.len() && f < self.w_form[k].len() {
+                    sum += h2[k] * self.w_form[k][f];
+                }
+            }
+            form_q[f] = sum;
+        }
+
+        (h1, h2, action_q, form_q)
     }
 
-    pub fn forward_all(&self, state: &[f32]) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
-        let (hidden, action_q) = self.forward(state);
-
-        let mut form_q = vec![0.0; FORMATION_DIM];
-        if !self.w_form.is_empty() && !self.b_form.is_empty() {
-            for k in 0..FORMATION_DIM {
-                let mut sum = self.b_form[k];
-                for j in 0..self.hidden_size {
-                    if j < self.w_form.len() && k < self.w_form[j].len() {
-                        sum += hidden[j] * self.w_form[j][k];
-                    }
-                }
-                form_q[k] = sum;
-            }
-        }
-
-        (hidden, action_q, form_q)
+    pub fn forward(&self, state: &[f32]) -> (Vec<f32>, Vec<f32>) {
+        let (_, h2, action_q, _) = self.forward_all(state);
+        (h2, action_q)
     }
 
     pub fn select_formation(&self, state: &[f32], explore: bool) -> FormationType {
@@ -356,7 +426,7 @@ impl RlBrain {
             return FormationType::from_index(random_idx);
         }
 
-        let (_, _, form_q) = self.forward_all(state);
+        let (_, _, _, form_q) = self.forward_all(state);
         let mut best_idx = 0;
         let mut best_val = form_q[0];
         for (i, &v) in form_q.iter().enumerate().skip(1) {
@@ -374,7 +444,7 @@ impl RlBrain {
             return BotStrategicAction::from_index(random_idx);
         }
 
-        let (_, q_values) = self.forward(state);
+        let (_, _, q_values, _) = self.forward_all(state);
         let mut best_idx = 0;
         let mut best_val = q_values[0];
         for (i, &v) in q_values.iter().enumerate().skip(1) {
@@ -406,14 +476,14 @@ impl RlBrain {
         next_state: &[f32],
         done: bool,
     ) {
-        let (hidden, q_values, form_q) = self.forward_all(state);
+        let (h1, h2, q_values, form_q) = self.forward_all(state);
         let action_idx = action.to_index();
         let form_idx = formation.to_index();
 
         let (target_act, target_form) = if done {
             (reward, reward)
         } else {
-            let (_, next_q_values, next_form_q) = self.forward_all(next_state);
+            let (_, _, next_q_values, next_form_q) = self.forward_all(next_state);
             let max_next_q = next_q_values.iter().copied().fold(f32::NEG_INFINITY, f32::max);
             let max_next_form = next_form_q.iter().copied().fold(f32::NEG_INFINITY, f32::max);
             (reward + self.gamma * max_next_q, reward + self.gamma * max_next_form)
@@ -425,38 +495,44 @@ impl RlBrain {
         let td_error_form = target_form - form_q[form_idx];
         let grad_out_form = td_error_form.clamp(-1.0, 1.0);
 
-        // Backprop w2, b2 (Action Head) & w_form, b_form (Formation Head)
-        let mut grad_hidden = vec![0.0; self.hidden_size];
-        for j in 0..self.hidden_size {
-            let g_act = self.w2[j][action_idx] * grad_out_act;
-            self.w2[j][action_idx] += self.learning_rate * grad_out_act * hidden[j];
+        // 1. Backprop từ Heads vào Layer 2 (h2)
+        let mut grad_h2 = vec![0.0; self.hidden2_size];
+        for k in 0..self.hidden2_size {
+            let g_act = self.w2[k][action_idx] * grad_out_act;
+            self.w2[k][action_idx] += self.learning_rate * grad_out_act * h2[k];
 
-            let g_form = if !self.w_form.is_empty() {
-                let g = self.w_form[j][form_idx] * grad_out_form;
-                self.w_form[j][form_idx] += self.learning_rate * grad_out_form * hidden[j];
-                g
-            } else {
-                0.0
-            };
+            let g_form = self.w_form[k][form_idx] * grad_out_form;
+            self.w_form[k][form_idx] += self.learning_rate * grad_out_form * h2[k];
 
-            grad_hidden[j] = g_act + g_form * 0.7; // Cân bằng gradient
+            grad_h2[k] = g_act + g_form * 0.7;
         }
         self.b2[action_idx] += self.learning_rate * grad_out_act;
-        if !self.b_form.is_empty() {
-            self.b_form[form_idx] += self.learning_rate * grad_out_form;
+        self.b_form[form_idx] += self.learning_rate * grad_out_form;
+
+        // 2. Backprop từ Layer 2 (h2) qua LeakyReLU vào Layer 1 (h1)
+        let mut grad_h1 = vec![0.0; self.hidden_size];
+        for k in 0..self.hidden2_size {
+            let act_derivative = if h2[k] >= 0.0 { 1.0 } else { 0.01 };
+            let delta_k = grad_h2[k] * act_derivative;
+
+            for j in 0..self.hidden_size {
+                grad_h1[j] += self.w_h2[j][k] * delta_k;
+                self.w_h2[j][k] += self.learning_rate * delta_k * h1[j];
+            }
+            self.b_h2[k] += self.learning_rate * delta_k;
         }
 
-        // Backprop w1, b1 (ReLU derivative)
+        // 3. Backprop từ Layer 1 (h1) qua LeakyReLU vào Input (w1, b1)
         for j in 0..self.hidden_size {
-            if hidden[j] > 0.0 {
-                let delta_h = grad_hidden[j];
-                for i in 0..self.input_size {
-                    if i < state.len() {
-                        self.w1[i][j] += self.learning_rate * delta_h * state[i];
-                    }
+            let act_derivative = if h1[j] >= 0.0 { 1.0 } else { 0.01 };
+            let delta_j = grad_h1[j] * act_derivative;
+
+            for i in 0..self.input_size {
+                if i < state.len() {
+                    self.w1[i][j] += self.learning_rate * delta_j * state[i];
                 }
-                self.b1[j] += self.learning_rate * delta_h;
             }
+            self.b1[j] += self.learning_rate * delta_j;
         }
     }
 }

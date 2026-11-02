@@ -8,6 +8,7 @@ pub mod autoplay;
 pub mod bridge;
 pub mod components;
 pub mod config;
+pub mod cuda_accel;
 pub mod fog;
 pub mod formation;
 pub mod map;

@@ -405,7 +405,132 @@ pub fn extract_state_vector_for_team(engine: &GameEngine, team: Team) -> Vec<f32
     // 40. Số lượng Phe thù địch còn sống trên bản đồ (quan trọng cho 8-FFA và 2v2v2)
     s.push((snap.active_hostile_factions as f32 / 7.0).clamp(0.0, 1.0));
 
-    // Đảm bảo đúng 40 chiều
+    // --- MỞ RỘNG TỪ 40 LÊN 64 CHIỀU: CHUYÊN SÂU FARM NĂNG LƯỢNG & KHOÁNG SẢN ---
+    // 41. Trữ lượng năng lượng so với ngưỡng chuyển đổi 1000.0 (EnergyConverter Threshold)
+    s.push((my_eco.energy / crate::config::ENERGY_CONVERSION_THRESHOLD).clamp(0.0, 3.0));
+
+    // 42. Năng lượng thặng dư trên ngưỡng 1000.0 (năng lượng sẵn sàng quy đổi ra khoáng)
+    let surplus_energy = (my_eco.energy - crate::config::ENERGY_CONVERSION_THRESHOLD).max(0.0);
+    s.push((surplus_energy / 1500.0).clamp(0.0, 3.0));
+
+    // 43. Tốc độ chuyển đổi năng lượng -> khoáng sản lý thuyết/giây hiện tại
+    let conversion_potential = (snap.my_converters as f32 * crate::config::CONVERT_MINERALS_PER_SEC / 100.0).clamp(0.0, 3.0);
+    s.push(conversion_potential);
+
+    // 44. Tỷ lệ cân bằng vàng giữa Converter và Reactor (lý tưởng là 1 Converter cho 2-3 Reactor)
+    let conv_per_reactor_ratio = if snap.my_reactors > 0 {
+        (snap.my_converters as f32 / (snap.my_reactors as f32 * 0.5)).clamp(0.0, 2.0)
+    } else {
+        0.0
+    };
+    s.push(conv_per_reactor_ratio);
+
+    // 45. Trạng thái công nghệ nạp siêu tốc lò phản ứng (overcharged_reactors: +50% sản lượng điện)
+    s.push(if my_tech.overcharged_reactors { 1.0 } else { 0.0 });
+
+    // 46. Trạng thái công nghệ mũi khoan quang học (optical_drills: +50% sức chứa khai thác)
+    s.push(if my_tech.optical_drills { 1.0 } else { 0.0 });
+
+    // 47. Trạng thái công nghệ bản vẽ kiên cố (fortified_blueprints: +30% HP công trình)
+    s.push(if my_tech.fortified_blueprints { 1.0 } else { 0.0 });
+
+    // 48. Số lượng PowerReactor của đối thủ
+    let opp_reactors = engine.buildings.iter().filter(|b| b.team == opp_team && b.building_type == BuildingType::PowerReactor).count();
+    s.push((opp_reactors as f32 / 20.0).clamp(0.0, 2.0));
+
+    // 49. Số lượng EnergyConverter của đối thủ
+    let opp_converters = engine.buildings.iter().filter(|b| b.team == opp_team && b.building_type == BuildingType::EnergyConverter).count();
+    s.push((opp_converters as f32 / 10.0).clamp(0.0, 2.0));
+
+    // 50. Chênh lệch sản lượng năng lượng giữa phe mình và đối thủ
+    let opp_eco = engine.team_eco(opp_team);
+    let energy_flow_diff = ((my_eco.energy_per_sec - opp_eco.energy_per_sec) / 50.0).clamp(-2.0, 2.0);
+    s.push(energy_flow_diff);
+
+    // 51. Chênh lệch thu nhập khoáng sản giữa phe mình và đối thủ
+    let min_flow_diff = ((my_eco.minerals_per_sec - opp_eco.minerals_per_sec) / 50.0).clamp(-2.0, 2.0);
+    s.push(min_flow_diff);
+
+    // 52. Số lượng mỏ khoáng còn trữ lượng trong bán kính 900px quanh căn cứ phe mình
+    let my_base = engine.base_pos(team);
+    let nearby_minerals_count = engine.minerals.iter().filter(|m| {
+        m.amount > 0.0 && ((m.x - my_base.0).powi(2) + (m.y - my_base.1).powi(2)) < 900.0_f32.powi(2)
+    }).count();
+    s.push((nearby_minerals_count as f32 / 12.0).clamp(0.0, 1.5));
+
+    // 53. Tổng lượng khoáng sản còn lại quanh căn cứ
+    let nearby_minerals_amount: f32 = engine.minerals.iter().filter(|m| {
+        m.amount > 0.0 && ((m.x - my_base.0).powi(2) + (m.y - my_base.1).powi(2)) < 900.0_f32.powi(2)
+    }).map(|m| m.amount).sum();
+    s.push((nearby_minerals_amount / 20000.0).clamp(0.0, 2.0));
+
+    // 54. Đang có PowerReactor đang xây dở không
+    let reactors_under_construction = engine.buildings.iter().filter(|b| {
+        b.team == team && b.building_type == BuildingType::PowerReactor && b.build_progress < 1.0
+    }).count();
+    s.push((reactors_under_construction as f32 / 3.0).clamp(0.0, 1.0));
+
+    // 55. Đang có EnergyConverter đang xây dở không
+    let converters_under_construction = engine.buildings.iter().filter(|b| {
+        b.team == team && b.building_type == BuildingType::EnergyConverter && b.build_progress < 1.0
+    }).count();
+    s.push((converters_under_construction as f32 / 2.0).clamp(0.0, 1.0));
+
+    // 56. Tỷ lệ thợ mỏ đang rảnh rỗi (idle workers)
+    let idle_workers = engine.units.iter().filter(|u| {
+        u.team == team && u.unit_type == UnitType::Engineer && u.order == UnitOrder::Idle
+    }).count();
+    s.push((idle_workers as f32 / (snap.my_workers.max(1) as f32)).clamp(0.0, 1.0));
+
+    // 57. Số lượng nhà Barracks đang xây dở
+    let barracks_under_construction = engine.buildings.iter().filter(|b| {
+        b.team == team && b.building_type == BuildingType::Barracks && b.build_progress < 1.0
+    }).count();
+    s.push((barracks_under_construction as f32 / 3.0).clamp(0.0, 1.0));
+
+    // 58. Tỷ lệ % tải của các hàng đợi sản xuất quân lính
+    let barracks_queue_load: f32 = engine.buildings.iter().filter(|b| {
+        b.team == team && b.building_type == BuildingType::Barracks && b.build_progress >= 1.0
+    }).map(|b| b.training_queue.len() as f32).sum::<f32>() / (snap.my_barracks.max(1) as f32 * 2.0);
+    s.push(barracks_queue_load.clamp(0.0, 1.0));
+
+    // 59. Số lượng tháp pháo đang xây dở
+    let turrets_under_construction = engine.buildings.iter().filter(|b| {
+        b.team == team && b.building_type == BuildingType::TurretTower && b.build_progress < 1.0
+    }).count();
+    s.push((turrets_under_construction as f32 / 4.0).clamp(0.0, 1.0));
+
+    // 60. Khoảng cách an toàn của mỏ khoáng gần nhất so với quân địch
+    let dist_mineral_to_enemy = engine.minerals.iter()
+        .filter(|m| m.amount > 0.0 && ((m.x - my_base.0).powi(2) + (m.y - my_base.1).powi(2)) < 900.0_f32.powi(2))
+        .map(|m| {
+            engine.units.iter()
+                .filter(|u| engine.are_hostile(team, u.team))
+                .map(|u| ((u.x - m.x).powi(2) + (u.y - m.y).powi(2)).sqrt())
+                .fold(f32::INFINITY, f32::min)
+        })
+        .fold(f32::INFINITY, f32::min);
+    let norm_safe_dist = if dist_mineral_to_enemy.is_infinite() { 1.0 } else { (dist_mineral_to_enemy / 2000.0).clamp(0.0, 1.0) };
+    s.push(norm_safe_dist);
+
+    // 61. Trạng thái công nghệ nhánh Ma thuật cấp cao (void_cataclysm)
+    s.push(if my_tech.void_cataclysm { 1.0 } else { 0.0 });
+
+    // 62. Trạng thái công nghệ nhánh Quái vật cấp cao (behemoth_mutation)
+    s.push(if my_tech.behemoth_mutation { 1.0 } else { 0.0 });
+
+    // 63. Trạng thái công nghệ nhánh Khoa học cấp cao (dark_matter_rockets)
+    s.push(if my_tech.dark_matter_rockets { 1.0 } else { 0.0 });
+
+    // 64. Trạng thái sẵn sàng tổng lực công kích (Macro Readiness: kinh tế mạnh + quân lực dồi dào)
+    let macro_readiness = if snap.my_combat >= 20 && snap.my_reactors >= 6 && snap.my_converters >= 2 {
+        1.0
+    } else {
+        (snap.my_combat as f32 / 20.0 * 0.5 + snap.my_reactors as f32 / 6.0 * 0.5).clamp(0.0, 1.0)
+    };
+    s.push(macro_readiness);
+
+    // Đảm bảo đúng 64 chiều
     if s.len() > STATE_DIM {
         s.truncate(STATE_DIM);
     }
@@ -669,38 +794,47 @@ pub fn maintain_continuous_ai_reflexes_for_team(engine: &mut GameEngine, team: T
 
     // 3. Xây Power Reactor
     let reactors = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::PowerReactor).count();
+    let under_construction_reactors = engine.buildings.iter().filter(|b| {
+        b.team == team && b.building_type == BuildingType::PowerReactor && b.build_progress < 1.0
+    }).count();
     let eco_minerals = engine.team_eco(team).minerals;
-    if reactors < 3 && eco_minerals >= 100.0 {
-        let under_construction = engine.buildings.iter().any(|b| {
-            b.team == team && b.building_type == BuildingType::PowerReactor && b.build_progress < 1.0
-        });
-        if !under_construction {
-            if let Some((bx, by)) = crate::autoplay::find_team_build_spot(engine, team, BuildingType::PowerReactor) {
-                crate::autoplay::try_team_auto_build(engine, team, BuildingType::PowerReactor, bx, by);
-            }
-        }
-    } else if reactors < 14 && eco_minerals >= 180.0 {
-        let under_construction = engine.buildings.iter().any(|b| {
-            b.team == team && b.building_type == BuildingType::PowerReactor && b.build_progress < 1.0
-        });
-        if !under_construction {
+
+    // Cho phép xây tối đa 36 PowerReactors, xây song song tới 2 lò cùng lúc khi kinh tế dư dả
+    let max_parallel_reactors = if eco_minerals >= 300.0 { 2 } else { 1 };
+    if reactors < 36 && under_construction_reactors < max_parallel_reactors {
+        let should_build_reactor = if reactors < 4 {
+            eco_minerals >= 100.0
+        } else if reactors < 12 {
+            eco_minerals >= 120.0
+        } else {
+            eco_minerals >= 150.0
+        };
+
+        if should_build_reactor {
             if let Some((bx, by)) = crate::autoplay::find_team_build_spot(engine, team, BuildingType::PowerReactor) {
                 crate::autoplay::try_team_auto_build(engine, team, BuildingType::PowerReactor, bx, by);
             }
         }
     }
 
-    // 3.5. Xây EnergyConverter
+    // 3.5. Xây EnergyConverter (chuyển đổi Năng lượng thành Khoáng sản)
     let converters = engine.buildings.iter().filter(|b| b.team == team && b.building_type == BuildingType::EnergyConverter).count();
-    let under_construction_conv = engine.buildings.iter().any(|b| {
+    let under_construction_conv = engine.buildings.iter().filter(|b| {
         b.team == team && b.building_type == BuildingType::EnergyConverter && b.build_progress < 1.0
-    });
+    }).count();
     let (eco_min, eco_en) = (engine.team_eco(team).minerals, engine.team_eco(team).energy);
-    if !under_construction_conv && eco_min >= 150.0 && eco_en >= 50.0 {
-        if converters < (reactors / 2).min(6).max(1) && (reactors >= 2 || eco_en >= 250.0) {
-            if let Some((bx, by)) = crate::autoplay::find_team_build_spot(engine, team, BuildingType::EnergyConverter) {
-                crate::autoplay::try_team_auto_build(engine, team, BuildingType::EnergyConverter, bx, by);
-            }
+
+    // Cho phép xây tối đa 16 EnergyConverters (tỷ lệ 1 converter cho 2 reactors, hoặc kích hoạt sớm khi có điện)
+    let max_parallel_converters = if eco_min >= 350.0 && eco_en >= 200.0 { 2 } else { 1 };
+    let desired_converters = (reactors / 2).clamp(1, 16);
+    let should_build_converter = converters < desired_converters
+        && (reactors >= 2 || eco_en >= 200.0)
+        && eco_min >= 150.0
+        && eco_en >= 50.0;
+
+    if under_construction_conv < max_parallel_converters && should_build_converter {
+        if let Some((bx, by)) = crate::autoplay::find_team_build_spot(engine, team, BuildingType::EnergyConverter) {
+            crate::autoplay::try_team_auto_build(engine, team, BuildingType::EnergyConverter, bx, by);
         }
     }
 
@@ -1022,13 +1156,14 @@ pub fn execute_team_infrastructure(engine: &mut GameEngine, team: Team) {
         }
     }
 
-    if reactors < 8 {
+    if reactors < 36 {
         let (reactor_cost, _) = engine.config.get_building_cost(BuildingType::PowerReactor);
         if minerals >= reactor_cost {
-            let under_construction = engine.buildings.iter().any(|b| {
+            let under_construction = engine.buildings.iter().filter(|b| {
                 b.team == team && b.building_type == BuildingType::PowerReactor && b.build_progress < 1.0
-            });
-            if !under_construction {
+            }).count();
+            let max_parallel = if minerals >= 300.0 { 2 } else { 1 };
+            if under_construction < max_parallel {
                 if let Some((bx, by)) = crate::autoplay::find_team_build_spot(engine, team, BuildingType::PowerReactor) {
                     crate::autoplay::try_team_auto_build(engine, team, BuildingType::PowerReactor, bx, by);
                 }
@@ -1036,13 +1171,14 @@ pub fn execute_team_infrastructure(engine: &mut GameEngine, team: Team) {
         }
     }
 
-    if reactors >= 3 && converters < (reactors / 3) {
+    if reactors >= 2 && converters < (reactors / 2).clamp(1, 16) {
         let (conv_m, conv_e) = engine.config.get_building_cost(BuildingType::EnergyConverter);
         if minerals >= conv_m && energy >= conv_e {
-            let under_construction = engine.buildings.iter().any(|b| {
+            let under_construction = engine.buildings.iter().filter(|b| {
                 b.team == team && b.building_type == BuildingType::EnergyConverter && b.build_progress < 1.0
-            });
-            if !under_construction {
+            }).count();
+            let max_parallel = if minerals >= 350.0 && energy >= 200.0 { 2 } else { 1 };
+            if under_construction < max_parallel {
                 if let Some((bx, by)) = crate::autoplay::find_team_build_spot(engine, team, BuildingType::EnergyConverter) {
                     crate::autoplay::try_team_auto_build(engine, team, BuildingType::EnergyConverter, bx, by);
                 }
