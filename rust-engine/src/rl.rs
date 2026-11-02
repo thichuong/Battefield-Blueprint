@@ -145,7 +145,7 @@ pub struct RlBrain {
     #[serde(default)]
     pub w_h2: Vec<Vec<f32>>, // [hidden_size][hidden2_size]
     #[serde(default)]
-    pub b_h2: Vec<f32>,      // [hidden2_size]
+    pub b_h2: Vec<f32>, // [hidden2_size]
 
     pub w2: Vec<Vec<f32>>, // [hidden2_size][output_size]
     pub b2: Vec<f32>,      // [output_size]
@@ -153,7 +153,7 @@ pub struct RlBrain {
     #[serde(default)]
     pub w_form: Vec<Vec<f32>>, // [hidden2_size][FORMATION_DIM]
     #[serde(default)]
-    pub b_form: Vec<f32>,      // [FORMATION_DIM]
+    pub b_form: Vec<f32>, // [FORMATION_DIM]
 
     #[serde(default = "default_learning_rate")]
     pub learning_rate: f32,
@@ -163,22 +163,40 @@ pub struct RlBrain {
     pub epsilon: f32,
 }
 
-fn default_hidden2_size() -> usize { DEFAULT_HIDDEN2_SIZE }
-fn default_learning_rate() -> f32 { 0.015 }
-fn default_gamma() -> f32 { 0.95 }
-fn default_epsilon() -> f32 { 0.05 }
+fn default_hidden2_size() -> usize {
+    DEFAULT_HIDDEN2_SIZE
+}
+fn default_learning_rate() -> f32 {
+    0.015
+}
+fn default_gamma() -> f32 {
+    0.95
+}
+fn default_epsilon() -> f32 {
+    0.05
+}
 
 impl Default for RlBrain {
     fn default() -> Self {
         if let Some(loaded) = Self::load_default_weights() {
             return loaded;
         }
-        Self::new_random(STATE_DIM, DEFAULT_HIDDEN_SIZE, DEFAULT_HIDDEN2_SIZE, ACTION_DIM)
+        Self::new_random(
+            STATE_DIM,
+            DEFAULT_HIDDEN_SIZE,
+            DEFAULT_HIDDEN2_SIZE,
+            ACTION_DIM,
+        )
     }
 }
 
 impl RlBrain {
-    pub fn new_random(input_size: usize, hidden_size: usize, hidden2_size: usize, output_size: usize) -> Self {
+    pub fn new_random(
+        input_size: usize,
+        hidden_size: usize,
+        hidden2_size: usize,
+        output_size: usize,
+    ) -> Self {
         let mut rng = fastrand::Rng::with_seed(1337);
         let scale1 = (2.0 / (input_size as f32)).sqrt();
         let scale_h2 = (2.0 / (hidden_size as f32)).sqrt();
@@ -293,7 +311,12 @@ impl RlBrain {
         }
 
         // Tạo bộ khung mới chuẩn kích thước
-        let mut target = Self::new_random(STATE_DIM, DEFAULT_HIDDEN_SIZE, DEFAULT_HIDDEN2_SIZE, ACTION_DIM);
+        let mut target = Self::new_random(
+            STATE_DIM,
+            DEFAULT_HIDDEN_SIZE,
+            DEFAULT_HIDDEN2_SIZE,
+            ACTION_DIM,
+        );
         target.learning_rate = self.learning_rate;
         target.gamma = self.gamma;
         target.epsilon = self.epsilon;
@@ -301,7 +324,11 @@ impl RlBrain {
         // Sao chép trọng số cũ sang ma trận mới (nếu có)
         let copy_inputs = self.input_size.min(STATE_DIM);
         let copy_hidden = self.hidden_size.min(DEFAULT_HIDDEN_SIZE);
-        let copy_hidden2 = if self.hidden2_size > 0 { self.hidden2_size.min(DEFAULT_HIDDEN2_SIZE) } else { 0 };
+        let copy_hidden2 = if self.hidden2_size > 0 {
+            self.hidden2_size.min(DEFAULT_HIDDEN2_SIZE)
+        } else {
+            0
+        };
         let _copy_actions = self.output_size.min(ACTION_DIM);
 
         for i in 0..copy_inputs {
@@ -365,7 +392,7 @@ impl RlBrain {
     pub fn forward_all(&self, state: &[f32]) -> (Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>) {
         // Layer 1: state [input_size] -> hidden1 [hidden_size]
         let mut h1 = vec![0.0; self.hidden_size];
-        for j in 0..self.hidden_size {
+        for (j, h1_val) in h1.iter_mut().enumerate() {
             let mut sum = self.b1[j];
             for i in 0..self.input_size {
                 if i < state.len() {
@@ -373,43 +400,43 @@ impl RlBrain {
                 }
             }
             // LeakyReLU: max(0.01 * sum, sum)
-            h1[j] = if sum >= 0.0 { sum } else { 0.01 * sum };
+            *h1_val = if sum >= 0.0 { sum } else { 0.01 * sum };
         }
 
         // Layer 2: hidden1 [hidden_size] -> hidden2 [hidden2_size]
         let mut h2 = vec![0.0; self.hidden2_size];
-        for k in 0..self.hidden2_size {
+        for (k, h2_val) in h2.iter_mut().enumerate() {
             let mut sum = self.b_h2[k];
-            for j in 0..self.hidden_size {
+            for (j, &h1_val) in h1.iter().enumerate() {
                 if j < self.w_h2.len() && k < self.w_h2[j].len() {
-                    sum += h1[j] * self.w_h2[j][k];
+                    sum += h1_val * self.w_h2[j][k];
                 }
             }
-            h2[k] = if sum >= 0.0 { sum } else { 0.01 * sum };
+            *h2_val = if sum >= 0.0 { sum } else { 0.01 * sum };
         }
 
         // Action Head: hidden2 [hidden2_size] -> action_q [output_size]
         let mut action_q = vec![0.0; self.output_size];
-        for o in 0..self.output_size {
+        for (o, action_val) in action_q.iter_mut().enumerate() {
             let mut sum = self.b2[o];
-            for k in 0..self.hidden2_size {
+            for (k, &h2_val) in h2.iter().enumerate() {
                 if k < self.w2.len() && o < self.w2[k].len() {
-                    sum += h2[k] * self.w2[k][o];
+                    sum += h2_val * self.w2[k][o];
                 }
             }
-            action_q[o] = sum;
+            *action_val = sum;
         }
 
         // Formation Head: hidden2 [hidden2_size] -> form_q [FORMATION_DIM]
         let mut form_q = vec![0.0; FORMATION_DIM];
-        for f in 0..FORMATION_DIM {
+        for (f, form_val) in form_q.iter_mut().enumerate() {
             let mut sum = self.b_form[f];
-            for k in 0..self.hidden2_size {
+            for (k, &h2_val) in h2.iter().enumerate() {
                 if k < self.w_form.len() && f < self.w_form[k].len() {
-                    sum += h2[k] * self.w_form[k][f];
+                    sum += h2_val * self.w_form[k][f];
                 }
             }
-            form_q[f] = sum;
+            *form_val = sum;
         }
 
         (h1, h2, action_q, form_q)
@@ -464,7 +491,14 @@ impl RlBrain {
         next_state: &[f32],
         done: bool,
     ) {
-        self.train_step_with_formation(state, action, FormationType::Line, reward, next_state, done);
+        self.train_step_with_formation(
+            state,
+            action,
+            FormationType::Line,
+            reward,
+            next_state,
+            done,
+        );
     }
 
     pub fn train_step_with_formation(
@@ -484,9 +518,18 @@ impl RlBrain {
             (reward, reward)
         } else {
             let (_, _, next_q_values, next_form_q) = self.forward_all(next_state);
-            let max_next_q = next_q_values.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-            let max_next_form = next_form_q.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-            (reward + self.gamma * max_next_q, reward + self.gamma * max_next_form)
+            let max_next_q = next_q_values
+                .iter()
+                .copied()
+                .fold(f32::NEG_INFINITY, f32::max);
+            let max_next_form = next_form_q
+                .iter()
+                .copied()
+                .fold(f32::NEG_INFINITY, f32::max);
+            (
+                reward + self.gamma * max_next_q,
+                reward + self.gamma * max_next_form,
+            )
         };
 
         let td_error_act = target_act - q_values[action_idx];

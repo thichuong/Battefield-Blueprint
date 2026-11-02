@@ -40,7 +40,7 @@ pub enum EngineToReactEvent {
         player_energy: f32,
         player_supply: u32,
         player_max_supply: u32,
-        tech_state: String, // serialized json
+        tech_state: String,     // serialized json
         autoplay_state: String, // serialized json
         player_formation: String,
         game_time: f32,

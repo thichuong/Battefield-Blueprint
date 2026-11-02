@@ -82,8 +82,8 @@ impl SpatialGrid {
         buildings: &[crate::components::Building],
     ) {
         let mut default_factions = [0u8; 8];
-        for i in 1..8 {
-            default_factions[i] = 1;
+        for faction in default_factions.iter_mut().skip(1) {
+            *faction = 1;
         }
         self.rebuild_with_factions(units, buildings, &default_factions);
     }
@@ -134,7 +134,8 @@ impl SpatialGrid {
                             if entity.is_threat {
                                 if d_sq < best_threat_dist_sq {
                                     best_threat_dist_sq = d_sq;
-                                    best_threat = Some((entity.id, entity.is_building, d_sq.sqrt()));
+                                    best_threat =
+                                        Some((entity.id, entity.is_building, d_sq.sqrt()));
                                 }
                             } else {
                                 if d_sq < best_other_dist_sq {
@@ -179,7 +180,8 @@ impl SpatialGrid {
                             if entity.is_threat {
                                 if d_sq < best_threat_dist_sq {
                                     best_threat_dist_sq = d_sq;
-                                    best_threat = Some((entity.id, entity.is_building, d_sq.sqrt()));
+                                    best_threat =
+                                        Some((entity.id, entity.is_building, d_sq.sqrt()));
                                 }
                             } else {
                                 if d_sq < best_other_dist_sq {

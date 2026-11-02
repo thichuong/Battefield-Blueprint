@@ -15,18 +15,22 @@ fn main() {
     let lib_path = format!("{}/librl_cuda.a", out_dir);
 
     let status = Command::new("nvcc")
-        .args(&[
-            "--cudart", "shared",
-            "-Xcompiler", "-fPIC",
-            "-c", "src/cuda/rl_kernel.cu",
-            "-o", &obj_path,
+        .args([
+            "--cudart",
+            "shared",
+            "-Xcompiler",
+            "-fPIC",
+            "-c",
+            "src/cuda/rl_kernel.cu",
+            "-o",
+            &obj_path,
         ])
         .status();
 
     if let Ok(s) = status {
         if s.success() {
             let ar_status = Command::new("ar")
-                .args(&["crus", &lib_path, &obj_path])
+                .args(["crus", &lib_path, &obj_path])
                 .status();
 
             if let Ok(ar_s) = ar_status {

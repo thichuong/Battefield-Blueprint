@@ -1,7 +1,7 @@
 use crate::rl::RlBrain;
 
 #[cfg(has_cuda)]
-use crate::rl::{ACTION_DIM, FORMATION_DIM, STATE_DIM, DEFAULT_HIDDEN_SIZE, DEFAULT_HIDDEN2_SIZE};
+use crate::rl::{ACTION_DIM, DEFAULT_HIDDEN2_SIZE, DEFAULT_HIDDEN_SIZE, FORMATION_DIM, STATE_DIM};
 
 #[cfg(has_cuda)]
 extern "C" {
@@ -228,7 +228,10 @@ mod tests {
         println!("CUDA is available: {}", is_avail);
         let dev_name = CudaDeviceManager::device_name();
         println!("CUDA Device: {}", dev_name);
-        assert!(is_avail, "CUDA should be available on this NVIDIA RTX machine");
+        assert!(
+            is_avail,
+            "CUDA should be available on this NVIDIA RTX machine"
+        );
 
         let mut trainer = GpuBatchTrainer::new(4);
         assert!(trainer.use_gpu);

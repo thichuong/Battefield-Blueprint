@@ -198,11 +198,17 @@ impl UnitType {
     pub fn formation_role_tier(&self) -> u8 {
         match self {
             // Tier 0: Tuyến đầu / Chống chịu / Tiên phong / Cảm tử
-            UnitType::Vanguard | UnitType::BehemothTitan | UnitType::ShockTrooper | UnitType::AcidBaneling => 0,
+            UnitType::Vanguard
+            | UnitType::BehemothTitan
+            | UnitType::ShockTrooper
+            | UnitType::AcidBaneling => 0,
             // Tier 1: Trung tuyến / Cận chiến tầm trung / Xạ thủ
             UnitType::Rifleman | UnitType::TaoistSwordmaster => 1,
             // Tier 2: Hậu tuyến / Pháo binh / Pháp sư / Thợ mỏ
-            UnitType::LaserMarksman | UnitType::DarkRocketeer | UnitType::VoidWarlock | UnitType::Engineer => 2,
+            UnitType::LaserMarksman
+            | UnitType::DarkRocketeer
+            | UnitType::VoidWarlock
+            | UnitType::Engineer => 2,
         }
     }
 }
@@ -211,7 +217,7 @@ impl UnitType {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum FormationType {
     #[default]
-    Line = 0,    // Hàng Ngang (Phalanx)
+    Line = 0, // Hàng Ngang (Phalanx)
     Wedge = 1,   // Mũi Tên (Spearhead V)
     Box = 2,     // Ô Vuông Hộ Vệ (Protect Square)
     Scatter = 3, // Phân Tán (Chống AoE)
@@ -272,12 +278,24 @@ impl FormationType {
 
     pub fn description(&self) -> &'static str {
         match self {
-            FormationType::Line => "Dàn hàng ngang 2-3 lớp: Tiên phong đi trước, Xạ thủ tối đa góc hỏa lực.",
-            FormationType::Wedge => "Hình nêm mũi tên V: Đột phá xuyên tâm, tập trung xung lực cận chiến.",
-            FormationType::Box => "Khung vuông hộ vệ: Lính khiên bọc ngoài, pháo binh Laser/Rocket an toàn ở lõi.",
-            FormationType::Scatter => "Đội hình phân tán so le: Tản rộng >50px, giảm thiểu tối đa sát thương nổ AoE.",
-            FormationType::Circle => "Vòng cung bán nguyệt: Bao vây mục tiêu, hội tụ toàn bộ hỏa lực vào tâm.",
-            FormationType::Column => "Hai hàng dọc cơ động: Luồn lách chokepoint, luồn sâu đột kích mỏ quặng.",
+            FormationType::Line => {
+                "Dàn hàng ngang 2-3 lớp: Tiên phong đi trước, Xạ thủ tối đa góc hỏa lực."
+            }
+            FormationType::Wedge => {
+                "Hình nêm mũi tên V: Đột phá xuyên tâm, tập trung xung lực cận chiến."
+            }
+            FormationType::Box => {
+                "Khung vuông hộ vệ: Lính khiên bọc ngoài, pháo binh Laser/Rocket an toàn ở lõi."
+            }
+            FormationType::Scatter => {
+                "Đội hình phân tán so le: Tản rộng >50px, giảm thiểu tối đa sát thương nổ AoE."
+            }
+            FormationType::Circle => {
+                "Vòng cung bán nguyệt: Bao vây mục tiêu, hội tụ toàn bộ hỏa lực vào tâm."
+            }
+            FormationType::Column => {
+                "Hai hàng dọc cơ động: Luồn lách chokepoint, luồn sâu đột kích mỏ quặng."
+            }
         }
     }
 }

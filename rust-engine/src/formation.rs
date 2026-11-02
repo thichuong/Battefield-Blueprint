@@ -50,7 +50,7 @@ pub fn compute_formation_positions(
         FormationType::Line => {
             // Hàng Ngang (Phalanx): 2-3 hàng vuông góc với hướng di chuyển
             // Chiều rộng mỗi hàng tối đa 6-8 quân, khoảng cách ngang 32px, khoảng cách hàng 32px
-            let cols = count.min(7).max(1);
+            let cols = count.clamp(1, 7);
             let spacing_x = 32.0;
             let spacing_y = 32.0;
 
@@ -73,7 +73,7 @@ pub fn compute_formation_positions(
             local_slots.push((0.0, 0.0)); // Đỉnh nhọn
 
             for i in 1..count {
-                let rank = ((i + 1) / 2) as f32;
+                let rank = i.div_ceil(2) as f32;
                 let sign = if i % 2 == 1 { 1.0 } else { -1.0 };
                 let col_offset = sign * rank * spacing_x;
                 let row_offset = -rank * spacing_y;
@@ -105,7 +105,7 @@ pub fn compute_formation_positions(
             }
 
             // Xếp theo thứ tự: Viền trước (cho Tank/Shock), ruột trong (cho Pháo/Laser)
-            for pos in border_positions.into_iter().chain(inner_positions.into_iter()) {
+            for pos in border_positions.into_iter().chain(inner_positions) {
                 if local_slots.len() < count {
                     local_slots.push(pos);
                 } else {
@@ -122,7 +122,7 @@ pub fn compute_formation_positions(
         FormationType::Scatter => {
             // Phân Tán (Anti-AoE):
             // Lưới so le tản rộng với khoảng cách > 52px (lớn hơn bán kính đạn nổ 30-45px)
-            let cols = count.min(6).max(1);
+            let cols = count.clamp(1, 6);
             let spacing_x = 54.0;
             let spacing_y = 52.0;
 
@@ -141,7 +141,11 @@ pub fn compute_formation_positions(
             // Hình bán nguyệt/vòng cung mở về phía trước ôm lấy mục tiêu
             let base_radius = (35.0 + (count as f32) * 5.5).min(220.0);
             let span_angle = std::f32::consts::PI * 0.85; // Cung 153 độ
-            let step = if count > 1 { span_angle / ((count - 1) as f32) } else { 0.0 };
+            let step = if count > 1 {
+                span_angle / ((count - 1) as f32)
+            } else {
+                0.0
+            };
 
             for i in 0..count {
                 let angle = -span_angle * 0.5 + (i as f32) * step;
@@ -160,7 +164,11 @@ pub fn compute_formation_positions(
             for i in 0..count {
                 let row = i / 2;
                 let col = i % 2;
-                let col_offset = if col == 0 { -spacing_x * 0.5 } else { spacing_x * 0.5 };
+                let col_offset = if col == 0 {
+                    -spacing_x * 0.5
+                } else {
+                    spacing_x * 0.5
+                };
                 let row_offset = -(row as f32) * spacing_y;
                 local_slots.push((col_offset, row_offset));
             }
@@ -240,4 +248,3 @@ mod tests {
         assert!(vanguard_pos.1 >= laser_pos.1 - 1.0);
     }
 }
-

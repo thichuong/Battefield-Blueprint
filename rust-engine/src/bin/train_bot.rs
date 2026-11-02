@@ -4,7 +4,10 @@ use rust_engine::autoplay::{
 };
 use rust_engine::components::{BuildingType, PlayerSlotConfig, Team, UnitType, MAX_PLAYERS};
 use rust_engine::cuda_accel::{CudaDeviceManager, GpuBatchTrainer, TransitionSample};
-use rust_engine::rl::{AiGameMode, RlBrain, ACTION_DIM, FORMATION_DIM, STATE_DIM, DEFAULT_HIDDEN_SIZE, DEFAULT_HIDDEN2_SIZE};
+use rust_engine::rl::{
+    AiGameMode, RlBrain, ACTION_DIM, DEFAULT_HIDDEN2_SIZE, DEFAULT_HIDDEN_SIZE, FORMATION_DIM,
+    STATE_DIM,
+};
 use rust_engine::GameEngine;
 use std::env;
 use std::fs::File;
@@ -24,7 +27,7 @@ enum Scenario {
 }
 
 impl Scenario {
-    fn to_mode(&self) -> AiGameMode {
+    fn to_mode(self) -> AiGameMode {
         match self {
             Scenario::Duel1v1 => AiGameMode::Duel1v1,
             Scenario::Team2v2 => AiGameMode::Team2v2,
@@ -43,50 +46,180 @@ impl Scenario {
         let mut slots = [PlayerSlotConfig::default(); MAX_PLAYERS];
         match self {
             Scenario::Duel1v1 => {
-                slots[0] = PlayerSlotConfig { slot_index: 0, active: true, faction: 0, is_human: false };
-                slots[1] = PlayerSlotConfig { slot_index: 1, active: true, faction: 1, is_human: false };
-                for i in 2..8 {
-                    slots[i] = PlayerSlotConfig { slot_index: i, active: false, faction: i as u8, is_human: false };
+                slots[0] = PlayerSlotConfig {
+                    slot_index: 0,
+                    active: true,
+                    faction: 0,
+                    is_human: false,
+                };
+                slots[1] = PlayerSlotConfig {
+                    slot_index: 1,
+                    active: true,
+                    faction: 1,
+                    is_human: false,
+                };
+                for (i, slot) in slots.iter_mut().enumerate().skip(2) {
+                    *slot = PlayerSlotConfig {
+                        slot_index: i,
+                        active: false,
+                        faction: i as u8,
+                        is_human: false,
+                    };
                 }
             }
             Scenario::Team2v2 => {
-                slots[0] = PlayerSlotConfig { slot_index: 0, active: true, faction: 0, is_human: false };
-                slots[2] = PlayerSlotConfig { slot_index: 2, active: true, faction: 0, is_human: false };
-                slots[1] = PlayerSlotConfig { slot_index: 1, active: true, faction: 1, is_human: false };
-                slots[3] = PlayerSlotConfig { slot_index: 3, active: true, faction: 1, is_human: false };
-                for i in 4..8 {
-                    slots[i] = PlayerSlotConfig { slot_index: i, active: false, faction: i as u8, is_human: false };
+                slots[0] = PlayerSlotConfig {
+                    slot_index: 0,
+                    active: true,
+                    faction: 0,
+                    is_human: false,
+                };
+                slots[2] = PlayerSlotConfig {
+                    slot_index: 2,
+                    active: true,
+                    faction: 0,
+                    is_human: false,
+                };
+                slots[1] = PlayerSlotConfig {
+                    slot_index: 1,
+                    active: true,
+                    faction: 1,
+                    is_human: false,
+                };
+                slots[3] = PlayerSlotConfig {
+                    slot_index: 3,
+                    active: true,
+                    faction: 1,
+                    is_human: false,
+                };
+                for (i, slot) in slots.iter_mut().enumerate().skip(4) {
+                    *slot = PlayerSlotConfig {
+                        slot_index: i,
+                        active: false,
+                        faction: i as u8,
+                        is_human: false,
+                    };
                 }
             }
             Scenario::Team3v3 => {
-                slots[0] = PlayerSlotConfig { slot_index: 0, active: true, faction: 0, is_human: false };
-                slots[2] = PlayerSlotConfig { slot_index: 2, active: true, faction: 0, is_human: false };
-                slots[4] = PlayerSlotConfig { slot_index: 4, active: true, faction: 0, is_human: false };
-                slots[1] = PlayerSlotConfig { slot_index: 1, active: true, faction: 1, is_human: false };
-                slots[3] = PlayerSlotConfig { slot_index: 3, active: true, faction: 1, is_human: false };
-                slots[5] = PlayerSlotConfig { slot_index: 5, active: true, faction: 1, is_human: false };
-                slots[6] = PlayerSlotConfig { slot_index: 6, active: false, faction: 6, is_human: false };
-                slots[7] = PlayerSlotConfig { slot_index: 7, active: false, faction: 7, is_human: false };
+                slots[0] = PlayerSlotConfig {
+                    slot_index: 0,
+                    active: true,
+                    faction: 0,
+                    is_human: false,
+                };
+                slots[2] = PlayerSlotConfig {
+                    slot_index: 2,
+                    active: true,
+                    faction: 0,
+                    is_human: false,
+                };
+                slots[4] = PlayerSlotConfig {
+                    slot_index: 4,
+                    active: true,
+                    faction: 0,
+                    is_human: false,
+                };
+                slots[1] = PlayerSlotConfig {
+                    slot_index: 1,
+                    active: true,
+                    faction: 1,
+                    is_human: false,
+                };
+                slots[3] = PlayerSlotConfig {
+                    slot_index: 3,
+                    active: true,
+                    faction: 1,
+                    is_human: false,
+                };
+                slots[5] = PlayerSlotConfig {
+                    slot_index: 5,
+                    active: true,
+                    faction: 1,
+                    is_human: false,
+                };
+                slots[6] = PlayerSlotConfig {
+                    slot_index: 6,
+                    active: false,
+                    faction: 6,
+                    is_human: false,
+                };
+                slots[7] = PlayerSlotConfig {
+                    slot_index: 7,
+                    active: false,
+                    faction: 7,
+                    is_human: false,
+                };
             }
             Scenario::Team4v4 => {
-                for i in 0..8 {
+                for (i, slot) in slots.iter_mut().enumerate() {
                     let fac = (i % 2) as u8;
-                    slots[i] = PlayerSlotConfig { slot_index: i, active: true, faction: fac, is_human: false };
+                    *slot = PlayerSlotConfig {
+                        slot_index: i,
+                        active: true,
+                        faction: fac,
+                        is_human: false,
+                    };
                 }
             }
             Scenario::ThreeWay2v2v2 => {
-                slots[0] = PlayerSlotConfig { slot_index: 0, active: true, faction: 0, is_human: false };
-                slots[3] = PlayerSlotConfig { slot_index: 3, active: true, faction: 0, is_human: false };
-                slots[1] = PlayerSlotConfig { slot_index: 1, active: true, faction: 1, is_human: false };
-                slots[4] = PlayerSlotConfig { slot_index: 4, active: true, faction: 1, is_human: false };
-                slots[2] = PlayerSlotConfig { slot_index: 2, active: true, faction: 2, is_human: false };
-                slots[5] = PlayerSlotConfig { slot_index: 5, active: true, faction: 2, is_human: false };
-                slots[6] = PlayerSlotConfig { slot_index: 6, active: false, faction: 6, is_human: false };
-                slots[7] = PlayerSlotConfig { slot_index: 7, active: false, faction: 7, is_human: false };
+                slots[0] = PlayerSlotConfig {
+                    slot_index: 0,
+                    active: true,
+                    faction: 0,
+                    is_human: false,
+                };
+                slots[3] = PlayerSlotConfig {
+                    slot_index: 3,
+                    active: true,
+                    faction: 0,
+                    is_human: false,
+                };
+                slots[1] = PlayerSlotConfig {
+                    slot_index: 1,
+                    active: true,
+                    faction: 1,
+                    is_human: false,
+                };
+                slots[4] = PlayerSlotConfig {
+                    slot_index: 4,
+                    active: true,
+                    faction: 1,
+                    is_human: false,
+                };
+                slots[2] = PlayerSlotConfig {
+                    slot_index: 2,
+                    active: true,
+                    faction: 2,
+                    is_human: false,
+                };
+                slots[5] = PlayerSlotConfig {
+                    slot_index: 5,
+                    active: true,
+                    faction: 2,
+                    is_human: false,
+                };
+                slots[6] = PlayerSlotConfig {
+                    slot_index: 6,
+                    active: false,
+                    faction: 6,
+                    is_human: false,
+                };
+                slots[7] = PlayerSlotConfig {
+                    slot_index: 7,
+                    active: false,
+                    faction: 7,
+                    is_human: false,
+                };
             }
             Scenario::FreeForAll8 => {
-                for i in 0..8 {
-                    slots[i] = PlayerSlotConfig { slot_index: i, active: true, faction: i as u8, is_human: false };
+                for (i, slot) in slots.iter_mut().enumerate() {
+                    *slot = PlayerSlotConfig {
+                        slot_index: i,
+                        active: true,
+                        faction: i as u8,
+                        is_human: false,
+                    };
                 }
             }
         }
@@ -186,18 +319,58 @@ fn main() {
 
     println!("============================================================");
     println!("🧠 BATTLEFIELD BLUEPRINT // PARALLEL MULTI-MODE RL TRAINER");
-    println!("   Hardware Device:    {}", if gpu_avail { format!("🚀 GPU ACCELERATED // {}", gpu_name) } else { "💻 CPU Fallback".to_string() });
-    println!("   Neural Architecture:Deep Dual-Head MLP ({} -> {} -> {} -> {} + {})", STATE_DIM, DEFAULT_HIDDEN_SIZE, DEFAULT_HIDDEN2_SIZE, ACTION_DIM, FORMATION_DIM);
-    println!("   Hidden Neurons:     {} neurons (Layer 1: {}, Layer 2: {})", DEFAULT_HIDDEN_SIZE + DEFAULT_HIDDEN2_SIZE, DEFAULT_HIDDEN_SIZE, DEFAULT_HIDDEN2_SIZE);
-    println!("   Total Parameters:   {} trainable weights & biases", total_params);
+    println!(
+        "   Hardware Device:    {}",
+        if gpu_avail {
+            format!("🚀 GPU ACCELERATED // {}", gpu_name)
+        } else {
+            "💻 CPU Fallback".to_string()
+        }
+    );
+    println!(
+        "   Neural Architecture:Deep Dual-Head MLP ({} -> {} -> {} -> {} + {})",
+        STATE_DIM, DEFAULT_HIDDEN_SIZE, DEFAULT_HIDDEN2_SIZE, ACTION_DIM, FORMATION_DIM
+    );
+    println!(
+        "   Hidden Neurons:     {} neurons (Layer 1: {}, Layer 2: {})",
+        DEFAULT_HIDDEN_SIZE + DEFAULT_HIDDEN2_SIZE,
+        DEFAULT_HIDDEN_SIZE,
+        DEFAULT_HIDDEN2_SIZE
+    );
+    println!(
+        "   Total Parameters:   {} trainable weights & biases",
+        total_params
+    );
     println!("   Episodes per Mode:  {}", total_episodes);
-    println!("   Fast-Forward dt:    {:.3}s/step (High-Speed Tick)", time_scale_dt);
-    println!("   Max Game Time:      {:.0}s (Expanded Endgame Window)", max_game_time);
-    println!("   State Dimension:    {} inputs (Deep Economy & Resource Flow)", STATE_DIM);
+    println!(
+        "   Fast-Forward dt:    {:.3}s/step (High-Speed Tick)",
+        time_scale_dt
+    );
+    println!(
+        "   Max Game Time:      {:.0}s (Expanded Endgame Window)",
+        max_game_time
+    );
+    println!(
+        "   State Dimension:    {} inputs (Deep Economy & Resource Flow)",
+        STATE_DIM
+    );
     println!("   Action Dimension:   {} strategic actions", ACTION_DIM);
     println!("   Formation Dimension:{} formations", FORMATION_DIM);
-    println!("   Parallel Branches:  {}", if parallel_modes { "ENABLED (Multi-threaded)" } else { "SEQUENTIAL" });
-    println!("   Target Modes:       {:?}", target_scenarios.iter().map(|s| s.name()).collect::<Vec<_>>());
+    println!(
+        "   Parallel Branches:  {}",
+        if parallel_modes {
+            "ENABLED (Multi-threaded)"
+        } else {
+            "SEQUENTIAL"
+        }
+    );
+    println!(
+        "   Target Modes:       {:?}",
+        target_scenarios
+            .iter()
+            .map(|s| s.name())
+            .collect::<Vec<_>>()
+    );
     println!("============================================================");
 
     let start_wall_time = Instant::now();
@@ -238,8 +411,14 @@ fn main() {
     }
 
     println!("============================================================");
-    println!("🎉 HOÀN THÀNH HUẤN LUYỆN TOÀN BỘ {} CHẾ ĐỘ CHƠI!", completed_counter.load(Ordering::SeqCst));
-    println!("⏱️  Tổng thời gian: {:.2}s", start_wall_time.elapsed().as_secs_f32());
+    println!(
+        "🎉 HOÀN THÀNH HUẤN LUYỆN TOÀN BỘ {} CHẾ ĐỘ CHƠI!",
+        completed_counter.load(Ordering::SeqCst)
+    );
+    println!(
+        "⏱️  Tổng thời gian: {:.2}s",
+        start_wall_time.elapsed().as_secs_f32()
+    );
     println!("============================================================");
 }
 
@@ -278,7 +457,7 @@ fn train_mode(scenario: Scenario, config: &TrainConfig) -> RlBrain {
 
         // Chọn chiến thuật đối thủ
         let opponent_style = if champion_pool.is_empty() || episode % 4 != 0 {
-            let arch_idx = (episode % 7) as usize;
+            let arch_idx = episode % 7;
             let arch = match arch_idx {
                 0 => AutoTrainingArchetype::CombinedTitanArtilleryMage,
                 1 => AutoTrainingArchetype::OmniTechGrandmaster,
@@ -319,7 +498,8 @@ fn train_mode(scenario: Scenario, config: &TrainConfig) -> RlBrain {
                     }
                 }
             } else {
-                let cfg = create_training_autoplay_config(team, AutoTrainingArchetype::MacroFortress);
+                let cfg =
+                    create_training_autoplay_config(team, AutoTrainingArchetype::MacroFortress);
                 engine.team_autoplay_mut(team).config = cfg;
             }
         }
@@ -379,32 +559,41 @@ fn train_mode(scenario: Scenario, config: &TrainConfig) -> RlBrain {
                 let brain = &mut engine.team_ai_mut(learner_team).rl_brain;
                 gpu_trainer.train_batch(brain);
             } else {
-                engine.team_ai_mut(learner_team).rl_brain.train_step_with_formation(
-                    &prev_state,
-                    action,
-                    formation,
-                    step_reward,
-                    &cur_state,
-                    is_done,
-                );
+                engine
+                    .team_ai_mut(learner_team)
+                    .rl_brain
+                    .train_step_with_formation(
+                        &prev_state,
+                        action,
+                        formation,
+                        step_reward,
+                        &cur_state,
+                        is_done,
+                    );
             }
 
             // Multi-Agent Sharing: Các slot AI khác phe đối địch nếu có RL brain cũng học từ kinh nghiệm đối kháng
             for slot_idx in 0..MAX_PLAYERS {
                 let other_team = Team::from_index(slot_idx);
-                if engine.is_slot_active(other_team) && other_team != learner_team && !engine.team_autoplay(other_team).config.enabled {
+                if engine.is_slot_active(other_team)
+                    && other_team != learner_team
+                    && !engine.team_autoplay(other_team).config.enabled
+                {
                     let other_prev = extract_state_vector_for_team(&engine, other_team);
                     let other_act = engine.team_ai(other_team).current_action;
                     let other_form = engine.team_ai(other_team).current_formation;
                     let other_reward = -step_reward * 0.8; // Zero-sum inverted reward
-                    engine.team_ai_mut(other_team).rl_brain.train_step_with_formation(
-                        &other_prev,
-                        other_act,
-                        other_form,
-                        other_reward,
-                        &cur_state,
-                        is_done,
-                    );
+                    engine
+                        .team_ai_mut(other_team)
+                        .rl_brain
+                        .train_step_with_formation(
+                            &other_prev,
+                            other_act,
+                            other_form,
+                            other_reward,
+                            &cur_state,
+                            is_done,
+                        );
                 }
             }
 
@@ -479,38 +668,80 @@ fn save_mode_model(scenario: Scenario, brain: &RlBrain) {
 
 #[allow(dead_code)]
 fn count_hostile_combat(engine: &GameEngine, my_team: Team) -> usize {
-    engine.units.iter().filter(|u| engine.are_hostile(my_team, u.team) && u.unit_type != UnitType::Engineer).count()
+    engine
+        .units
+        .iter()
+        .filter(|u| engine.are_hostile(my_team, u.team) && u.unit_type != UnitType::Engineer)
+        .count()
 }
 
 #[allow(dead_code)]
 fn count_ally_combat(engine: &GameEngine, my_team: Team) -> usize {
-    engine.units.iter().filter(|u| engine.are_allies(my_team, u.team) && u.unit_type != UnitType::Engineer).count()
+    engine
+        .units
+        .iter()
+        .filter(|u| engine.are_allies(my_team, u.team) && u.unit_type != UnitType::Engineer)
+        .count()
 }
 
 fn count_hostile_ccs(engine: &GameEngine, my_team: Team) -> usize {
-    engine.buildings.iter().filter(|b| engine.are_hostile(my_team, b.team) && b.building_type == BuildingType::CommandCenter).count()
+    engine
+        .buildings
+        .iter()
+        .filter(|b| {
+            engine.are_hostile(my_team, b.team) && b.building_type == BuildingType::CommandCenter
+        })
+        .count()
 }
 
 fn count_ally_ccs(engine: &GameEngine, my_team: Team) -> usize {
-    engine.buildings.iter().filter(|b| engine.are_allies(my_team, b.team) && b.building_type == BuildingType::CommandCenter).count()
+    engine
+        .buildings
+        .iter()
+        .filter(|b| {
+            engine.are_allies(my_team, b.team) && b.building_type == BuildingType::CommandCenter
+        })
+        .count()
 }
 
 #[allow(dead_code)]
 fn count_ally_reactors(engine: &GameEngine, my_team: Team) -> usize {
-    engine.buildings.iter().filter(|b| engine.are_allies(my_team, b.team) && b.building_type == BuildingType::PowerReactor).count()
+    engine
+        .buildings
+        .iter()
+        .filter(|b| {
+            engine.are_allies(my_team, b.team) && b.building_type == BuildingType::PowerReactor
+        })
+        .count()
 }
 
 #[allow(dead_code)]
 fn count_ally_converters(engine: &GameEngine, my_team: Team) -> usize {
-    engine.buildings.iter().filter(|b| engine.are_allies(my_team, b.team) && b.building_type == BuildingType::EnergyConverter).count()
+    engine
+        .buildings
+        .iter()
+        .filter(|b| {
+            engine.are_allies(my_team, b.team) && b.building_type == BuildingType::EnergyConverter
+        })
+        .count()
 }
 
 #[allow(dead_code)]
 fn count_hostile_buildings(engine: &GameEngine, my_team: Team) -> usize {
-    engine.buildings.iter().filter(|b| engine.are_hostile(my_team, b.team)).count()
+    engine
+        .buildings
+        .iter()
+        .filter(|b| engine.are_hostile(my_team, b.team))
+        .count()
 }
 
 #[allow(dead_code)]
 fn count_hostile_turrets(engine: &GameEngine, my_team: Team) -> usize {
-    engine.buildings.iter().filter(|b| engine.are_hostile(my_team, b.team) && b.building_type == BuildingType::TurretTower).count()
+    engine
+        .buildings
+        .iter()
+        .filter(|b| {
+            engine.are_hostile(my_team, b.team) && b.building_type == BuildingType::TurretTower
+        })
+        .count()
 }
