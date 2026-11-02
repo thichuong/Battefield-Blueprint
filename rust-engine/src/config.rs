@@ -268,7 +268,7 @@ impl Default for GameConfig {
             UnitStatsConfig {
                 name: "VANGUARD // SHIELDER".to_string(),
                 short_name: "SHIELD".to_string(),
-                description: "Vệ binh khiên chắn năng lượng.".to_string(),
+                description: "Vệ binh khiên chắn năng lượng, mỗi 5s nhận khiên 100.".to_string(),
                 hp: 320.0,
                 speed: 90.0,
                 attack_range: 45.0,
@@ -293,12 +293,12 @@ impl Default for GameConfig {
             UnitStatsConfig {
                 name: "SIEGE // LASER MARKSMAN".to_string(),
                 short_name: "LASER".to_string(),
-                description: "Pháo Laser siêu sát thương.".to_string(),
+                description: "Tia Laser liên tục mỗi 0.2s, sát thương tăng dần theo thời gian.".to_string(),
                 hp: 110.0,
                 speed: 95.0,
                 attack_range: 220.0,
-                attack_damage: 25.0,
-                attack_cooldown: 0.5,
+                attack_damage: 1.0,
+                attack_cooldown: 0.2,
                 damage_type: DamageType::Energy,
                 aoe_radius: 0.0,
                 resistances: Resistances {
@@ -343,12 +343,12 @@ impl Default for GameConfig {
             UnitStatsConfig {
                 name: "CELESTIAL // SWORDMASTER".to_string(),
                 short_name: "SWORD".to_string(),
-                description: "Tu tiên giả ngự phi kiếm chân khí Arcane.".to_string(),
+                description: "Ngự phi kiếm chân khí Arcane, tích 1 kiếm/s (tối đa 7), tốc đánh 0.1s.".to_string(),
                 hp: 170.0,
                 speed: 130.0,
                 attack_range: 140.0,
                 attack_damage: 40.0,
-                attack_cooldown: 1.0,
+                attack_cooldown: 0.1,
                 damage_type: DamageType::Arcane,
                 aoe_radius: 10.0,
                 resistances: Resistances {
@@ -368,14 +368,14 @@ impl Default for GameConfig {
             UnitStatsConfig {
                 name: "VOID // SHADOW WARLOCK".to_string(),
                 short_name: "WARLOCK".to_string(),
-                description: "Vu sư hư không, cầu ma thuật nổ AoE.".to_string(),
+                description: "Mỗi 2s triệu hồi vòng ma thuật tồn tại 5s, đốt 5% HP tối đa mỗi giây.".to_string(),
                 hp: 135.0,
                 speed: 100.0,
                 attack_range: 175.0,
-                attack_damage: 35.0,
-                attack_cooldown: 1.0,
+                attack_damage: 0.0,
+                attack_cooldown: 2.0,
                 damage_type: DamageType::Arcane,
-                aoe_radius: 35.0,
+                aoe_radius: 55.0,
                 resistances: Resistances {
                     physical: 0.10,
                     energy: 0.25,
@@ -418,7 +418,7 @@ impl Default for GameConfig {
             UnitStatsConfig {
                 name: "SWARM // ACID BANELING".to_string(),
                 short_name: "BANELING".to_string(),
-                description: "Bọ cảm tử lao vào tự nổ axit AoE cực lớn.".to_string(),
+                description: "Bọ cảm tử tự nổ axit AoE cực lớn, x2 sát thương lên công trình.".to_string(),
                 hp: 100.0,
                 speed: 160.0,
                 attack_range: 25.0,
@@ -984,6 +984,17 @@ impl GameConfig {
         };
         let cfg = self.get_unit(u_type).unwrap_or(&default_cfg);
 
+        let (shield, max_shield) = if u_type == crate::components::UnitType::Vanguard {
+            (100.0, 100.0)
+        } else {
+            (0.0, 0.0)
+        };
+        let flying_swords = if u_type == crate::components::UnitType::TaoistSwordmaster {
+            7
+        } else {
+            0
+        };
+
         Unit {
             id,
             team,
@@ -1007,6 +1018,15 @@ impl GameConfig {
             order: UnitOrder::Idle,
             carried_minerals: 0.0,
             formation_offset: (0.0, 0.0),
+            shield,
+            max_shield,
+            shield_timer: 0.0,
+            laser_target_id: None,
+            laser_stacks: 0,
+            flying_swords,
+            sword_regen_timer: 0.0,
+            attack_anim_timer: 0.0,
+            last_attack_pos: None,
         }
     }
 

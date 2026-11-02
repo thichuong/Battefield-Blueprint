@@ -35,6 +35,9 @@ pub fn step(engine: &mut GameEngine, dt: f32) {
     // 6. Cập nhật Công trình (Xây dựng, Huấn luyện lính, Tháp pháo bắn)
     update_buildings(engine, dt);
 
+    // 6.5. Cập nhật Vòng ma thuật của VoidWarlock
+    update_magic_circles(engine, dt);
+
     // 7. Cập nhật Đạn & Tia Laser (sát thương đơn vị & công trình)
     update_projectiles(engine, dt);
 
@@ -661,6 +664,7 @@ fn update_economy(engine: &mut GameEngine, dt: f32) {
 fn update_units(engine: &mut GameEngine, dt: f32) {
     let mut new_projectiles = Vec::new();
     let mut new_floating_texts = Vec::new();
+    let mut new_magic_circles = Vec::new();
     let mut mineral_deliveries: Vec<(Team, f32, f32, f32)> = Vec::new();
     let factions = engine.team_factions();
 
@@ -718,6 +722,34 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
     for unit in engine.units.iter_mut() {
         if unit.current_cooldown > 0.0 {
             unit.current_cooldown -= dt;
+        }
+
+        unit.attack_anim_timer = (unit.attack_anim_timer - dt * 3.5).max(0.0);
+
+        // Vanguard: mỗi 5s nhận lớp khiên 100
+        if unit.unit_type == UnitType::Vanguard {
+            unit.shield_timer += dt;
+            if unit.shield_timer >= 5.0 {
+                unit.shield_timer -= 5.0;
+                unit.shield = 100.0;
+                unit.max_shield = 100.0;
+            }
+        }
+
+        // TaoistSwordmaster: mỗi 1s tích 1 phi kiếm (tối đa 7)
+        if unit.unit_type == UnitType::TaoistSwordmaster && unit.flying_swords < 7 {
+            unit.sword_regen_timer += dt;
+            if unit.sword_regen_timer >= 1.0 {
+                unit.sword_regen_timer -= 1.0;
+                unit.flying_swords = (unit.flying_swords + 1).min(7);
+            }
+        }
+
+        // Nếu không trong trạng thái AttackTarget, dọn dẹp trạng thái ngắm/laser
+        if !matches!(unit.order, UnitOrder::AttackTarget { .. }) {
+            unit.last_attack_pos = None;
+            unit.laser_target_id = None;
+            unit.laser_stacks = 0;
         }
 
         let u_team_idx = unit.team.index() % 8;
@@ -974,98 +1006,138 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                         unit.y += (dy / dist) * move_dist;
                         unit.walk_cycle += dt * 10.0;
                     } else {
+                        // Điểm va chạm nằm ở mép mục tiêu
+                        let hit_dist = dist.min(unit.attack_range + target_radius);
+                        let hit_x = if dist > 0.0 {
+                            unit.x + (dx / dist) * hit_dist
+                        } else {
+                            tx
+                        };
+                        let hit_y = if dist > 0.0 {
+                            unit.y + (dy / dist) * hit_dist
+                        } else {
+                            ty
+                        };
+
+                        unit.last_attack_pos = Some((hit_x, hit_y));
+
                         // TẤN CÔNG ĐÍCH XÁC
                         if unit.current_cooldown <= 0.0 {
-                            unit.current_cooldown = unit.attack_cooldown;
-                            let mut dmg = unit.attack_damage;
-                            let has_mag = has_magnetic[u_team_idx];
-                            let has_super = has_superheated[u_team_idx];
-                            if unit.unit_type == UnitType::Rifleman && has_mag {
-                                dmg *= 1.25;
-                            }
-                            if unit.unit_type == UnitType::ShockTrooper && has_super {
-                                dmg *= 1.35;
-                            }
-
-                            // Điểm va chạm nằm ở mép mục tiêu
-                            let hit_dist = dist.min(unit.attack_range + target_radius);
-                            let hit_x = if dist > 0.0 {
-                                unit.x + (dx / dist) * hit_dist
-                            } else {
-                                tx
-                            };
-                            let hit_y = if dist > 0.0 {
-                                unit.y + (dy / dist) * hit_dist
-                            } else {
-                                ty
-                            };
-
-                            if unit.unit_type == UnitType::AcidBaneling {
-                                // Bọ nổ cảm tử: nổ tung ngay lập tức
-                                unit.hp = 0.0;
-                                new_projectiles.push(Projectile {
+                            if unit.unit_type == UnitType::VoidWarlock {
+                                // VoidWarlock không tấn công thường, mỗi 2s triệu hồi 1 vòng ma thuật duy trì 5s
+                                unit.current_cooldown = unit.attack_cooldown;
+                                unit.attack_anim_timer = 1.0;
+                                new_magic_circles.push(MagicCircle {
                                     id: 0,
                                     team: unit.team,
-                                    x: hit_x,
-                                    y: hit_y,
-                                    target_x: hit_x,
-                                    target_y: hit_y,
-                                    speed: 1500.0,
-                                    damage: dmg,
-                                    damage_type: DamageType::Explosive,
-                                    aoe_radius: unit.aoe_radius,
-                                    is_laser: false,
-                                    lifetime: 0.0,
-                                    is_melee: true,
+                                    x: tx,
+                                    y: ty,
+                                    radius: 55.0,
+                                    lifetime: 5.0,
+                                    max_lifetime: 5.0,
+                                    tick_timer: 0.0,
                                 });
-                            } else if unit.unit_type == UnitType::ShockTrooper
-                                || unit.unit_type == UnitType::Vanguard
-                                || unit.unit_type == UnitType::Engineer
-                                || unit.unit_type == UnitType::BehemothTitan
-                            {
-                                // Cận chiến: gây sát thương tức thì trực tiếp tại mục tiêu, không có tia đạn
-                                new_projectiles.push(Projectile {
-                                    id: 0,
-                                    team: unit.team,
-                                    x: hit_x,
-                                    y: hit_y,
-                                    target_x: hit_x,
-                                    target_y: hit_y,
-                                    speed: 2000.0,
-                                    damage: dmg,
-                                    damage_type: unit.damage_type,
-                                    aoe_radius: unit.aoe_radius,
-                                    is_laser: false,
-                                    lifetime: 0.0,
-                                    is_melee: true,
-                                });
+                            } else if unit.unit_type == UnitType::TaoistSwordmaster && unit.flying_swords == 0 {
+                                // Hết phi kiếm -> chờ tích lũy kiếm
                             } else {
-                                // Tầm xa
-                                let is_laser = unit.unit_type == UnitType::LaserMarksman;
-                                let speed = if is_laser {
-                                    1800.0
+                                unit.current_cooldown = unit.attack_cooldown;
+                                unit.attack_anim_timer = 1.0;
+                                let mut dmg = unit.attack_damage;
+                                let has_mag = has_magnetic[u_team_idx];
+                                let has_super = has_superheated[u_team_idx];
+                                if unit.unit_type == UnitType::Rifleman && has_mag {
+                                    dmg *= 1.25;
+                                }
+                                if unit.unit_type == UnitType::ShockTrooper && has_super {
+                                    dmg *= 1.35;
+                                }
+
+                                if unit.unit_type == UnitType::LaserMarksman {
+                                    // LaserMarksman: Tăng sát thương theo thời gian trên cùng mục tiêu
+                                    // Sát thương khởi đầu là 1, mỗi lần tăng 2
+                                    let current_target = Some((target_id, is_building));
+                                    if unit.laser_target_id == current_target {
+                                        unit.laser_stacks += 1;
+                                    } else {
+                                        unit.laser_target_id = current_target;
+                                        unit.laser_stacks = 0;
+                                    }
+                                    dmg = 1.0 + (unit.laser_stacks as f32) * 2.0;
                                 } else if unit.unit_type == UnitType::TaoistSwordmaster {
-                                    1100.0
-                                } else if unit.unit_type == UnitType::DarkRocketeer {
-                                    650.0
+                                    // Tiêu hao 1 phi kiếm
+                                    unit.flying_swords = unit.flying_swords.saturating_sub(1);
+                                }
+
+                                if unit.unit_type == UnitType::AcidBaneling {
+                                    // Bọ nổ cảm tử: nổ tung ngay lập tức, x2 sát thương lên công trình
+                                    unit.hp = 0.0;
+                                    new_projectiles.push(Projectile {
+                                        id: 0,
+                                        team: unit.team,
+                                        x: hit_x,
+                                        y: hit_y,
+                                        target_x: hit_x,
+                                        target_y: hit_y,
+                                        speed: 1500.0,
+                                        damage: dmg,
+                                        damage_type: DamageType::Explosive,
+                                        aoe_radius: unit.aoe_radius,
+                                        is_laser: false,
+                                        lifetime: 0.0,
+                                        is_melee: true,
+                                        building_damage_mult: 2.0,
+                                    });
+                                } else if unit.unit_type == UnitType::ShockTrooper
+                                    || unit.unit_type == UnitType::Vanguard
+                                    || unit.unit_type == UnitType::Engineer
+                                    || unit.unit_type == UnitType::BehemothTitan
+                                {
+                                    // Cận chiến: gây sát thương tức thì trực tiếp tại mục tiêu, không có tia đạn
+                                    new_projectiles.push(Projectile {
+                                        id: 0,
+                                        team: unit.team,
+                                        x: hit_x,
+                                        y: hit_y,
+                                        target_x: hit_x,
+                                        target_y: hit_y,
+                                        speed: 2000.0,
+                                        damage: dmg,
+                                        damage_type: unit.damage_type,
+                                        aoe_radius: unit.aoe_radius,
+                                        is_laser: false,
+                                        lifetime: 0.0,
+                                        is_melee: true,
+                                        building_damage_mult: 1.0,
+                                    });
                                 } else {
-                                    750.0
-                                };
-                                new_projectiles.push(Projectile {
-                                    id: 0,
-                                    team: unit.team,
-                                    x: unit.x,
-                                    y: unit.y - 12.0,
-                                    target_x: hit_x,
-                                    target_y: hit_y,
-                                    speed,
-                                    damage: dmg,
-                                    damage_type: unit.damage_type,
-                                    aoe_radius: unit.aoe_radius,
-                                    is_laser,
-                                    lifetime: if is_laser { 0.25 } else { 1.5 },
-                                    is_melee: false,
-                                });
+                                    // Tầm xa
+                                    let is_laser = unit.unit_type == UnitType::LaserMarksman;
+                                    let speed = if is_laser {
+                                        2400.0
+                                    } else if unit.unit_type == UnitType::TaoistSwordmaster {
+                                        1100.0
+                                    } else if unit.unit_type == UnitType::DarkRocketeer {
+                                        650.0
+                                    } else {
+                                        750.0
+                                    };
+                                    new_projectiles.push(Projectile {
+                                        id: 0,
+                                        team: unit.team,
+                                        x: unit.x,
+                                        y: unit.y - 12.0,
+                                        target_x: hit_x,
+                                        target_y: hit_y,
+                                        speed,
+                                        damage: dmg,
+                                        damage_type: unit.damage_type,
+                                        aoe_radius: unit.aoe_radius,
+                                        is_laser,
+                                        lifetime: if is_laser { 0.2 } else { 1.5 },
+                                        is_melee: false,
+                                        building_damage_mult: 1.0,
+                                    });
+                                }
                             }
                         }
                     }
@@ -1137,6 +1209,11 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
     for mut p in new_projectiles {
         p.id = engine.alloc_id();
         engine.projectiles.push(p);
+    }
+
+    for mut c in new_magic_circles {
+        c.id = engine.alloc_id();
+        engine.magic_circles.push(c);
     }
 
     for mut ft in new_floating_texts {
@@ -1432,6 +1509,7 @@ pub fn process_building_combat_with_factions(
                 1.0
             },
             is_melee: false,
+            building_damage_mult: 1.0,
         })
     } else {
         None
@@ -1447,6 +1525,72 @@ pub fn calculate_effective_damage(raw_dmg: f32, dmg_type: DamageType, res: &Resi
     };
     let factor = (1.0 - r.clamp(-0.5, 0.85)).max(0.1);
     (raw_dmg * factor).max(1.0)
+}
+
+/// Trừ sát thương vào Khiên trước (nếu có), phần còn lại trừ vào Máu
+pub fn apply_damage_to_unit(unit: &mut Unit, taken: f32) -> f32 {
+    let mut remaining = taken;
+    if unit.shield > 0.0 {
+        if unit.shield >= remaining {
+            unit.shield -= remaining;
+            remaining = 0.0;
+        } else {
+            remaining -= unit.shield;
+            unit.shield = 0.0;
+        }
+    }
+    if remaining > 0.0 {
+        unit.hp -= remaining;
+    }
+    taken
+}
+
+pub fn update_magic_circles(engine: &mut GameEngine, dt: f32) {
+    let factions = engine.team_factions();
+    let mut new_texts = Vec::new();
+
+    for circle in engine.magic_circles.iter_mut() {
+        circle.lifetime -= dt;
+        circle.tick_timer += dt;
+
+        let should_tick_text = circle.tick_timer >= 0.5;
+        if should_tick_text {
+            circle.tick_timer = 0.0;
+        }
+
+        let c_team_idx = circle.team.index() % 8;
+        let c_faction = factions[c_team_idx];
+
+        for u in engine.units.iter_mut() {
+            if factions[u.team.index() % 8] != c_faction {
+                let dist = ((u.x - circle.x).powi(2) + (u.y - circle.y).powi(2)).sqrt();
+                if dist <= circle.radius {
+                    // 5% máu tối đa mỗi giây = 0.05 * u.max_hp * dt
+                    let dmg = 0.05 * u.max_hp * dt;
+                    apply_damage_to_unit(u, dmg);
+
+                    if should_tick_text && !engine.is_headless {
+                        new_texts.push(FloatingText {
+                            id: 0,
+                            text: format!("-{:.0}", (0.05 * u.max_hp * 0.5).max(1.0)),
+                            x: u.x,
+                            y: u.y - 12.0,
+                            color: DamageType::Arcane.color_code().to_string(),
+                            lifetime: 0.6,
+                            max_lifetime: 0.6,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    for mut ft in new_texts {
+        ft.id = engine.alloc_id();
+        engine.floating_texts.push(ft);
+    }
+
+    engine.magic_circles.retain(|c| c.lifetime > 0.0);
 }
 
 fn update_projectiles(engine: &mut GameEngine, dt: f32) {
@@ -1473,7 +1617,7 @@ fn update_projectiles(engine: &mut GameEngine, dt: f32) {
             let p_team_idx = p.team.index() % 8;
             let p_faction = factions[p_team_idx];
 
-            // Sát thương lính địch
+            // Sát thương lính địch (hấp thụ vào Khiên trước nếu có)
             for u in engine.units.iter_mut() {
                 if factions[u.team.index() % 8] != p_faction {
                     let d = ((u.x - p.target_x).powi(2) + (u.y - p.target_y).powi(2)).sqrt();
@@ -1488,7 +1632,7 @@ fn update_projectiles(engine: &mut GameEngine, dt: f32) {
                             p.damage_type,
                             &u.resistances,
                         );
-                        u.hp -= taken;
+                        apply_damage_to_unit(u, taken);
 
                         if has_corrosive[p_team_idx] {
                             u.resistances.physical = (u.resistances.physical - 0.04).max(0.0);
@@ -1516,15 +1660,16 @@ fn update_projectiles(engine: &mut GameEngine, dt: f32) {
                 }
             }
 
-            // Sát thương công trình địch
+            // Sát thương công trình địch (áp dụng building_damage_mult, ví dụ AcidBaneling x2)
             for b in engine.buildings.iter_mut() {
                 if factions[b.team.index() % 8] != p_faction {
                     let b_rad = b.width.max(b.height) * 0.5;
                     let dist_to_b =
                         ((b.x - p.target_x).powi(2) + (b.y - p.target_y).powi(2)).sqrt();
                     if dist_to_b <= b_rad + aoe_range {
+                        let raw_dmg = p.damage * p.building_damage_mult;
                         let taken =
-                            calculate_effective_damage(p.damage, p.damage_type, &b.resistances);
+                            calculate_effective_damage(raw_dmg, p.damage_type, &b.resistances);
                         b.hp -= taken;
                         b.under_attack_timer = crate::config::BUILDING_UNDER_ATTACK_DURATION;
 
@@ -2745,5 +2890,198 @@ mod tests {
             (progress_worker_attacked - expected_worker_slowed).abs() < 1e-4,
             "Tốc độ xây thợ phải giảm còn 30% khi bị tấn công"
         );
+    }
+
+    #[test]
+    fn test_vanguard_shield_regeneration_and_absorption() {
+        let cfg = crate::config::GameConfig::default();
+        let mut vanguard = cfg.create_unit(1, Team::Player, UnitType::Vanguard, 100.0, 100.0);
+        assert_eq!(vanguard.shield, 100.0);
+        assert_eq!(vanguard.max_shield, 100.0);
+
+        // Chịu 60 sát thương -> trừ vào khiên, máu nguyên vẹn
+        apply_damage_to_unit(&mut vanguard, 60.0);
+        assert_eq!(vanguard.shield, 40.0);
+        assert_eq!(vanguard.hp, vanguard.max_hp);
+
+        // Chịu thêm 70 sát thương -> khiên hết (40), thừa 30 trừ vào máu
+        apply_damage_to_unit(&mut vanguard, 70.0);
+        assert_eq!(vanguard.shield, 0.0);
+        assert_eq!(vanguard.hp, vanguard.max_hp - 30.0);
+
+        // Giả lập trôi qua 5s để hồi đầy khiên
+        vanguard.shield_timer = 4.9;
+        let mut engine = crate::GameEngine::new_headless();
+        engine.units.clear();
+        engine.units.push(vanguard);
+        update_units(&mut engine, 0.2); // 4.9 + 0.2 = 5.1s -> hồi lại 100 khiên
+        let v = &engine.units[0];
+        assert_eq!(v.shield, 100.0);
+        assert_eq!(v.max_shield, 100.0);
+    }
+
+    #[test]
+    fn test_laser_marksman_ramping_damage_and_reset() {
+        let cfg = crate::config::GameConfig::default();
+        let mut engine = crate::GameEngine::new_headless();
+        engine.units.clear();
+        engine.buildings.clear();
+        engine.projectiles.clear();
+
+        // LaserMarksman của Player
+        let mut laser = cfg.create_unit(1, Team::Player, UnitType::LaserMarksman, 100.0, 100.0);
+        // Mục tiêu 1: Dummy địch (Engineer không chủ động bắn trả)
+        let target1 = cfg.create_unit(2, Team::Enemy, UnitType::Engineer, 150.0, 100.0);
+        // Mục tiêu 2: Dummy địch khác
+        let target2 = cfg.create_unit(3, Team::Enemy, UnitType::Engineer, 180.0, 100.0);
+
+        laser.order = UnitOrder::AttackTarget { target_id: 2, is_building: false };
+        engine.units.push(laser);
+        engine.units.push(target1);
+        engine.units.push(target2);
+
+        // Bắn phát 1 vào target 2
+        update_units(&mut engine, 0.05);
+        assert_eq!(engine.projectiles.len(), 1);
+        assert_eq!(engine.projectiles[0].damage, 1.0); // Sát thương khởi đầu = 1
+        assert_eq!(engine.units[0].laser_stacks, 0);
+        engine.projectiles.clear();
+
+        // Qua 0.2s, bắn phát 2 cùng mục tiêu -> tăng 2 sát thương = 3
+        engine.units[0].current_cooldown = 0.0;
+        update_units(&mut engine, 0.05);
+        assert_eq!(engine.projectiles.len(), 1);
+        assert_eq!(engine.projectiles[0].damage, 3.0);
+        assert_eq!(engine.units[0].laser_stacks, 1);
+        engine.projectiles.clear();
+
+        // Qua 0.2s, bắn phát 3 cùng mục tiêu -> tăng 2 sát thương = 5
+        engine.units[0].current_cooldown = 0.0;
+        update_units(&mut engine, 0.05);
+        assert_eq!(engine.projectiles.len(), 1);
+        assert_eq!(engine.projectiles[0].damage, 5.0);
+        assert_eq!(engine.units[0].laser_stacks, 2);
+        engine.projectiles.clear();
+
+        // Đổi mục tiêu sang target 3 -> reset sát thương về 1
+        engine.units[0].order = UnitOrder::AttackTarget { target_id: 3, is_building: false };
+        engine.units[0].current_cooldown = 0.0;
+        update_units(&mut engine, 0.05);
+        assert_eq!(engine.projectiles.len(), 1);
+        assert_eq!(engine.projectiles[0].damage, 1.0);
+        assert_eq!(engine.units[0].laser_stacks, 0);
+    }
+
+    #[test]
+    fn test_taoist_swordmaster_sword_ammo_and_regen() {
+        let cfg = crate::config::GameConfig::default();
+        let mut engine = crate::GameEngine::new_headless();
+        engine.units.clear();
+        engine.buildings.clear();
+        engine.projectiles.clear();
+
+        let mut swordmaster = cfg.create_unit(1, Team::Player, UnitType::TaoistSwordmaster, 100.0, 100.0);
+        assert_eq!(swordmaster.flying_swords, 7);
+
+        let target = cfg.create_unit(2, Team::Enemy, UnitType::Engineer, 130.0, 100.0);
+        swordmaster.order = UnitOrder::AttackTarget { target_id: 2, is_building: false };
+
+        engine.units.push(swordmaster);
+        engine.units.push(target);
+
+        // Bắn 1 phát -> tiêu hao 1 kiếm, còn 6 kiếm, cooldown = 0.1
+        update_units(&mut engine, 0.05);
+        assert_eq!(engine.units[0].flying_swords, 6);
+        assert_eq!(engine.units[0].current_cooldown, 0.1);
+        engine.projectiles.clear();
+
+        // Bắn hết toàn bộ kiếm còn lại (6 phát)
+        for _ in 0..6 {
+            engine.units[0].current_cooldown = 0.0;
+            update_units(&mut engine, 0.05);
+            engine.projectiles.clear();
+        }
+        assert_eq!(engine.units[0].flying_swords, 0);
+
+        // Khi hết phi kiếm, cooldown = 0 nhưng không bắn được
+        engine.units[0].current_cooldown = 0.0;
+        update_units(&mut engine, 0.05);
+        assert_eq!(engine.projectiles.len(), 0);
+
+        // Đặt trạng thái Idle để kiếm hồi mà không bị bắn ngay lập tức
+        engine.units[0].order = UnitOrder::Idle;
+        // Trôi qua 1s -> hồi lại 1 phi kiếm
+        update_units(&mut engine, 1.1);
+        assert_eq!(engine.units[0].flying_swords, 1);
+    }
+
+    #[test]
+    fn test_void_warlock_summons_persistent_magic_circles() {
+        let cfg = crate::config::GameConfig::default();
+        let mut engine = crate::GameEngine::new_headless();
+        engine.units.clear();
+        engine.buildings.clear();
+        engine.projectiles.clear();
+        engine.magic_circles.clear();
+
+        let mut warlock = cfg.create_unit(1, Team::Player, UnitType::VoidWarlock, 100.0, 100.0);
+        let target = cfg.create_unit(2, Team::Enemy, UnitType::Vanguard, 200.0, 100.0);
+        let initial_target_total = target.hp + target.shield;
+        let target_max_hp = target.max_hp;
+
+        warlock.order = UnitOrder::AttackTarget { target_id: 2, is_building: false };
+        engine.units.push(warlock);
+        engine.units.push(target);
+
+        // Warlock triệu hồi vòng ma thuật tại vị trí target
+        update_units(&mut engine, 0.05);
+        assert_eq!(engine.magic_circles.len(), 1);
+        assert_eq!(engine.magic_circles[0].x, 200.0);
+        assert_eq!(engine.magic_circles[0].y, 100.0);
+        assert_eq!(engine.magic_circles[0].lifetime, 5.0);
+        assert_eq!(engine.projectiles.len(), 0); // Không bắn đạn thường
+
+        // Tiêu diệt VoidWarlock (chỉ còn target ở index 0)
+        engine.units.retain(|u| u.id == 2);
+        assert_eq!(engine.units.len(), 1);
+
+        // Vòng ma thuật vẫn tồn tại và thiêu đốt 5% max HP mỗi giây trong 1s
+        update_magic_circles(&mut engine, 1.0);
+        assert_eq!(engine.magic_circles.len(), 1);
+        let expected_dmg = target_max_hp * 0.05; // 5% HP tối đa
+        let current_target_total = engine.units[0].hp + engine.units[0].shield;
+        let actual_dmg = initial_target_total - current_target_total;
+        assert!((actual_dmg - expected_dmg).abs() < 1.0);
+    }
+
+    #[test]
+    fn test_acid_baneling_double_damage_to_buildings() {
+        let cfg = crate::config::GameConfig::default();
+        let mut engine = crate::GameEngine::new_headless();
+        engine.units.clear();
+        engine.buildings.clear();
+        engine.projectiles.clear();
+
+        let mut baneling = cfg.create_unit(1, Team::Player, UnitType::AcidBaneling, 100.0, 100.0);
+        let mut building = cfg.create_building(2, Team::Enemy, BuildingType::SupplyDepot, 110.0, 100.0, true);
+        building.resistances.explosive = 0.0; // Để so sánh trực tiếp sát thương thuần
+        let b_initial_hp = building.hp;
+
+        baneling.order = UnitOrder::AttackTarget { target_id: 2, is_building: true };
+        engine.units.push(baneling);
+        engine.buildings.push(building);
+
+        // Baneling tự nổ
+        update_units(&mut engine, 0.05);
+        assert_eq!(engine.projectiles.len(), 1);
+        let p = &engine.projectiles[0];
+        assert_eq!(p.building_damage_mult, 2.0);
+        assert_eq!(p.damage, 90.0); // Sát thương gốc
+
+        // Đạn nổ áp sát thương vào công trình
+        update_projectiles(&mut engine, 0.1);
+        // Sát thương nhận phải = 90.0 * 2.0 = 180.0
+        let damage_taken = b_initial_hp - engine.buildings[0].hp;
+        assert_eq!(damage_taken, 180.0);
     }
 }

@@ -43,6 +43,7 @@ pub struct GameEngine {
     pub minerals: Vec<MineralNode>,
     pub obstacles: Vec<Obstacle>,
     pub projectiles: Vec<Projectile>,
+    pub magic_circles: Vec<MagicCircle>,
     pub floating_texts: Vec<FloatingText>,
     pub spatial_grid: SpatialGrid,
 
@@ -148,6 +149,7 @@ impl GameEngine {
             minerals,
             obstacles,
             projectiles: Vec::new(),
+            magic_circles: Vec::new(),
             floating_texts: Vec::new(),
             spatial_grid: SpatialGrid::new(),
 
@@ -237,6 +239,7 @@ impl GameEngine {
             minerals,
             obstacles,
             projectiles: Vec::new(),
+            magic_circles: Vec::new(),
             floating_texts: Vec::new(),
             spatial_grid: SpatialGrid::new(),
 
@@ -463,6 +466,7 @@ impl GameEngine {
         self.units.clear();
         self.buildings.clear();
         self.projectiles.clear();
+        self.magic_circles.clear();
         self.floating_texts.clear();
         self.spatial_grid.clear();
 

@@ -349,6 +349,24 @@ pub struct Unit {
     pub carried_minerals: f32,
     #[serde(default)]
     pub formation_offset: (f32, f32),
+    #[serde(default)]
+    pub shield: f32,
+    #[serde(default)]
+    pub max_shield: f32,
+    #[serde(default)]
+    pub shield_timer: f32,
+    #[serde(default)]
+    pub laser_target_id: Option<(u32, bool)>, // (target_id, is_building)
+    #[serde(default)]
+    pub laser_stacks: u32,
+    #[serde(default)]
+    pub flying_swords: u32,
+    #[serde(default)]
+    pub sword_regen_timer: f32,
+    #[serde(default)]
+    pub attack_anim_timer: f32,
+    #[serde(default)]
+    pub last_attack_pos: Option<(f32, f32)>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -399,6 +417,24 @@ pub struct Projectile {
     pub lifetime: f32,
     #[serde(default)]
     pub is_melee: bool,
+    #[serde(default = "default_mult_one")]
+    pub building_damage_mult: f32,
+}
+
+fn default_mult_one() -> f32 {
+    1.0
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MagicCircle {
+    pub id: u32,
+    pub team: Team,
+    pub x: f32,
+    pub y: f32,
+    pub radius: f32,
+    pub lifetime: f32,
+    pub max_lifetime: f32,
+    pub tick_timer: f32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
