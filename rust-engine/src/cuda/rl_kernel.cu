@@ -293,20 +293,25 @@ __global__ void batch_train_kernel(
 
     float td_act = fmaxf(-1.0f, fminf(1.0f, target_act - cur_q_act));
     float td_form = fmaxf(-1.0f, fminf(1.0f, target_form - cur_q_form));
+    if (isnan(td_act) || isinf(td_act)) td_act = 0.0f;
+    if (isnan(td_form) || isinf(td_form)) td_form = 0.0f;
+
+    // Chuẩn hóa learning rate theo kích thước mini-batch để tránh tích lũy nhân số lượng thread
+    float sample_lr = lr / (float)batch_size;
 
     // Gradient updates to layer 2 & heads
     float grad_h2[HIDDEN2_DIM];
     for (int k = 0; k < HIDDEN2_DIM; ++k) {
         float g_act = d_w2[k * ACTION_DIM + act_idx] * td_act;
-        atomicAdd(&d_w2[k * ACTION_DIM + act_idx], lr * td_act * h2[k]);
+        atomicAdd(&d_w2[k * ACTION_DIM + act_idx], sample_lr * td_act * h2[k]);
 
         float g_form = d_w_form[k * FORMATION_DIM + form_idx] * td_form;
-        atomicAdd(&d_w_form[k * FORMATION_DIM + form_idx], lr * td_form * h2[k]);
+        atomicAdd(&d_w_form[k * FORMATION_DIM + form_idx], sample_lr * td_form * h2[k]);
 
-        grad_h2[k] = g_act + g_form * 0.7f;
+        grad_h2[k] = fmaxf(-2.0f, fminf(2.0f, g_act + g_form * 0.7f));
     }
-    atomicAdd(&d_b2[act_idx], lr * td_act);
-    atomicAdd(&d_b_form[form_idx], lr * td_form);
+    atomicAdd(&d_b2[act_idx], sample_lr * td_act);
+    atomicAdd(&d_b_form[form_idx], sample_lr * td_form);
 
     // Backprop to layer 1
     float grad_h1[HIDDEN1_DIM];
@@ -315,21 +320,21 @@ __global__ void batch_train_kernel(
     }
 
     for (int k = 0; k < HIDDEN2_DIM; ++k) {
-        float delta_k = grad_h2[k] * leaky_relu_derivative(h2[k]);
+        float delta_k = fmaxf(-1.0f, fminf(1.0f, grad_h2[k] * leaky_relu_derivative(h2[k])));
         for (int j = 0; j < HIDDEN1_DIM; ++j) {
             grad_h1[j] += d_w_h2[j * HIDDEN2_DIM + k] * delta_k;
-            atomicAdd(&d_w_h2[j * HIDDEN2_DIM + k], lr * delta_k * h1[j]);
+            atomicAdd(&d_w_h2[j * HIDDEN2_DIM + k], sample_lr * delta_k * h1[j]);
         }
-        atomicAdd(&d_b_h2[k], lr * delta_k);
+        atomicAdd(&d_b_h2[k], sample_lr * delta_k);
     }
 
     // Backprop to input layer
     for (int j = 0; j < HIDDEN1_DIM; ++j) {
-        float delta_j = grad_h1[j] * leaky_relu_derivative(h1[j]);
+        float delta_j = fmaxf(-1.0f, fminf(1.0f, grad_h1[j] * leaky_relu_derivative(h1[j])));
         for (int i = 0; i < STATE_DIM; ++i) {
-            atomicAdd(&d_w1[i * HIDDEN1_DIM + j], lr * delta_j * d_states[b * STATE_DIM + i]);
+            atomicAdd(&d_w1[i * HIDDEN1_DIM + j], sample_lr * delta_j * d_states[b * STATE_DIM + i]);
         }
-        atomicAdd(&d_b1[j], lr * delta_j);
+        atomicAdd(&d_b1[j], sample_lr * delta_j);
     }
 }
 
@@ -422,6 +427,161 @@ void cuda_batch_train(
     cudaFree(d_b2);
     cudaFree(d_w_form);
     cudaFree(d_b_form);
+}
+
+// ============================================================================
+// PERSISTENT GPU BUFFER TRAINER (VRAM-Resident Context)
+// ============================================================================
+
+struct PersistentGpuContext {
+    int max_batch_size;
+    float* d_states;
+    int* d_actions;
+    int* d_formations;
+    float* d_rewards;
+    float* d_next_states;
+    int* d_dones;
+
+    float* d_w1;
+    float* d_b1;
+    float* d_w_h2;
+    float* d_b_h2;
+    float* d_w2;
+    float* d_b2;
+    float* d_w_form;
+    float* d_b_form;
+};
+
+void* cuda_persistent_init(
+    int max_batch_size,
+    const float* h_w1,
+    const float* h_b1,
+    const float* h_w_h2,
+    const float* h_b_h2,
+    const float* h_w2,
+    const float* h_b2,
+    const float* h_w_form,
+    const float* h_b_form
+) {
+    PersistentGpuContext* ctx = (PersistentGpuContext*)malloc(sizeof(PersistentGpuContext));
+    if (!ctx) return NULL;
+    ctx->max_batch_size = max_batch_size;
+
+    // Cấp phát trước bộ đệm transitions trong VRAM
+    cudaMalloc(&ctx->d_states, max_batch_size * STATE_DIM * sizeof(float));
+    cudaMalloc(&ctx->d_actions, max_batch_size * sizeof(int));
+    cudaMalloc(&ctx->d_formations, max_batch_size * sizeof(int));
+    cudaMalloc(&ctx->d_rewards, max_batch_size * sizeof(float));
+    cudaMalloc(&ctx->d_next_states, max_batch_size * STATE_DIM * sizeof(float));
+    cudaMalloc(&ctx->d_dones, max_batch_size * sizeof(int));
+
+    // Cấp phát trọng số cố định trong VRAM
+    cudaMalloc(&ctx->d_w1, STATE_DIM * HIDDEN1_DIM * sizeof(float));
+    cudaMalloc(&ctx->d_b1, HIDDEN1_DIM * sizeof(float));
+    cudaMalloc(&ctx->d_w_h2, HIDDEN1_DIM * HIDDEN2_DIM * sizeof(float));
+    cudaMalloc(&ctx->d_b_h2, HIDDEN2_DIM * sizeof(float));
+    cudaMalloc(&ctx->d_w2, HIDDEN2_DIM * ACTION_DIM * sizeof(float));
+    cudaMalloc(&ctx->d_b2, ACTION_DIM * sizeof(float));
+    cudaMalloc(&ctx->d_w_form, HIDDEN2_DIM * FORMATION_DIM * sizeof(float));
+    cudaMalloc(&ctx->d_b_form, FORMATION_DIM * sizeof(float));
+
+    // Nạp trọng số khởi đầu lên VRAM đúng 1 lần duy nhất
+    cudaMemcpy(ctx->d_w1, h_w1, STATE_DIM * HIDDEN1_DIM * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(ctx->d_b1, h_b1, HIDDEN1_DIM * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(ctx->d_w_h2, h_w_h2, HIDDEN1_DIM * HIDDEN2_DIM * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(ctx->d_b_h2, h_b_h2, HIDDEN2_DIM * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(ctx->d_w2, h_w2, HIDDEN2_DIM * ACTION_DIM * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(ctx->d_b2, h_b2, ACTION_DIM * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(ctx->d_w_form, h_w_form, HIDDEN2_DIM * FORMATION_DIM * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(ctx->d_b_form, h_b_form, FORMATION_DIM * sizeof(float), cudaMemcpyHostToDevice);
+
+    cudaDeviceSynchronize();
+    return (void*)ctx;
+}
+
+void cuda_persistent_train_batch(
+    void* ctx_ptr,
+    const float* h_states,
+    const int* h_actions,
+    const int* h_formations,
+    const float* h_rewards,
+    const float* h_next_states,
+    const int* h_dones,
+    float lr,
+    float gamma,
+    int batch_size
+) {
+    if (!ctx_ptr || batch_size <= 0) return;
+    PersistentGpuContext* ctx = (PersistentGpuContext*)ctx_ptr;
+    int b_size = batch_size < ctx->max_batch_size ? batch_size : ctx->max_batch_size;
+
+    // Chỉ chuyển giao đúng batch mẫu chuyển trạng thái (rất nhẹ, vài KB)
+    // Trọng số đã nằm sẵn trong VRAM, hoàn toàn KHÔNG gọi cudaMalloc/cudaFree!
+    cudaMemcpy(ctx->d_states, h_states, b_size * STATE_DIM * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(ctx->d_actions, h_actions, b_size * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(ctx->d_formations, h_formations, b_size * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(ctx->d_rewards, h_rewards, b_size * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(ctx->d_next_states, h_next_states, b_size * STATE_DIM * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(ctx->d_dones, h_dones, b_size * sizeof(int), cudaMemcpyHostToDevice);
+
+    int threads = 64;
+    int blocks = (b_size + threads - 1) / threads;
+    batch_train_kernel<<<blocks, threads>>>(
+        ctx->d_states, ctx->d_actions, ctx->d_formations, ctx->d_rewards, ctx->d_next_states, ctx->d_dones,
+        ctx->d_w1, ctx->d_b1, ctx->d_w_h2, ctx->d_b_h2, ctx->d_w2, ctx->d_b2, ctx->d_w_form, ctx->d_b_form,
+        lr, gamma, b_size
+    );
+
+    cudaDeviceSynchronize();
+}
+
+void cuda_persistent_sync_weights(
+    void* ctx_ptr,
+    float* h_w1,
+    float* h_b1,
+    float* h_w_h2,
+    float* h_b_h2,
+    float* h_w2,
+    float* h_b2,
+    float* h_w_form,
+    float* h_b_form
+) {
+    if (!ctx_ptr) return;
+    PersistentGpuContext* ctx = (PersistentGpuContext*)ctx_ptr;
+
+    cudaMemcpy(h_w1, ctx->d_w1, STATE_DIM * HIDDEN1_DIM * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_b1, ctx->d_b1, HIDDEN1_DIM * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_w_h2, ctx->d_w_h2, HIDDEN1_DIM * HIDDEN2_DIM * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_b_h2, ctx->d_b_h2, HIDDEN2_DIM * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_w2, ctx->d_w2, HIDDEN2_DIM * ACTION_DIM * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_b2, ctx->d_b2, ACTION_DIM * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_w_form, ctx->d_w_form, HIDDEN2_DIM * FORMATION_DIM * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_b_form, ctx->d_b_form, FORMATION_DIM * sizeof(float), cudaMemcpyDeviceToHost);
+
+    cudaDeviceSynchronize();
+}
+
+void cuda_persistent_free(void* ctx_ptr) {
+    if (!ctx_ptr) return;
+    PersistentGpuContext* ctx = (PersistentGpuContext*)ctx_ptr;
+
+    cudaFree(ctx->d_states);
+    cudaFree(ctx->d_actions);
+    cudaFree(ctx->d_formations);
+    cudaFree(ctx->d_rewards);
+    cudaFree(ctx->d_next_states);
+    cudaFree(ctx->d_dones);
+
+    cudaFree(ctx->d_w1);
+    cudaFree(ctx->d_b1);
+    cudaFree(ctx->d_w_h2);
+    cudaFree(ctx->d_b_h2);
+    cudaFree(ctx->d_w2);
+    cudaFree(ctx->d_b2);
+    cudaFree(ctx->d_w_form);
+    cudaFree(ctx->d_b_form);
+
+    free(ctx);
 }
 
 } // extern "C"

@@ -3,7 +3,9 @@ use rust_engine::autoplay::{
     adapt_training_autoplay_mid_match, create_training_autoplay_config, AutoTrainingArchetype,
 };
 use rust_engine::components::{BuildingType, PlayerSlotConfig, Team, UnitType, MAX_PLAYERS};
-use rust_engine::cuda_accel::{CudaDeviceManager, GpuBatchTrainer, TransitionSample};
+use rust_engine::cuda_accel::{
+    CudaDeviceManager, PersistentGpuTrainer, TransitionSample,
+};
 use rust_engine::rl::{
     AiGameMode, RlBrain, ACTION_DIM, DEFAULT_HIDDEN2_SIZE, DEFAULT_HIDDEN_SIZE, FORMATION_DIM,
     STATE_DIM,
@@ -235,13 +237,18 @@ struct TrainConfig {
     episodes_per_mode: usize,
     time_scale_dt: f32,
     max_game_time: f32,
+    num_threads: usize,
 }
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let mut total_episodes = 60;
+    let default_threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(8);
+    let mut total_episodes = 64;
     let mut time_scale_dt = 0.25_f32; // Tăng tốc bước nhảy mô phỏng mặc định lên 0.25s
     let mut max_game_time = 1800.0_f32; // Tăng max game time lên 1800s (30 phút game)
+    let mut num_threads = default_threads;
     let mut specific_mode: Option<String> = None;
 
     let mut i = 1;
@@ -249,7 +256,7 @@ fn main() {
         match args[i].as_str() {
             "--episodes" | "-e" => {
                 if i + 1 < args.len() {
-                    total_episodes = args[i + 1].parse().unwrap_or(60);
+                    total_episodes = args[i + 1].parse().unwrap_or(64);
                     i += 1;
                 }
             }
@@ -265,13 +272,21 @@ fn main() {
                     i += 1;
                 }
             }
+            "--threads" | "-t" => {
+                if i + 1 < args.len() {
+                    num_threads = args[i + 1].parse().unwrap_or(default_threads);
+                    i += 1;
+                }
+            }
             "--mode" | "-m" => {
                 if i + 1 < args.len() {
                     specific_mode = Some(args[i + 1].clone());
                     i += 1;
                 }
             }
-            "--sequential" | "--no-parallel" => {}
+            "--sequential" | "--no-parallel" => {
+                num_threads = 1;
+            }
             _ => {
                 if let Ok(ep) = args[i].parse::<usize>() {
                     total_episodes = ep;
@@ -337,6 +352,7 @@ fn main() {
         total_params
     );
     println!("   Episodes per Mode:  {}", total_episodes);
+    println!("   CPU Multi-threading:{} parallel worker threads", num_threads);
     println!(
         "   Fast-Forward dt:    {:.3}s/step (High-Speed Tick)",
         time_scale_dt
@@ -366,13 +382,33 @@ fn main() {
         episodes_per_mode: total_episodes,
         time_scale_dt,
         max_game_time,
+        num_threads,
     };
 
     // Nạp trọng số sẵn có từ rl_model.json để huấn luyện liên tục
     let mut unified_brain = RlBrain::default();
+    unified_brain.sanitize();
+
+    // Tự động kiểm tra nếu model cũ bị bão hòa (toàn ±5.0 hoặc ±3.0) do gradient trước đây
+    let is_saturated = {
+        let count_extremes = unified_brain.w1.iter().flatten().filter(|&&v| v.abs() >= 2.99).count();
+        let total = unified_brain.w1.iter().flatten().count().max(1);
+        (count_extremes as f32 / total as f32) > 0.4
+    };
+    if is_saturated {
+        println!("⚠️ Phát hiện model nạp vào bị bão hòa trọng số (toàn ±5.0/±3.0). Tự động tái tạo trọng số chuẩn He/Xavier!");
+        unified_brain = RlBrain::new_random(
+            STATE_DIM,
+            DEFAULT_HIDDEN_SIZE,
+            DEFAULT_HIDDEN2_SIZE,
+            ACTION_DIM,
+        );
+    }
+
     println!(
-        "🧠 Đã nạp thành công bộ não AI gốc ({}) tham số.",
-        unified_brain.total_parameters()
+        "🧠 Đã nạp thành công bộ não AI gốc ({}) tham số (Valid: {}).",
+        unified_brain.total_parameters(),
+        unified_brain.is_valid()
     );
 
     // Huấn luyện xoay vòng qua các kịch bản để tích lũy kinh nghiệm vào 1 model duy nhất
@@ -442,6 +478,174 @@ fn main() {
     println!("============================================================");
 }
 
+struct EpisodeResult {
+    transitions: Vec<TransitionSample>,
+    is_win: bool,
+    is_loss: bool,
+    _is_draw: bool,
+    ep_reward: f32,
+    action_counts: [usize; ACTION_DIM],
+    formation_counts: [usize; FORMATION_DIM],
+    _game_time: f32,
+}
+
+fn simulate_single_episode(
+    scenario: Scenario,
+    brain: &RlBrain,
+    opp_champ: Option<&RlBrain>,
+    opponent_style: OpponentStyle,
+    time_scale_dt: f32,
+    max_game_time: f32,
+    epsilon: f32,
+) -> EpisodeResult {
+    let mut engine = GameEngine::new_headless();
+    let slots = scenario.configure_slots();
+    engine.player_slots = slots;
+    engine.reset_game();
+    engine.is_headless = true;
+    engine.is_paused = false;
+    engine.ai_state.training_enabled = true;
+
+    let learner_team = Team::Enemy;
+    let mut active_brain = brain.clone();
+    active_brain.epsilon = epsilon;
+    engine.team_ai_mut(learner_team).rl_brain = active_brain;
+
+    // Cấu hình AI hoặc Autoplay cho tất cả các slot
+    for slot_idx in 0..MAX_PLAYERS {
+        let team = Team::from_index(slot_idx);
+        if !engine.is_slot_active(team) {
+            continue;
+        }
+        if team == learner_team {
+            engine.team_autoplay_mut(team).config.enabled = false;
+            continue;
+        }
+
+        if engine.are_hostile(learner_team, team) {
+            match opponent_style {
+                OpponentStyle::VsAuto(arch) => {
+                    let cfg = create_training_autoplay_config(team, arch);
+                    engine.team_autoplay_mut(team).config = cfg;
+                }
+                OpponentStyle::BotSelfPlay => {
+                    engine.team_autoplay_mut(team).config.enabled = false;
+                    if let Some(champ) = opp_champ {
+                        engine.team_ai_mut(team).rl_brain = champ.clone();
+                        engine.team_ai_mut(team).rl_brain.epsilon = 0.05;
+                    }
+                }
+            }
+        } else {
+            let cfg = create_training_autoplay_config(team, AutoTrainingArchetype::MacroFortress);
+            engine.team_autoplay_mut(team).config = cfg;
+        }
+    }
+
+    let mut ep_reward = 0.0_f32;
+    let mut mid_adapt_timer = 0.0_f32;
+    let mut decision_sample_timer = 0.0_f32;
+    let mut transitions = Vec::with_capacity(512);
+    let mut action_counts = [0usize; ACTION_DIM];
+    let mut formation_counts = [0usize; FORMATION_DIM];
+
+    while !engine.game_over && engine.game_time < max_game_time {
+        let prev_state = extract_state_vector_for_team(&engine, learner_team);
+        let prev_snap = RewardSnapshot::capture(&engine, learner_team);
+
+        mid_adapt_timer += time_scale_dt;
+        if mid_adapt_timer >= 2.0 {
+            mid_adapt_timer = 0.0;
+            for slot_idx in 0..MAX_PLAYERS {
+                let t = Team::from_index(slot_idx);
+                if engine.is_slot_active(t) && engine.team_autoplay(t).config.enabled {
+                    adapt_training_autoplay_mid_match(&mut engine, t);
+                }
+            }
+        }
+
+        rust_engine::simulation::step(&mut engine, time_scale_dt);
+
+        let cur_state = extract_state_vector_for_team(&engine, learner_team);
+        let cur_snap = RewardSnapshot::capture(&engine, learner_team);
+        let action = engine.team_ai(learner_team).current_action;
+        let formation = engine.team_ai(learner_team).current_formation;
+        action_counts[action.to_index()] += 1;
+        formation_counts[formation.to_index()] += 1;
+
+        let step_reward = compute_ai_step_reward(
+            &prev_snap,
+            &cur_snap,
+            action,
+            formation,
+            engine.game_over,
+            engine.game_time,
+            max_game_time,
+        );
+
+        let is_done = engine.game_over || engine.game_time >= max_game_time;
+        ep_reward += step_reward;
+
+        decision_sample_timer += time_scale_dt;
+        if decision_sample_timer >= 1.0 || is_done {
+            decision_sample_timer = 0.0;
+            transitions.push(TransitionSample {
+                state: prev_state,
+                action: action.to_index(),
+                formation: formation.to_index(),
+                reward: step_reward,
+                next_state: cur_state.clone(),
+                done: is_done,
+            });
+
+            // Multi-Agent Sharing: Các slot AI khác phe đối địch nếu có RL brain cũng học từ kinh nghiệm đối kháng
+            if matches!(opponent_style, OpponentStyle::BotSelfPlay) {
+                for slot_idx in 0..MAX_PLAYERS {
+                    let other_team = Team::from_index(slot_idx);
+                    if engine.is_slot_active(other_team)
+                        && other_team != learner_team
+                        && !engine.team_autoplay(other_team).config.enabled
+                    {
+                        let other_prev = extract_state_vector_for_team(&engine, other_team);
+                        let other_act = engine.team_ai(other_team).current_action;
+                        let other_form = engine.team_ai(other_team).current_formation;
+                        let other_reward = -step_reward * 0.8;
+                        transitions.push(TransitionSample {
+                            state: other_prev,
+                            action: other_act.to_index(),
+                            formation: other_form.to_index(),
+                            reward: other_reward,
+                            next_state: cur_state.clone(),
+                            done: is_done,
+                        });
+                    }
+                }
+            }
+        }
+
+        if is_done {
+            break;
+        }
+    }
+
+    let final_opp_ccs = count_hostile_ccs(&engine, learner_team);
+    let final_my_ccs = count_ally_ccs(&engine, learner_team);
+    let is_win = final_opp_ccs == 0 && final_my_ccs > 0;
+    let is_loss = final_my_ccs == 0 && final_opp_ccs > 0;
+    let is_draw = !is_win && !is_loss;
+
+    EpisodeResult {
+        transitions,
+        is_win,
+        is_loss,
+        _is_draw: is_draw,
+        ep_reward,
+        action_counts,
+        formation_counts,
+        _game_time: engine.game_time,
+    }
+}
+
 fn train_scenario_with_brain(
     scenario: Scenario,
     config: &TrainConfig,
@@ -451,227 +655,136 @@ fn train_scenario_with_brain(
     let total_episodes = config.episodes_per_mode;
     let time_scale_dt = config.time_scale_dt;
     let max_game_time = config.max_game_time;
+    let num_threads = config.num_threads.max(1);
 
     let mut champion_pool: Vec<RlBrain> = vec![brain.clone()];
     let mut total_wins = 0;
     let mut total_losses = 0;
     let mut total_draws = 0;
-
     let mut action_counts = [0usize; ACTION_DIM];
     let mut formation_counts = [0usize; FORMATION_DIM];
 
-    let mut engine = GameEngine::new_headless();
-    engine.ai_state.training_enabled = true;
-    brain.epsilon = brain.epsilon.max(0.15); // Duy trì tỷ lệ thăm dò hợp lý
-    engine.ai_state.rl_brain = brain;
+    brain.epsilon = brain.epsilon.max(0.15);
 
-    let learner_team = Team::Enemy; // Slot 1 là Agent chính
-
-    let mut gpu_trainer = GpuBatchTrainer::new(32);
+    // Khởi tạo Persistent GPU Trainer giữ trọng số và bộ đệm thường trú trong VRAM (Zero cudaMalloc / cudaFree)
+    let mut persistent_trainer = PersistentGpuTrainer::new(&brain, 256);
 
     let start_time = Instant::now();
+    let mut completed_episodes = 0;
 
-    for episode in 1..=total_episodes {
-        let slots = scenario.configure_slots();
-        engine.player_slots = slots;
+    while completed_episodes < total_episodes {
+        let wave_size = (total_episodes - completed_episodes).min(num_threads);
 
-        engine.reset_game();
-        engine.is_headless = true;
-        engine.is_paused = false;
-        engine.ai_state.training_enabled = true;
+        let wave_results: Vec<EpisodeResult> = std::thread::scope(|s| {
+            let mut handles = Vec::with_capacity(wave_size);
+            for ep_idx in 0..wave_size {
+                let current_ep = completed_episodes + ep_idx + 1;
+                let opponent_style = if champion_pool.is_empty() || current_ep % 4 != 0 {
+                    let arch_idx = current_ep % 7;
+                    let arch = match arch_idx {
+                        0 => AutoTrainingArchetype::CombinedTitanArtilleryMage,
+                        1 => AutoTrainingArchetype::OmniTechGrandmaster,
+                        2 => AutoTrainingArchetype::ScienceArtillery,
+                        3 => AutoTrainingArchetype::MagicCelestialVoid,
+                        4 => AutoTrainingArchetype::MonsterSwarmBehemoth,
+                        5 => AutoTrainingArchetype::BioBlitzRush,
+                        _ => AutoTrainingArchetype::MacroFortress,
+                    };
+                    OpponentStyle::VsAuto(arch)
+                } else {
+                    OpponentStyle::BotSelfPlay
+                };
 
-        // Chọn chiến thuật đối thủ
-        let opponent_style = if champion_pool.is_empty() || episode % 4 != 0 {
-            let arch_idx = episode % 7;
-            let arch = match arch_idx {
-                0 => AutoTrainingArchetype::CombinedTitanArtilleryMage,
-                1 => AutoTrainingArchetype::OmniTechGrandmaster,
-                2 => AutoTrainingArchetype::ScienceArtillery,
-                3 => AutoTrainingArchetype::MagicCelestialVoid,
-                4 => AutoTrainingArchetype::MonsterSwarmBehemoth,
-                5 => AutoTrainingArchetype::BioBlitzRush,
-                _ => AutoTrainingArchetype::MacroFortress,
-            };
-            OpponentStyle::VsAuto(arch)
-        } else {
-            OpponentStyle::BotSelfPlay
-        };
+                let worker_brain = brain.clone();
+                let opp_champ = champion_pool.last().cloned();
+                let eps = brain.epsilon;
 
-        // Cấu hình AI hoặc Autoplay cho tất cả các slot
-        for slot_idx in 0..MAX_PLAYERS {
-            let team = Team::from_index(slot_idx);
-            if !engine.is_slot_active(team) {
-                continue;
+                handles.push(s.spawn(move || {
+                    simulate_single_episode(
+                        scenario,
+                        &worker_brain,
+                        opp_champ.as_ref(),
+                        opponent_style,
+                        time_scale_dt,
+                        max_game_time,
+                        eps,
+                    )
+                }));
             }
-            if team == learner_team {
-                engine.team_autoplay_mut(team).config.enabled = false;
-                continue;
-            }
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
 
-            if engine.are_hostile(learner_team, team) {
-                match opponent_style {
-                    OpponentStyle::VsAuto(arch) => {
-                        let cfg = create_training_autoplay_config(team, arch);
-                        engine.team_autoplay_mut(team).config = cfg;
-                    }
-                    OpponentStyle::BotSelfPlay => {
-                        engine.team_autoplay_mut(team).config.enabled = false;
-                        if let Some(champ) = champion_pool.last() {
-                            engine.team_ai_mut(team).rl_brain = champ.clone();
-                            engine.team_ai_mut(team).rl_brain.epsilon = 0.05;
-                        }
-                    }
+        let mut wave_reward_sum = 0.0f32;
+        let mut all_transitions = Vec::new();
+
+        for res in wave_results {
+            completed_episodes += 1;
+            wave_reward_sum += res.ep_reward;
+
+            if res.is_win {
+                total_wins += 1;
+                let mut champ = brain.clone();
+                champ.sanitize();
+                champion_pool.push(champ);
+                if champion_pool.len() > 6 {
+                    champion_pool.remove(0);
                 }
+            } else if res.is_loss {
+                total_losses += 1;
             } else {
-                let cfg =
-                    create_training_autoplay_config(team, AutoTrainingArchetype::MacroFortress);
-                engine.team_autoplay_mut(team).config = cfg;
+                total_draws += 1;
             }
+
+            for i in 0..ACTION_DIM {
+                action_counts[i] += res.action_counts[i];
+            }
+            for f in 0..FORMATION_DIM {
+                formation_counts[f] += res.formation_counts[f];
+            }
+
+            all_transitions.extend(res.transitions);
+
+            // Decay epsilon
+            brain.epsilon = (brain.epsilon * 0.985).max(0.02);
         }
 
-        let mut ep_reward = 0.0_f32;
-        let mut mid_adapt_timer = 0.0_f32;
-
-        while !engine.game_over && engine.game_time < max_game_time {
-            let prev_state = extract_state_vector_for_team(&engine, learner_team);
-            let prev_snap = RewardSnapshot::capture(&engine, learner_team);
-
-            mid_adapt_timer += time_scale_dt;
-            if mid_adapt_timer >= 2.0 {
-                mid_adapt_timer = 0.0;
-                for slot_idx in 0..MAX_PLAYERS {
-                    let t = Team::from_index(slot_idx);
-                    if engine.is_slot_active(t) && engine.team_autoplay(t).config.enabled {
-                        adapt_training_autoplay_mid_match(&mut engine, t);
-                    }
-                }
-            }
-
-            rust_engine::simulation::step(&mut engine, time_scale_dt);
-
-            let cur_state = extract_state_vector_for_team(&engine, learner_team);
-            let cur_snap = RewardSnapshot::capture(&engine, learner_team);
-            let action = engine.team_ai(learner_team).current_action;
-            let formation = engine.team_ai(learner_team).current_formation;
-            action_counts[action.to_index()] += 1;
-            formation_counts[formation.to_index()] += 1;
-
-            // --- TÍNH TOÁN REWARD CHUẨN ĐỒNG BỘ TỪ AI.RS (Ưu tiên mở rộng căn cứ, TurretTower, hạ tầng & phạt spam AcidBaneling) ---
-            let step_reward = compute_ai_step_reward(
-                &prev_snap,
-                &cur_snap,
-                action,
-                formation,
-                engine.game_over,
-                engine.game_time,
-                max_game_time,
-            );
-
-            let is_done = engine.game_over || engine.game_time >= max_game_time;
-            ep_reward += step_reward;
-
-            // Đẩy transition vào GPU Batch Trainer
-            gpu_trainer.push(TransitionSample {
-                state: prev_state.clone(),
-                action: action.to_index(),
-                formation: formation.to_index(),
-                reward: step_reward,
-                next_state: cur_state.clone(),
-                done: is_done,
-            });
-
-            if gpu_trainer.can_train() {
-                let brain = &mut engine.team_ai_mut(learner_team).rl_brain;
-                gpu_trainer.train_batch(brain);
-            } else {
-                engine
-                    .team_ai_mut(learner_team)
-                    .rl_brain
-                    .train_step_with_formation(
-                        &prev_state,
-                        action,
-                        formation,
-                        step_reward,
-                        &cur_state,
-                        is_done,
-                    );
-            }
-
-            // Multi-Agent Sharing: Các slot AI khác phe đối địch nếu có RL brain cũng học từ kinh nghiệm đối kháng
-            for slot_idx in 0..MAX_PLAYERS {
-                let other_team = Team::from_index(slot_idx);
-                if engine.is_slot_active(other_team)
-                    && other_team != learner_team
-                    && !engine.team_autoplay(other_team).config.enabled
-                {
-                    let other_prev = extract_state_vector_for_team(&engine, other_team);
-                    let other_act = engine.team_ai(other_team).current_action;
-                    let other_form = engine.team_ai(other_team).current_formation;
-                    let other_reward = -step_reward * 0.8; // Zero-sum inverted reward
-                    engine
-                        .team_ai_mut(other_team)
-                        .rl_brain
-                        .train_step_with_formation(
-                            &other_prev,
-                            other_act,
-                            other_form,
-                            other_reward,
-                            &cur_state,
-                            is_done,
-                        );
-                }
-            }
-
-            if is_done {
-                break;
-            }
+        // Huấn luyện siêu tốc trên GPU VRAM theo các mini-batch 256 mẫu
+        for chunk in all_transitions.chunks(persistent_trainer.max_batch_size) {
+            persistent_trainer.train_batch(chunk, brain.learning_rate, brain.gamma);
         }
 
-        let final_opp_ccs = count_hostile_ccs(&engine, learner_team);
-        let final_my_ccs = count_ally_ccs(&engine, learner_team);
-        let is_learner_win = final_opp_ccs == 0 && final_my_ccs > 0;
-        let is_learner_loss = final_my_ccs == 0 && final_opp_ccs > 0;
+        // Đồng bộ trọng số từ VRAM về brain và sanitize sau mỗi đợt
+        persistent_trainer.sync_to_brain(&mut brain);
+        brain.sanitize();
 
-        if is_learner_win {
-            total_wins += 1;
-            champion_pool.push(engine.team_ai(learner_team).rl_brain.clone());
-            if champion_pool.len() > 6 {
-                champion_pool.remove(0);
-            }
-        } else if is_learner_loss {
-            total_losses += 1;
-        } else {
-            total_draws += 1;
-        }
+        let elapsed_sec = start_time.elapsed().as_secs_f32().max(0.001);
+        let win_rate = (total_wins as f32 / completed_episodes as f32) * 100.0;
+        let eps_per_sec = (completed_episodes as f32) / elapsed_sec;
+        let avg_wave_rew = wave_reward_sum / (wave_size as f32);
 
-        // Decay epsilon
-        let eps = &mut engine.team_ai_mut(learner_team).rl_brain.epsilon;
-        *eps = (*eps * 0.985).max(0.02);
-        let cur_eps = *eps;
-
-        if episode <= 4 || episode % 10 == 0 || episode == total_episodes {
-            let elapsed_sec = start_time.elapsed().as_secs_f32().max(0.001);
-            let win_rate = (total_wins as f32 / episode as f32) * 100.0;
-            let eps_per_sec = (episode as f32) / elapsed_sec;
-
+        if completed_episodes <= num_threads
+            || completed_episodes % (num_threads * 2).max(10) == 0
+            || completed_episodes == total_episodes
+        {
             println!(
-                "[{:<18}] Ep {:3}/{} | Win: {:5.1}% (W:{} L:{} D:{}) | Champs: {} | Rew: {:+6.1} | Eps: {:.3} | Speed: {:.1} ep/s",
+                "[{:<18}] Ep {:3}/{} | Win: {:5.1}% (W:{} L:{} D:{}) | Champs: {} | Rew: {:+6.1} | Eps: {:.3} | Speed: {:.1} ep/s ({} th)",
                 mode.name(),
-                episode,
+                completed_episodes,
                 total_episodes,
                 win_rate,
                 total_wins,
                 total_losses,
                 total_draws,
                 champion_pool.len(),
-                ep_reward,
-                cur_eps,
-                eps_per_sec
+                avg_wave_rew,
+                brain.epsilon,
+                eps_per_sec,
+                num_threads
             );
         }
     }
 
-    engine.team_ai(learner_team).rl_brain.clone()
+    brain
 }
 
 fn evaluate_model_on_scenario(
@@ -680,65 +793,79 @@ fn evaluate_model_on_scenario(
     matches: usize,
     dt: f32,
 ) -> (usize, usize, usize, f32) {
+    let learner_team = Team::Enemy;
+
+    // Chạy song song các ván đánh giá trên đa luồng CPU
+    let results: Vec<(bool, bool, bool, f32)> = std::thread::scope(|s| {
+        let mut handles = Vec::with_capacity(matches);
+        for match_idx in 1..=matches {
+            let mut test_brain = brain.clone();
+            test_brain.epsilon = 0.0;
+
+            handles.push(s.spawn(move || {
+                let mut engine = GameEngine::new_headless();
+                let slots = scenario.configure_slots();
+                engine.player_slots = slots;
+                engine.reset_game();
+                engine.is_headless = true;
+                engine.is_paused = false;
+
+                engine.team_ai_mut(learner_team).rl_brain = test_brain;
+                engine.team_ai_mut(learner_team).training_enabled = false;
+                engine.team_autoplay_mut(learner_team).config.enabled = false;
+
+                let arch = match match_idx % 4 {
+                    0 => AutoTrainingArchetype::OmniTechGrandmaster,
+                    1 => AutoTrainingArchetype::CombinedTitanArtilleryMage,
+                    2 => AutoTrainingArchetype::ScienceArtillery,
+                    _ => AutoTrainingArchetype::MonsterSwarmBehemoth,
+                };
+
+                for slot_idx in 0..MAX_PLAYERS {
+                    let team = Team::from_index(slot_idx);
+                    if !engine.is_slot_active(team) || team == learner_team {
+                        continue;
+                    }
+                    if engine.are_hostile(learner_team, team) {
+                        let cfg = create_training_autoplay_config(team, arch);
+                        engine.team_autoplay_mut(team).config = cfg;
+                    } else {
+                        let cfg =
+                            create_training_autoplay_config(team, AutoTrainingArchetype::MacroFortress);
+                        engine.team_autoplay_mut(team).config = cfg;
+                    }
+                }
+
+                while !engine.game_over && engine.game_time < 1200.0 {
+                    rust_engine::simulation::step(&mut engine, dt);
+                }
+
+                let opp_ccs = count_hostile_ccs(&engine, learner_team);
+                let my_ccs = count_ally_ccs(&engine, learner_team);
+
+                let is_win = opp_ccs == 0 && my_ccs > 0;
+                let is_loss = my_ccs == 0 && opp_ccs > 0;
+                let is_draw = !is_win && !is_loss;
+                (is_win, is_loss, is_draw, engine.game_time)
+            }));
+        }
+        handles.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+
     let mut wins = 0;
     let mut losses = 0;
     let mut draws = 0;
     let mut total_time = 0.0;
-    let learner_team = Team::Enemy;
 
-    for match_idx in 1..=matches {
-        let mut engine = GameEngine::new_headless();
-        let slots = scenario.configure_slots();
-        engine.player_slots = slots;
-        engine.reset_game();
-        engine.is_headless = true;
-        engine.is_paused = false;
-
-        // Cấu hình AI phe ta với Brain đã train và Epsilon = 0 (khai thác tối đa)
-        let mut test_brain = brain.clone();
-        test_brain.epsilon = 0.0;
-        engine.team_ai_mut(learner_team).rl_brain = test_brain;
-        engine.team_ai_mut(learner_team).training_enabled = false;
-        engine.team_autoplay_mut(learner_team).config.enabled = false;
-
-        // Cấu hình đối thủ với các archetype đa dạng
-        let arch = match match_idx % 4 {
-            0 => AutoTrainingArchetype::OmniTechGrandmaster,
-            1 => AutoTrainingArchetype::CombinedTitanArtilleryMage,
-            2 => AutoTrainingArchetype::ScienceArtillery,
-            _ => AutoTrainingArchetype::MonsterSwarmBehemoth,
-        };
-
-        for slot_idx in 0..MAX_PLAYERS {
-            let team = Team::from_index(slot_idx);
-            if !engine.is_slot_active(team) || team == learner_team {
-                continue;
-            }
-            if engine.are_hostile(learner_team, team) {
-                let cfg = create_training_autoplay_config(team, arch);
-                engine.team_autoplay_mut(team).config = cfg;
-            } else {
-                let cfg =
-                    create_training_autoplay_config(team, AutoTrainingArchetype::MacroFortress);
-                engine.team_autoplay_mut(team).config = cfg;
-            }
-        }
-
-        while !engine.game_over && engine.game_time < 1200.0 {
-            rust_engine::simulation::step(&mut engine, dt);
-        }
-
-        total_time += engine.game_time;
-        let opp_ccs = count_hostile_ccs(&engine, learner_team);
-        let my_ccs = count_ally_ccs(&engine, learner_team);
-
-        if opp_ccs == 0 && my_ccs > 0 {
+    for (w, l, d, t) in results {
+        if w {
             wins += 1;
-        } else if my_ccs == 0 && opp_ccs > 0 {
+        } else if l {
             losses += 1;
-        } else {
+        } else if d {
             draws += 1;
         }
+        total_time += t;
     }
 
     let avg_time = total_time / (matches.max(1) as f32);
@@ -746,8 +873,16 @@ fn evaluate_model_on_scenario(
 }
 
 fn save_unified_model(brain: &RlBrain) {
+    let mut safe_brain = brain.clone();
+    safe_brain.sanitize();
+
+    if !safe_brain.is_valid() {
+        eprintln!("❌ [LỖI NGHIÊM TRỌNG] Không thể lưu model: phát hiện trọng số không hợp lệ (NaN/Inf)!");
+        return;
+    }
+
     let filename = "rl_model.json";
-    let model_json = serde_json::to_string_pretty(brain).expect("Serialize RL Brain failed");
+    let model_json = serde_json::to_string_pretty(&safe_brain).expect("Serialize RL Brain failed");
 
     for dir in &["assets", "rust-engine/assets", "../assets"] {
         if std::path::Path::new(dir).exists() {

@@ -160,7 +160,7 @@ fn default_hidden2_size() -> usize {
     DEFAULT_HIDDEN2_SIZE
 }
 fn default_learning_rate() -> f32 {
-    0.015
+    0.001
 }
 fn default_gamma() -> f32 {
     0.95
@@ -253,10 +253,52 @@ impl RlBrain {
             b2,
             w_form,
             b_form,
-            learning_rate: 0.015,
-            gamma: 0.95,
-            epsilon: 0.05,
+            learning_rate: default_learning_rate(),
+            gamma: default_gamma(),
+            epsilon: default_epsilon(),
         }
+    }
+
+    /// Kiểm tra toàn bộ trọng số có phải số thực hợp lệ (không chứa NaN hay Infinity)
+    pub fn is_valid(&self) -> bool {
+        let check_row = |row: &[f32]| row.iter().all(|&v| v.is_finite());
+        self.w1.iter().all(|r| check_row(r))
+            && check_row(&self.b1)
+            && self.w_h2.iter().all(|r| check_row(r))
+            && check_row(&self.b_h2)
+            && self.w2.iter().all(|r| check_row(r))
+            && check_row(&self.b2)
+            && self.w_form.iter().all(|r| check_row(r))
+            && check_row(&self.b_form)
+    }
+
+    /// Khử triệt để NaN/Inf và kẹp trọng số trong ngưỡng an toàn để chống bùng nổ gradient
+    pub fn sanitize(&mut self) {
+        let clean_row = |row: &mut [f32]| {
+            for v in row.iter_mut() {
+                if !v.is_finite() {
+                    *v = 0.0;
+                } else {
+                    *v = v.clamp(-3.0, 3.0);
+                }
+            }
+        };
+        for r in &mut self.w1 {
+            clean_row(r);
+        }
+        clean_row(&mut self.b1);
+        for r in &mut self.w_h2 {
+            clean_row(r);
+        }
+        clean_row(&mut self.b_h2);
+        for r in &mut self.w2 {
+            clean_row(r);
+        }
+        clean_row(&mut self.b2);
+        for r in &mut self.w_form {
+            clean_row(r);
+        }
+        clean_row(&mut self.b_form);
     }
 
     /// Tổng số tham số (Weights + Biases) của mạng
@@ -512,50 +554,117 @@ impl RlBrain {
             )
         };
 
-        let td_error_act = target_act - q_values[action_idx];
-        let grad_out_act = td_error_act.clamp(-1.0, 1.0);
+        let td_error_act = if target_act.is_finite() && q_values[action_idx].is_finite() {
+            (target_act - q_values[action_idx]).clamp(-1.0, 1.0)
+        } else {
+            0.0
+        };
+        let grad_out_act = td_error_act;
 
-        let td_error_form = target_form - form_q[form_idx];
-        let grad_out_form = td_error_form.clamp(-1.0, 1.0);
+        let td_error_form = if target_form.is_finite() && form_q[form_idx].is_finite() {
+            (target_form - form_q[form_idx]).clamp(-1.0, 1.0)
+        } else {
+            0.0
+        };
+        let grad_out_form = td_error_form;
 
-        // 1. Backprop từ Heads vào Layer 2 (h2)
+        // 1. Backprop từ Heads vào Layer 2 (h2) với L2 Weight Decay
         let mut grad_h2 = vec![0.0; self.hidden2_size];
         for k in 0..self.hidden2_size {
             let g_act = self.w2[k][action_idx] * grad_out_act;
-            self.w2[k][action_idx] += self.learning_rate * grad_out_act * h2[k];
+            self.w2[k][action_idx] = (self.w2[k][action_idx] * 0.9999 + self.learning_rate * grad_out_act * h2[k]).clamp(-3.0, 3.0);
 
             let g_form = self.w_form[k][form_idx] * grad_out_form;
-            self.w_form[k][form_idx] += self.learning_rate * grad_out_form * h2[k];
+            self.w_form[k][form_idx] = (self.w_form[k][form_idx] * 0.9999 + self.learning_rate * grad_out_form * h2[k]).clamp(-3.0, 3.0);
 
-            grad_h2[k] = g_act + g_form * 0.7;
+            grad_h2[k] = (g_act + g_form * 0.7).clamp(-2.0, 2.0);
         }
-        self.b2[action_idx] += self.learning_rate * grad_out_act;
-        self.b_form[form_idx] += self.learning_rate * grad_out_form;
+        self.b2[action_idx] = (self.b2[action_idx] + self.learning_rate * grad_out_act).clamp(-3.0, 3.0);
+        self.b_form[form_idx] = (self.b_form[form_idx] + self.learning_rate * grad_out_form).clamp(-3.0, 3.0);
 
         // 2. Backprop từ Layer 2 (h2) qua LeakyReLU vào Layer 1 (h1)
         let mut grad_h1 = vec![0.0; self.hidden_size];
         for k in 0..self.hidden2_size {
             let act_derivative = if h2[k] >= 0.0 { 1.0 } else { 0.01 };
-            let delta_k = grad_h2[k] * act_derivative;
+            let delta_k = (grad_h2[k] * act_derivative).clamp(-1.0, 1.0);
 
             for j in 0..self.hidden_size {
                 grad_h1[j] += self.w_h2[j][k] * delta_k;
-                self.w_h2[j][k] += self.learning_rate * delta_k * h1[j];
+                self.w_h2[j][k] = (self.w_h2[j][k] * 0.9999 + self.learning_rate * delta_k * h1[j]).clamp(-3.0, 3.0);
             }
-            self.b_h2[k] += self.learning_rate * delta_k;
+            self.b_h2[k] = (self.b_h2[k] + self.learning_rate * delta_k).clamp(-3.0, 3.0);
         }
 
         // 3. Backprop từ Layer 1 (h1) qua LeakyReLU vào Input (w1, b1)
         for j in 0..self.hidden_size {
             let act_derivative = if h1[j] >= 0.0 { 1.0 } else { 0.01 };
-            let delta_j = grad_h1[j] * act_derivative;
+            let delta_j = (grad_h1[j] * act_derivative).clamp(-1.0, 1.0);
 
             for i in 0..self.input_size {
                 if i < state.len() {
-                    self.w1[i][j] += self.learning_rate * delta_j * state[i];
+                    self.w1[i][j] = (self.w1[i][j] * 0.9999 + self.learning_rate * delta_j * state[i]).clamp(-3.0, 3.0);
                 }
             }
-            self.b1[j] += self.learning_rate * delta_j;
+            self.b1[j] = (self.b1[j] + self.learning_rate * delta_j).clamp(-3.0, 3.0);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rl_brain_sanitize_and_validity() {
+        let mut brain = RlBrain::new_random(
+            STATE_DIM,
+            DEFAULT_HIDDEN_SIZE,
+            DEFAULT_HIDDEN2_SIZE,
+            ACTION_DIM,
+        );
+        assert!(brain.is_valid());
+
+        // Gán thử giá trị NaN và Infinity và số quá lớn
+        brain.w1[0][0] = f32::NAN;
+        brain.b1[0] = f32::INFINITY;
+        brain.w_h2[0][0] = f32::NEG_INFINITY;
+        brain.b1[1] = 999.0;
+        brain.b1[2] = -999.0;
+        assert!(!brain.is_valid());
+
+        // Vệ sinh
+        brain.sanitize();
+        assert!(brain.is_valid());
+        assert_eq!(brain.w1[0][0], 0.0);
+        assert_eq!(brain.b1[0], 0.0);
+        assert_eq!(brain.w_h2[0][0], 0.0);
+        assert_eq!(brain.b1[1], 3.0);
+        assert_eq!(brain.b1[2], -3.0);
+    }
+
+    #[test]
+    fn test_rl_brain_stress_no_nan_or_inf() {
+        let mut brain = RlBrain::new_random(
+            STATE_DIM,
+            DEFAULT_HIDDEN_SIZE,
+            DEFAULT_HIDDEN2_SIZE,
+            ACTION_DIM,
+        );
+        let dummy_state = vec![1.0; STATE_DIM];
+        let dummy_next = vec![1.0; STATE_DIM];
+
+        // Lặp huấn luyện với reward cực đại liên tục
+        for _ in 0..100 {
+            brain.train_step_with_formation(
+                &dummy_state,
+                BotStrategicAction::AllOutAssault,
+                FormationType::Wedge,
+                500.0, // Reward cực lớn
+                &dummy_next,
+                false,
+            );
+        }
+
+        assert!(brain.is_valid(), "Brain weights must remain valid and finite after high-reward stress testing");
     }
 }
