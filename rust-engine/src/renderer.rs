@@ -5,19 +5,18 @@ use crate::GameEngine;
 use web_sys::CanvasRenderingContext2d;
 
 
-pub fn get_team_color(engine: &GameEngine, team: Team) -> (&'static str, &'static str) {
+pub fn get_team_color(engine: &GameEngine, team: Team) -> (&str, &str) {
     if team == Team::Player {
-        ("#00e5ff", "rgba(0, 229, 255, 0.12)")
+        (&engine.config.render.player_color, &engine.config.render.player_fill)
     } else if engine.are_allies(Team::Player, team) {
-        ("#10b981", "rgba(16, 185, 129, 0.12)")
+        (&engine.config.render.ally_color, &engine.config.render.ally_fill)
     } else {
-        match team.index() % 6 {
-            1 => ("#f43f5e", "rgba(244, 63, 94, 0.12)"),   // Đỏ hồng
-            2 => ("#f59e0b", "rgba(245, 158, 11, 0.12)"),  // Cam hổ phách
-            3 => ("#a855f7", "rgba(168, 85, 247, 0.12)"),  // Tím arcane
-            4 => ("#eab308", "rgba(234, 179, 8, 0.12)"),   // Vàng gold
-            5 => ("#ec4899", "rgba(236, 72, 153, 0.12)"),  // Hồng magenta
-            _ => ("#f97316", "rgba(249, 115, 22, 0.12)"),  // Cam đậm
+        let palette = &engine.config.render.enemy_palette;
+        if !palette.is_empty() {
+            let idx = team.index() % palette.len();
+            (&palette[idx].0, &palette[idx].1)
+        } else {
+            ("#f43f5e", "rgba(244, 63, 94, 0.12)")
         }
     }
 }
@@ -31,7 +30,7 @@ pub fn render(engine: &mut GameEngine) {
     let vh = engine.camera.viewport_h;
 
     // 1. Xóa màn hình với màu nền Blueprint Dark
-    ctx.set_fill_style_str("#030d1a");
+    ctx.set_fill_style_str(&engine.config.render.bg_color);
     ctx.fill_rect(0.0, 0.0, vw as f64, vh as f64);
 
     ctx.save();
@@ -51,7 +50,7 @@ pub fn render(engine: &mut GameEngine) {
     }
 
     // 4. Vẽ Ranh giới bản đồ
-    ctx.set_stroke_style_str("#00e5ff");
+    ctx.set_stroke_style_str(&engine.config.render.map_border_color);
     ctx.set_line_width(3.0);
     ctx.stroke_rect(0.0, 0.0, MAP_WIDTH as f64, MAP_HEIGHT as f64);
 
@@ -89,14 +88,14 @@ pub fn render(engine: &mut GameEngine) {
 
     // Khung kéo chuột chọn quân (Box Select)
     if let Some((sx1, sy1, sx2, sy2)) = engine.selection_box {
-        ctx.set_stroke_style_str("#00e5ff");
+        ctx.set_stroke_style_str(&engine.config.render.map_border_color);
         ctx.set_line_width(1.5);
         let rx = sx1.min(sx2);
         let ry = sy1.min(sy2);
         let rw = (sx2 - sx1).abs();
         let rh = (sy2 - sy1).abs();
         ctx.stroke_rect(rx as f64, ry as f64, rw as f64, rh as f64);
-        ctx.set_fill_style_str("rgba(0, 229, 255, 0.1)");
+        ctx.set_fill_style_str(&engine.config.render.player_fill);
         ctx.fill_rect(rx as f64, ry as f64, rw as f64, rh as f64);
     }
 
@@ -111,11 +110,11 @@ pub fn render(engine: &mut GameEngine) {
 
 fn render_blueprint_grid(engine: &GameEngine) {
     let ctx = match engine.context.as_ref() { Some(c) => c, None => return };
-    ctx.set_stroke_style_str("#0a223e");
+    ctx.set_stroke_style_str(&engine.config.render.grid_line_color);
     ctx.set_line_width(1.0);
     ctx.begin_path();
 
-    let grid_size = 80.0;
+    let grid_size = engine.config.render.grid_size.max(10.0);
     let (min_x, min_y, max_x, max_y) = engine.camera.viewport_bounds(grid_size);
     let start_x = ((min_x / grid_size).floor() * grid_size).max(0.0);
     let end_x = ((max_x / grid_size).ceil() * grid_size).min(MAP_WIDTH);
@@ -228,7 +227,7 @@ fn render_buildings(engine: &GameEngine) {
         ctx.set_fill_style_str(color_fill);
         ctx.fill_rect(bx, by, bw, bh);
 
-        ctx.set_stroke_style_str(if is_selected { "#ffffff" } else { color_neon });
+        ctx.set_stroke_style_str(if is_selected { &engine.config.render.selection_color } else { color_neon });
         ctx.set_line_width(if is_selected { 2.5 } else { 1.5 });
         ctx.stroke_rect(bx, by, bw, bh);
 
@@ -271,14 +270,7 @@ fn render_buildings(engine: &GameEngine) {
         // Tên công trình hiển thị bên dưới
         ctx.set_font("bold 10px monospace");
         ctx.set_fill_style_str(color_neon);
-        let title = match b.building_type {
-            BuildingType::CommandCenter => "HQ COMMAND",
-            BuildingType::SupplyDepot => "SUPPLY DEPOT",
-            BuildingType::PowerReactor => "REACTOR",
-            BuildingType::Barracks => "BARRACKS",
-            BuildingType::TurretTower => "TURRET",
-            BuildingType::EnergyConverter => "CONVERTER",
-        };
+        let title = engine.config.get_building_short_name(b.building_type);
         // Căn giữa dòng chữ dưới công trình
         let text_w = (title.len() as f64) * 6.2;
         let _ = ctx.fill_text(title, b.x as f64 - text_w * 0.5, by + bh + 13.0);
@@ -288,9 +280,9 @@ fn render_buildings(engine: &GameEngine) {
             ctx.set_fill_style_str("#334155");
             ctx.fill_rect(bx, by - 12.0, bw, 6.0);
             let bar_color = if b.under_attack_timer > 0.0 {
-                "#ef4444" // Bị tấn công: cảnh báo đỏ giảm tốc độ xây
+                &engine.config.render.build_under_attack_color
             } else {
-                "#fbbf24" // Tiến độ xây bình thường
+                &engine.config.render.build_progress_color
             };
             ctx.set_fill_style_str(bar_color);
             ctx.fill_rect(bx, by - 12.0, bw * (b.build_progress as f64), 6.0);
@@ -299,7 +291,12 @@ fn render_buildings(engine: &GameEngine) {
             let hp_pct = (b.hp / b.max_hp).clamp(0.0, 1.0) as f64;
             ctx.set_fill_style_str("#1e293b");
             ctx.fill_rect(bx, by - 10.0, bw, 5.0);
-            ctx.set_fill_style_str(if hp_pct > 0.4 { "#22c55e" } else { "#ef4444" });
+            let hp_color = if hp_pct > 0.4 {
+                &engine.config.render.hp_high_color
+            } else {
+                &engine.config.render.hp_low_color
+            };
+            ctx.set_fill_style_str(hp_color);
             ctx.fill_rect(bx, by - 10.0, bw * hp_pct, 5.0);
         }
 
@@ -592,7 +589,12 @@ fn render_units(engine: &GameEngine) {
 
         ctx.set_fill_style_str("#1e293b");
         ctx.fill_rect(bar_x, bar_y, bar_w, bar_h);
-        ctx.set_fill_style_str(if hp_pct > 0.4 { "#22c55e" } else { "#ef4444" });
+        let hp_color = if hp_pct > 0.4 {
+            &engine.config.render.hp_high_color
+        } else {
+            &engine.config.render.hp_low_color
+        };
+        ctx.set_fill_style_str(hp_color);
         ctx.fill_rect(bar_x, bar_y, bar_w * hp_pct, bar_h);
     }
 }
@@ -805,14 +807,7 @@ fn render_projectiles(engine: &GameEngine) {
 fn render_build_ghost(engine: &GameEngine, b_type: BuildingType) {
     let ctx = match engine.context.as_ref() { Some(c) => c, None => return };
     let (wx, wy) = engine.screen_to_world(engine.mouse_screen_x, engine.mouse_screen_y);
-    let (w, h) = match b_type {
-        BuildingType::CommandCenter => (90.0, 90.0),
-        BuildingType::SupplyDepot => (60.0, 60.0),
-        BuildingType::PowerReactor => (60.0, 60.0),
-        BuildingType::Barracks => (80.0, 70.0),
-        BuildingType::TurretTower => (50.0, 50.0),
-        BuildingType::EnergyConverter => (65.0, 65.0),
-    };
+    let (w, h) = engine.config.get_building_dimensions(b_type);
 
     let bx = (wx - w * 0.5) as f64;
     let by = (wy - h * 0.5) as f64;
@@ -820,24 +815,17 @@ fn render_build_ghost(engine: &GameEngine, b_type: BuildingType) {
     ctx.set_fill_style_str("rgba(0, 229, 255, 0.25)");
     ctx.fill_rect(bx, by, w as f64, h as f64);
 
-    ctx.set_stroke_style_str("#00e5ff");
+    ctx.set_stroke_style_str(&engine.config.render.player_color);
     ctx.set_line_width(2.0);
     ctx.stroke_rect(bx, by, w as f64, h as f64);
 
     // Vẽ hình 2D tĩnh bóng mờ
-    draw_building_graphic(ctx, b_type, wx as f64, wy as f64, w as f64, h as f64, "#00e5ff");
+    draw_building_graphic(ctx, b_type, wx as f64, wy as f64, w as f64, h as f64, &engine.config.render.player_color);
 
     // Tên công trình bên dưới ghost
     ctx.set_font("bold 10px monospace");
-    ctx.set_fill_style_str("#00e5ff");
-    let ghost_title = match b_type {
-        BuildingType::CommandCenter => "HQ COMMAND",
-        BuildingType::SupplyDepot => "SUPPLY DEPOT",
-        BuildingType::PowerReactor => "REACTOR",
-        BuildingType::Barracks => "BARRACKS",
-        BuildingType::TurretTower => "TURRET",
-        BuildingType::EnergyConverter => "CONVERTER",
-    };
+    ctx.set_fill_style_str(&engine.config.render.player_color);
+    let ghost_title = engine.config.get_building_short_name(b_type);
     let text_w = (ghost_title.len() as f64) * 6.2;
     let _ = ctx.fill_text(ghost_title, wx as f64 - text_w * 0.5, by + (h as f64) + 13.0);
 
@@ -1171,21 +1159,19 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
             };
             ctx.set_font("bold 13px monospace");
             ctx.set_fill_style_str(color);
-            let title = match b.building_type {
-                BuildingType::CommandCenter => "HQ COMMAND CENTER",
-                BuildingType::SupplyDepot => "SUPPLY DEPOT",
-                BuildingType::PowerReactor => "POWER REACTOR",
-                BuildingType::Barracks => "INFANTRY BARRACKS",
-                BuildingType::TurretTower => "DEFENSE TURRET",
-                BuildingType::EnergyConverter => "ENERGY CONVERTER",
-            };
+            let title = engine.config.get_building_name(b.building_type);
             let _ = ctx.fill_text(title, x + 15.0, y + 22.0);
 
             // Thanh máu chi tiết
             let hp_pct = (b.hp / b.max_hp).clamp(0.0, 1.0) as f64;
             ctx.set_fill_style_str("#1e293b");
             ctx.fill_rect(x + 15.0, y + 30.0, w - 30.0, 10.0);
-            ctx.set_fill_style_str(if hp_pct > 0.4 { "#22c55e" } else { "#ef4444" });
+            let hp_color = if hp_pct > 0.4 {
+                &engine.config.render.hp_high_color
+            } else {
+                &engine.config.render.hp_low_color
+            };
+            ctx.set_fill_style_str(hp_color);
             ctx.fill_rect(x + 15.0, y + 30.0, (w - 30.0) * hp_pct, 10.0);
 
             ctx.set_font("bold 10px monospace");
@@ -1224,27 +1210,37 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
                 } else {
                     engine.enemy_eco.energy
                 };
+                let threshold = engine.config.economy.converter_threshold;
+                let en_rate = crate::config::CONVERT_ENERGY_PER_SEC;
+                let min_rate = crate::config::CONVERT_MINERALS_PER_SEC;
 
-                if cur_energy >= 1000.0 {
+                if cur_energy >= threshold {
                     ctx.set_fill_style_str("#fbbf24");
-                    let _ = ctx.fill_text("STATUS: CONVERTING (30⚡ ➔ 25💎/s)", x + 15.0, y + 85.0);
+                    let _ = ctx.fill_text(
+                        &format!("STATUS: CONVERTING ({:.0}⚡ ➔ {:.0}💎/s)", en_rate, min_rate),
+                        x + 15.0,
+                        y + 85.0,
+                    );
                     ctx.set_font("10px monospace");
                     ctx.set_fill_style_str("#38bdf8");
                     let _ = ctx.fill_text(
-                        "Tự động chuyển Năng lượng dư thừa (>1000⚡) thành Vàng.",
+                        &format!("Tự động chuyển Năng lượng dư thừa (>{:.0}⚡) thành Vàng.", threshold),
                         x + 15.0,
                         y + 105.0,
                     );
                 } else {
                     ctx.set_fill_style_str("#f97316");
-                    let _ =
-                        ctx.fill_text("STATUS: STANDBY (Năng lượng < 1000⚡)", x + 15.0, y + 85.0);
+                    let _ = ctx.fill_text(
+                        &format!("STATUS: STANDBY (Năng lượng < {:.0}⚡)", threshold),
+                        x + 15.0,
+                        y + 85.0,
+                    );
                     ctx.set_font("10px monospace");
                     ctx.set_fill_style_str("#94a3b8");
                     let _ = ctx.fill_text(
                         &format!(
                             "Cần thêm {:.0}⚡ để tự động kích hoạt.",
-                            (1000.0 - cur_energy).max(0.0)
+                            (threshold - cur_energy).max(0.0)
                         ),
                         x + 15.0,
                         y + 105.0,
@@ -1361,14 +1357,19 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
             } else {
                 "#f43f5e"
             });
-            let name = u.unit_type.display_name();
+            let name = engine.config.get_unit_name(u.unit_type);
             let _ = ctx.fill_text(name, x + 15.0, y + 22.0);
 
             // Thanh máu
             let hp_pct = (u.hp / u.max_hp).clamp(0.0, 1.0) as f64;
             ctx.set_fill_style_str("#1e293b");
             ctx.fill_rect(x + 15.0, y + 30.0, w - 30.0, 10.0);
-            ctx.set_fill_style_str(if hp_pct > 0.4 { "#22c55e" } else { "#ef4444" });
+            let hp_color = if hp_pct > 0.4 {
+                &engine.config.render.hp_high_color
+            } else {
+                &engine.config.render.hp_low_color
+            };
+            ctx.set_fill_style_str(hp_color);
             ctx.fill_rect(x + 15.0, y + 30.0, (w - 30.0) * hp_pct, 10.0);
 
             ctx.set_font("bold 10px monospace");
@@ -1538,7 +1539,12 @@ fn draw_barracks_slot(
         en_cost *= 0.65;
     }
     let can_afford = engine.player_eco.minerals >= min_cost && engine.player_eco.energy >= en_cost;
-    let cost_lbl = engine.config.get_unit_cost_label(u_type);
+    let cost_lbl = if en_cost > 0.0 {
+        format!("{:.0}M {:.0}E", min_cost, en_cost)
+    } else {
+        format!("{:.0}M", min_cost)
+    };
+    let label = engine.config.get_unit_short_name(u_type);
 
     draw_unit_purchase_button(
         ctx,
@@ -1546,7 +1552,7 @@ fn draw_barracks_slot(
         slot_y,
         62.0,
         40.0,
-        u_type.button_label(),
+        label,
         &cost_lbl,
         count,
         is_training,
@@ -1595,20 +1601,27 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
             .config
             .get_building_cost_label(BuildingType::EnergyConverter);
 
-        draw_hud_button(ctx, x + 5.0, y + 6.0, 62.0, 40.0, "SUPPLY", &supply_cost);
-        draw_hud_button(ctx, x + 72.0, y + 6.0, 62.0, 40.0, "REACTOR", &reactor_cost);
+        let supply_lbl = engine.config.get_building_short_name(BuildingType::SupplyDepot);
+        let reactor_lbl = engine.config.get_building_short_name(BuildingType::PowerReactor);
+        let barracks_lbl = engine.config.get_building_short_name(BuildingType::Barracks);
+        let turret_lbl = engine.config.get_building_short_name(BuildingType::TurretTower);
+        let cc_lbl = engine.config.get_building_short_name(BuildingType::CommandCenter);
+        let conv_lbl = engine.config.get_building_short_name(BuildingType::EnergyConverter);
+
+        draw_hud_button(ctx, x + 5.0, y + 6.0, 62.0, 40.0, supply_lbl, &supply_cost);
+        draw_hud_button(ctx, x + 72.0, y + 6.0, 62.0, 40.0, reactor_lbl, &reactor_cost);
         draw_hud_button(
             ctx,
             x + 139.0,
             y + 6.0,
             62.0,
             40.0,
-            "BARRACKS",
+            barracks_lbl,
             &barracks_cost,
         );
-        draw_hud_button(ctx, x + 5.0, y + 50.0, 62.0, 40.0, "TURRET", &turret_cost);
-        draw_hud_button(ctx, x + 72.0, y + 50.0, 62.0, 40.0, "HQ CC", &cc_cost);
-        draw_hud_button(ctx, x + 139.0, y + 50.0, 62.0, 40.0, "CONVERT", &conv_cost);
+        draw_hud_button(ctx, x + 5.0, y + 50.0, 62.0, 40.0, turret_lbl, &turret_cost);
+        draw_hud_button(ctx, x + 72.0, y + 50.0, 62.0, 40.0, cc_lbl, &cc_cost);
+        draw_hud_button(ctx, x + 139.0, y + 50.0, 62.0, 40.0, conv_lbl, &conv_cost);
 
         // Hàng 3: Nút đổi đội hình kế tiếp (phím F)
         let cur_form = engine.team_formation(Team::Player);
@@ -1624,49 +1637,61 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
 
         if let Some(hover_idx) = engine.hovered_command_button {
             tooltip = match hover_idx {
-                0 => Some((
-                    "SUPPLY DEPOT".into(),
-                    format!(
-                        "Giá: {}. Tăng +{} Giới hạn dân số (Supply).",
-                        supply_cost,
-                        engine
-                            .config
-                            .get_building(BuildingType::SupplyDepot)
-                            .map(|b| b.supply_bonus)
-                            .unwrap_or(8)
-                    ),
-                )),
-                1 => Some((
-                    "POWER REACTOR".into(),
-                    format!(
-                        "Giá: {}. Tăng tốc độ sản sinh Năng lượng +{:.0}/s.",
-                        reactor_cost,
-                        engine
-                            .config
-                            .get_building(BuildingType::PowerReactor)
-                            .map(|b| b.energy_per_sec)
-                            .unwrap_or(8.0)
-                    ),
-                )),
-                2 => Some((
-                    "BARRACKS".into(),
-                    format!("Giá: {}. Trại huấn luyện lính chiến đấu.", barracks_cost),
-                )),
-                3 => Some((
-                    "TURRET TOWER".into(),
-                    format!("Giá: {}. Tháp phòng thủ tự động bắn tỉa.", turret_cost),
-                )),
-                4 => Some((
-                    "HQ COMMAND CENTER".into(),
-                    format!("Giá: {}. Trung tâm chỉ huy mở rộng.", cc_cost),
-                )),
-                5 => Some((
-                    "ENERGY CONVERTER".into(),
-                    format!(
-                        "Giá: {}. Tự động chuyển Năng lượng thành Vàng khi Năng lượng >= {:.0}.",
-                        conv_cost, engine.config.economy.converter_threshold
-                    ),
-                )),
+                0 => {
+                    let bt = BuildingType::SupplyDepot;
+                    let title = engine.config.get_building_name(bt).to_string();
+                    let bonus = engine
+                        .config
+                        .get_building(bt)
+                        .map(|b| b.supply_bonus)
+                        .unwrap_or(8);
+                    Some((
+                        title,
+                        format!("Giá: {}. Tăng +{} Giới hạn dân số (Supply).", supply_cost, bonus),
+                    ))
+                }
+                1 => {
+                    let bt = BuildingType::PowerReactor;
+                    let title = engine.config.get_building_name(bt).to_string();
+                    let en = engine
+                        .config
+                        .get_building(bt)
+                        .map(|b| b.energy_per_sec)
+                        .unwrap_or(8.0);
+                    Some((
+                        title,
+                        format!("Giá: {}. Tăng tốc độ sản sinh Năng lượng +{:.0}/s.", reactor_cost, en),
+                    ))
+                }
+                2 => {
+                    let bt = BuildingType::Barracks;
+                    let title = engine.config.get_building_name(bt).to_string();
+                    let desc = engine.config.get_building_description(bt);
+                    Some((title, format!("Giá: {}. {}", barracks_cost, desc)))
+                }
+                3 => {
+                    let bt = BuildingType::TurretTower;
+                    let title = engine.config.get_building_name(bt).to_string();
+                    let desc = engine.config.get_building_description(bt);
+                    Some((title, format!("Giá: {}. {}", turret_cost, desc)))
+                }
+                4 => {
+                    let bt = BuildingType::CommandCenter;
+                    let title = engine.config.get_building_name(bt).to_string();
+                    let desc = engine.config.get_building_description(bt);
+                    Some((title, format!("Giá: {}. {}", cc_cost, desc)))
+                }
+                5 => {
+                    let bt = BuildingType::EnergyConverter;
+                    let title = engine.config.get_building_name(bt).to_string();
+                    Some((
+                        title,
+                        format!(
+                            "Giá: {}. Tự động chuyển Năng lượng thành Vàng khi Năng lượng >= {:.0}.",
+                            conv_cost, engine.config.economy.converter_threshold
+                        ),
+                    ))
+                }
                 6 | 7 | 8 => Some((
                     format!("ĐỘI HÌNH: {}", cur_form.display_name()),
                     format!("{} (Nhấn F hoặc Click để chuyển đổi)", cur_form.description()),
@@ -1748,13 +1773,14 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
                         && engine.player_eco.energy >= en_cost;
                     let cost_lbl = engine.config.get_unit_cost_label(u_type);
 
+                    let u_lbl = engine.config.get_unit_short_name(u_type);
                     draw_unit_purchase_button(
                         ctx,
                         x + 5.0,
                         y + 6.0,
                         62.0,
                         40.0,
-                        u_type.button_label(),
+                        u_lbl,
                         &cost_lbl,
                         count,
                         is_training,
@@ -1764,8 +1790,9 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
                     );
 
                     if engine.hovered_command_button == Some(0) {
-                        let mut desc =
-                            format!("Giá: {}. Huấn luyện thợ mỏ / kỹ sư xây dựng.", cost_lbl);
+                        let u_name = engine.config.get_unit_name(u_type);
+                        let u_desc = engine.config.get_unit_description(u_type);
+                        let mut desc = format!("Giá: {}. {}", cost_lbl, u_desc);
                         if count > 0 {
                             if is_training {
                                 desc.push_str(&format!(
@@ -1778,7 +1805,7 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
                             }
                             desc.push_str(" (Click phải để hủy & hoàn tiền)");
                         }
-                        tooltip = Some(("TRAIN WORKER".into(), desc));
+                        tooltip = Some((u_name.to_string(), desc));
                     }
                 }
                 BuildingType::Barracks => {
@@ -1902,69 +1929,33 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
                     };
 
                     if let Some(hover_idx) = engine.hovered_command_button {
-                        let info = match hover_idx {
-                            0 => Some((
-                                "SHOCK TROOPER",
-                                "Giá: 75M. Kiếm sĩ Plasma, chạy nhanh, chém mạnh.",
-                                s0,
-                            )),
-                            1 => {
-                                Some(("RIFLEMAN", "Giá: 100M 20E. Xạ thủ súng trường tầm xa.", s1))
-                            }
-                            2 => s2.map(|s| {
-                                (
-                                    "VANGUARD",
-                                    "Giá: 150M 50E. Vệ binh khiên chắn năng lượng.",
-                                    s,
-                                )
-                            }),
-                            3 => s3.map(|s| {
-                                (
-                                    "LASER MARKSMAN",
-                                    "Giá: 175M 100E. Pháo Laser siêu sát thương.",
-                                    s,
-                                )
-                            }),
-                            4 => s4.map(|s| {
-                                (
-                                    "DARK ROCKETEER",
-                                    "Giá: 160M 80E. Bệ phóng Rocket nổ AoE tầm xa.",
-                                    s,
-                                )
-                            }),
-                            5 => s5.map(|s| {
-                                (
-                                    "SWORDMASTER",
-                                    "Giá: 180M 90E. Tu tiên giả ngự phi kiếm chân khí Arcane.",
-                                    s,
-                                )
-                            }),
-                            6 => s6.map(|s| {
-                                (
-                                    "VOID WARLOCK",
-                                    "Giá: 200M 120E. Vu sư hư không, cầu ma thuật nổ AoE.",
-                                    s,
-                                )
-                            }),
-                            7 => s7.map(|s| {
-                                (
-                                    "BEHEMOTH TITAN",
-                                    "Giá: 250M 100E. Cự thú 650 HP, dậm chấn động diện rộng.",
-                                    s,
-                                )
-                            }),
-                            8 => s8.map(|s| {
-                                (
-                                    "ACID BANELING",
-                                    "Giá: 60M 30E. Bọ cảm tử lao vào tự nổ axit AoE cực lớn.",
-                                    s,
-                                )
-                            }),
+                        let target_unit_info = match hover_idx {
+                            0 => Some((UnitType::ShockTrooper, s0)),
+                            1 => Some((UnitType::Rifleman, s1)),
+                            2 => s2.map(|s| (UnitType::Vanguard, s)),
+                            3 => s3.map(|s| (UnitType::LaserMarksman, s)),
+                            4 => s4.map(|s| (UnitType::DarkRocketeer, s)),
+                            5 => s5.map(|s| (UnitType::TaoistSwordmaster, s)),
+                            6 => s6.map(|s| (UnitType::VoidWarlock, s)),
+                            7 => s7.map(|s| (UnitType::BehemothTitan, s)),
+                            8 => s8.map(|s| (UnitType::AcidBaneling, s)),
                             _ => None,
                         };
 
-                        if let Some((name, base_desc, (count, is_tr, prog))) = info {
-                            let mut desc = base_desc.to_string();
+                        if let Some((u_type, (count, is_tr, prog))) = target_unit_info {
+                            let name = engine.config.get_unit_name(u_type).to_string();
+                            let (mut min_c, mut en_c) = engine.config.get_unit_cost(u_type);
+                            if engine.player_tech.hive_proliferation {
+                                min_c *= 0.65;
+                                en_c *= 0.65;
+                            }
+                            let cost_str = if en_c > 0.0 {
+                                format!("{:.0}M {:.0}E", min_c, en_c)
+                            } else {
+                                format!("{:.0}M", min_c)
+                            };
+                            let u_desc = engine.config.get_unit_description(u_type);
+                            let mut desc = format!("Giá: {}. {}", cost_str, u_desc);
                             if count > 0 {
                                 if is_tr {
                                     desc.push_str(&format!(
@@ -1977,7 +1968,7 @@ fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
                                 }
                                 desc.push_str(" (Click phải để hủy & hoàn tiền)");
                             }
-                            tooltip = Some((name.to_string(), desc));
+                            tooltip = Some((name, desc));
                         }
                     }
                 }

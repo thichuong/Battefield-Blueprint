@@ -5,6 +5,10 @@ use std::collections::HashMap;
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct UnitStatsConfig {
     pub name: String,
+    #[serde(default)]
+    pub short_name: String,
+    #[serde(default)]
+    pub description: String,
     pub hp: f32,
     pub speed: f32,
     pub attack_range: f32,
@@ -21,6 +25,10 @@ pub struct UnitStatsConfig {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct BuildingStatsConfig {
     pub name: String,
+    #[serde(default)]
+    pub short_name: String,
+    #[serde(default)]
+    pub description: String,
     pub hp: f32,
     pub cost_minerals: f32,
     pub cost_energy: f32,
@@ -118,11 +126,59 @@ pub struct TechItemConfig {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RenderConfig {
+    pub bg_color: String,
+    pub grid_line_color: String,
+    pub grid_size: f32,
+    pub map_border_color: String,
+    pub selection_color: String,
+    pub player_color: String,
+    pub player_fill: String,
+    pub ally_color: String,
+    pub ally_fill: String,
+    pub enemy_palette: Vec<(String, String)>,
+    pub hp_high_color: String,
+    pub hp_low_color: String,
+    pub build_progress_color: String,
+    pub build_under_attack_color: String,
+}
+
+impl Default for RenderConfig {
+    fn default() -> Self {
+        Self {
+            bg_color: "#030d1a".to_string(),
+            grid_line_color: "#0a223e".to_string(),
+            grid_size: 80.0,
+            map_border_color: "#00e5ff".to_string(),
+            selection_color: "#ffffff".to_string(),
+            player_color: "#00e5ff".to_string(),
+            player_fill: "rgba(0, 229, 255, 0.12)".to_string(),
+            ally_color: "#10b981".to_string(),
+            ally_fill: "rgba(16, 185, 129, 0.12)".to_string(),
+            enemy_palette: vec![
+                ("#f43f5e".to_string(), "rgba(244, 63, 94, 0.12)".to_string()),
+                ("#f59e0b".to_string(), "rgba(245, 158, 11, 0.12)".to_string()),
+                ("#a855f7".to_string(), "rgba(168, 85, 247, 0.12)".to_string()),
+                ("#eab308".to_string(), "rgba(234, 179, 8, 0.12)".to_string()),
+                ("#ec4899".to_string(), "rgba(236, 72, 153, 0.12)".to_string()),
+                ("#f97316".to_string(), "rgba(249, 115, 22, 0.12)".to_string()),
+            ],
+            hp_high_color: "#22c55e".to_string(),
+            hp_low_color: "#ef4444".to_string(),
+            build_progress_color: "#fbbf24".to_string(),
+            build_under_attack_color: "#ef4444".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct GameConfig {
     pub units: HashMap<String, UnitStatsConfig>,
     pub buildings: HashMap<String, BuildingStatsConfig>,
     pub economy: EconomyConfig,
     pub techs: HashMap<String, TechItemConfig>,
+    #[serde(default)]
+    pub render: RenderConfig,
 }
 
 impl Default for GameConfig {
@@ -136,6 +192,8 @@ impl Default for GameConfig {
             "Engineer".to_string(),
             UnitStatsConfig {
                 name: "ENGINEER // WORKER".to_string(),
+                short_name: "WORKER".to_string(),
+                description: "Huấn luyện thợ mỏ / kỹ sư xây dựng.".to_string(),
                 hp: 90.0,
                 speed: 120.0,
                 attack_range: 30.0,
@@ -159,6 +217,8 @@ impl Default for GameConfig {
             "ShockTrooper".to_string(),
             UnitStatsConfig {
                 name: "STRIKER // SHOCK TROOPER".to_string(),
+                short_name: "STRIKER".to_string(),
+                description: "Kiếm sĩ Plasma, chạy nhanh, chém mạnh.".to_string(),
                 hp: 160.0,
                 speed: 140.0,
                 attack_range: 40.0,
@@ -182,6 +242,8 @@ impl Default for GameConfig {
             "Rifleman".to_string(),
             UnitStatsConfig {
                 name: "MARKSMAN // RIFLEMAN".to_string(),
+                short_name: "RIFLE".to_string(),
+                description: "Xạ thủ súng trường tầm xa.".to_string(),
                 hp: 120.0,
                 speed: 110.0,
                 attack_range: 160.0,
@@ -205,6 +267,8 @@ impl Default for GameConfig {
             "Vanguard".to_string(),
             UnitStatsConfig {
                 name: "VANGUARD // SHIELDER".to_string(),
+                short_name: "SHIELD".to_string(),
+                description: "Vệ binh khiên chắn năng lượng.".to_string(),
                 hp: 320.0,
                 speed: 90.0,
                 attack_range: 45.0,
@@ -228,6 +292,8 @@ impl Default for GameConfig {
             "LaserMarksman".to_string(),
             UnitStatsConfig {
                 name: "SIEGE // LASER MARKSMAN".to_string(),
+                short_name: "LASER".to_string(),
+                description: "Pháo Laser siêu sát thương.".to_string(),
                 hp: 110.0,
                 speed: 95.0,
                 attack_range: 220.0,
@@ -251,6 +317,8 @@ impl Default for GameConfig {
             "DarkRocketeer".to_string(),
             UnitStatsConfig {
                 name: "DARK TECH // ROCKETEER".to_string(),
+                short_name: "ROCKET".to_string(),
+                description: "Bệ phóng Rocket nổ AoE tầm xa.".to_string(),
                 hp: 140.0,
                 speed: 95.0,
                 attack_range: 200.0,
@@ -274,6 +342,8 @@ impl Default for GameConfig {
             "TaoistSwordmaster".to_string(),
             UnitStatsConfig {
                 name: "CELESTIAL // SWORDMASTER".to_string(),
+                short_name: "SWORD".to_string(),
+                description: "Tu tiên giả ngự phi kiếm chân khí Arcane.".to_string(),
                 hp: 170.0,
                 speed: 130.0,
                 attack_range: 140.0,
@@ -297,6 +367,8 @@ impl Default for GameConfig {
             "VoidWarlock".to_string(),
             UnitStatsConfig {
                 name: "VOID // SHADOW WARLOCK".to_string(),
+                short_name: "WARLOCK".to_string(),
+                description: "Vu sư hư không, cầu ma thuật nổ AoE.".to_string(),
                 hp: 135.0,
                 speed: 100.0,
                 attack_range: 175.0,
@@ -320,6 +392,8 @@ impl Default for GameConfig {
             "BehemothTitan".to_string(),
             UnitStatsConfig {
                 name: "BEHEMOTH // TITAN".to_string(),
+                short_name: "TITAN".to_string(),
+                description: "Cự thú HP khủng, dậm chấn động diện rộng.".to_string(),
                 hp: 650.0,
                 speed: 60.0,
                 attack_range: 55.0,
@@ -343,6 +417,8 @@ impl Default for GameConfig {
             "AcidBaneling".to_string(),
             UnitStatsConfig {
                 name: "SWARM // ACID BANELING".to_string(),
+                short_name: "BANELING".to_string(),
+                description: "Bọ cảm tử lao vào tự nổ axit AoE cực lớn.".to_string(),
                 hp: 100.0,
                 speed: 160.0,
                 attack_range: 25.0,
@@ -367,6 +443,8 @@ impl Default for GameConfig {
             "CommandCenter".to_string(),
             BuildingStatsConfig {
                 name: "HQ COMMAND CENTER".to_string(),
+                short_name: "HQ CC".to_string(),
+                description: "Trung tâm chỉ huy mở rộng.".to_string(),
                 hp: 2000.0,
                 cost_minerals: 400.0,
                 cost_energy: 0.0,
@@ -393,6 +471,8 @@ impl Default for GameConfig {
             "SupplyDepot".to_string(),
             BuildingStatsConfig {
                 name: "SUPPLY DEPOT".to_string(),
+                short_name: "SUPPLY".to_string(),
+                description: "Tăng Giới hạn dân số (Supply).".to_string(),
                 hp: 800.0,
                 cost_minerals: 100.0,
                 cost_energy: 0.0,
@@ -419,6 +499,8 @@ impl Default for GameConfig {
             "PowerReactor".to_string(),
             BuildingStatsConfig {
                 name: "POWER REACTOR".to_string(),
+                short_name: "REACTOR".to_string(),
+                description: "Tăng tốc độ sản sinh Năng lượng.".to_string(),
                 hp: 700.0,
                 cost_minerals: 120.0,
                 cost_energy: 0.0,
@@ -445,6 +527,8 @@ impl Default for GameConfig {
             "Barracks".to_string(),
             BuildingStatsConfig {
                 name: "BARRACKS".to_string(),
+                short_name: "BARRACKS".to_string(),
+                description: "Trại huấn luyện lính chiến đấu.".to_string(),
                 hp: 1200.0,
                 cost_minerals: 150.0,
                 cost_energy: 0.0,
@@ -471,6 +555,8 @@ impl Default for GameConfig {
             "TurretTower".to_string(),
             BuildingStatsConfig {
                 name: "TURRET TOWER".to_string(),
+                short_name: "TURRET".to_string(),
+                description: "Tháp phòng thủ tự động bắn tỉa.".to_string(),
                 hp: 900.0,
                 cost_minerals: 125.0,
                 cost_energy: 50.0,
@@ -497,6 +583,8 @@ impl Default for GameConfig {
             "EnergyConverter".to_string(),
             BuildingStatsConfig {
                 name: "ENERGY CONVERTER".to_string(),
+                short_name: "CONVERT".to_string(),
+                description: "Tự động chuyển Năng lượng dư thừa thành Vàng.".to_string(),
                 hp: 850.0,
                 cost_minerals: 150.0,
                 cost_energy: 50.0,
@@ -716,6 +804,7 @@ impl Default for GameConfig {
             buildings,
             economy: EconomyConfig::default(),
             techs,
+            render: RenderConfig::default(),
         }
     }
 }
@@ -763,6 +852,68 @@ impl GameConfig {
     #[inline]
     pub fn get_tech(&self, tech_id: &str) -> Option<&TechItemConfig> {
         self.techs.get(tech_id)
+    }
+
+    pub fn get_building_dimensions(&self, b_type: crate::components::BuildingType) -> (f32, f32) {
+        if let Some(b) = self.get_building(b_type) {
+            (b.width, b.height)
+        } else {
+            (60.0, 60.0)
+        }
+    }
+
+    pub fn get_building_name(&self, b_type: crate::components::BuildingType) -> &str {
+        if let Some(b) = self.get_building(b_type) {
+            &b.name
+        } else {
+            "STRUCTURE"
+        }
+    }
+
+    pub fn get_building_short_name(&self, b_type: crate::components::BuildingType) -> &str {
+        if let Some(b) = self.get_building(b_type) {
+            if !b.short_name.is_empty() {
+                return &b.short_name;
+            }
+            &b.name
+        } else {
+            "BUILDING"
+        }
+    }
+
+    pub fn get_building_description(&self, b_type: crate::components::BuildingType) -> &str {
+        if let Some(b) = self.get_building(b_type) {
+            &b.description
+        } else {
+            ""
+        }
+    }
+
+    pub fn get_unit_name(&self, u_type: crate::components::UnitType) -> &str {
+        if let Some(u) = self.get_unit(u_type) {
+            &u.name
+        } else {
+            u_type.display_name()
+        }
+    }
+
+    pub fn get_unit_short_name(&self, u_type: crate::components::UnitType) -> &str {
+        if let Some(u) = self.get_unit(u_type) {
+            if !u.short_name.is_empty() {
+                return &u.short_name;
+            }
+            &u.name
+        } else {
+            u_type.button_label()
+        }
+    }
+
+    pub fn get_unit_description(&self, u_type: crate::components::UnitType) -> &str {
+        if let Some(u) = self.get_unit(u_type) {
+            &u.description
+        } else {
+            ""
+        }
     }
 
     pub fn get_unit_cost(&self, u_type: crate::components::UnitType) -> (f32, f32) {
@@ -817,6 +968,8 @@ impl GameConfig {
     ) -> Unit {
         let default_cfg = UnitStatsConfig {
             name: "Unknown".to_string(),
+            short_name: "UNK".to_string(),
+            description: String::new(),
             hp: 100.0,
             speed: 100.0,
             attack_range: 40.0,
@@ -868,6 +1021,8 @@ impl GameConfig {
     ) -> Building {
         let default_cfg = BuildingStatsConfig {
             name: "Unknown".to_string(),
+            short_name: "UNK".to_string(),
+            description: String::new(),
             hp: 1000.0,
             cost_minerals: 100.0,
             cost_energy: 0.0,
@@ -1019,5 +1174,52 @@ mod tests {
         assert_eq!(b_cfg.turret_damage, 35.0);
         assert_eq!(b_cfg.turret_cooldown, 0.8);
         assert_eq!(b_cfg.turret_damage_type, DamageType::Arcane);
+    }
+
+    #[test]
+    fn test_building_dimensions_and_labels_from_config() {
+        let mut cfg = GameConfig::default();
+        assert_eq!(cfg.get_building_dimensions(BuildingType::CommandCenter), (90.0, 90.0));
+        assert_eq!(cfg.get_building_short_name(BuildingType::SupplyDepot), "SUPPLY");
+        assert!(!cfg.get_building_description(BuildingType::PowerReactor).is_empty());
+
+        // Custom config modification propagates
+        if let Some(b) = cfg.buildings.get_mut("CommandCenter") {
+            b.width = 120.0;
+            b.height = 130.0;
+            b.short_name = "MEGA CC".to_string();
+        }
+        assert_eq!(cfg.get_building_dimensions(BuildingType::CommandCenter), (120.0, 130.0));
+        assert_eq!(cfg.get_building_short_name(BuildingType::CommandCenter), "MEGA CC");
+    }
+
+    #[test]
+    fn test_unit_labels_and_descriptions_from_config() {
+        let mut cfg = GameConfig::default();
+        assert_eq!(cfg.get_unit_short_name(UnitType::ShockTrooper), "STRIKER");
+        assert_eq!(cfg.get_unit_description(UnitType::Engineer), "Huấn luyện thợ mỏ / kỹ sư xây dựng.");
+
+        // Custom modification
+        if let Some(u) = cfg.units.get_mut("ShockTrooper") {
+            u.short_name = "CYBER STRIKER".to_string();
+            u.description = "Chiến binh plasma tương lai".to_string();
+        }
+        assert_eq!(cfg.get_unit_short_name(UnitType::ShockTrooper), "CYBER STRIKER");
+        assert_eq!(cfg.get_unit_description(UnitType::ShockTrooper), "Chiến binh plasma tương lai");
+    }
+
+    #[test]
+    fn test_render_config_customization() {
+        let mut cfg = GameConfig::default();
+        assert_eq!(cfg.render.grid_size, 80.0);
+        assert_eq!(cfg.render.bg_color, "#030d1a");
+
+        cfg.render.grid_size = 100.0;
+        cfg.render.bg_color = "#000000".to_string();
+
+        let json = cfg.to_json();
+        let parsed = GameConfig::from_json(&json).expect("Roundtrip with custom render config");
+        assert_eq!(parsed.render.grid_size, 100.0);
+        assert_eq!(parsed.render.bg_color, "#000000");
     }
 }
