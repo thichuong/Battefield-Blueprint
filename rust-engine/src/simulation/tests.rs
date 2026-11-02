@@ -614,3 +614,70 @@ fn test_acid_baneling_double_damage_to_buildings() {
     let damage_taken = b_initial_hp - engine.buildings[0].hp;
     assert_eq!(damage_taken, 180.0);
 }
+
+#[test]
+fn test_bot_resource_multiplier_by_difficulty() {
+    let mut engine = crate::GameEngine::new_headless();
+
+    // 1. Chế độ Tân binh (easy)
+    engine.difficulty = "easy".to_string();
+    assert_eq!(engine.bot_resource_multiplier(Team::Player), 1.0);
+    assert_eq!(engine.bot_resource_multiplier(Team::Enemy), 0.8);
+    assert_eq!(engine.bot_resource_multiplier(Team::Player2), 0.8);
+
+    // 2. Chế độ Tiêu chuẩn (normal)
+    engine.difficulty = "normal".to_string();
+    assert_eq!(engine.bot_resource_multiplier(Team::Player), 1.0);
+    assert_eq!(engine.bot_resource_multiplier(Team::Enemy), 1.0);
+    assert_eq!(engine.bot_resource_multiplier(Team::Player2), 1.0);
+
+    // 3. Chế độ Chuyên gia (hard)
+    engine.difficulty = "hard".to_string();
+    assert_eq!(engine.bot_resource_multiplier(Team::Player), 1.0);
+    assert_eq!(engine.bot_resource_multiplier(Team::Enemy), 1.2);
+    assert_eq!(engine.bot_resource_multiplier(Team::Player2), 1.2);
+}
+
+#[test]
+fn test_ranged_units_projectile_visuals() {
+    let cfg = crate::config::GameConfig::default();
+    let mut engine = crate::GameEngine::new_headless();
+    engine.units.clear();
+    engine.buildings.clear();
+    engine.projectiles.clear();
+
+    // Target là 1 Dummy ở (200, 100)
+    let target = cfg.create_unit(99, Team::Enemy, UnitType::Engineer, 200.0, 100.0);
+    engine.units.push(target);
+
+    // Test 1: Rifleman -> Bullet
+    let mut rifleman = cfg.create_unit(1, Team::Player, UnitType::Rifleman, 100.0, 100.0);
+    rifleman.order = UnitOrder::AttackTarget { target_id: 99, is_building: false };
+    engine.units.push(rifleman);
+    update_units(&mut engine, 0.05);
+    assert_eq!(engine.projectiles.len(), 1);
+    assert_eq!(engine.projectiles[0].visual, ProjectileVisual::Bullet);
+    assert!(!engine.projectiles[0].is_melee);
+    engine.projectiles.clear();
+    engine.units.retain(|u| u.id == 99);
+
+    // Test 2: DarkRocketeer -> Rocket
+    let mut rocketeer = cfg.create_unit(2, Team::Player, UnitType::DarkRocketeer, 100.0, 100.0);
+    rocketeer.order = UnitOrder::AttackTarget { target_id: 99, is_building: false };
+    engine.units.push(rocketeer);
+    update_units(&mut engine, 0.05);
+    assert_eq!(engine.projectiles.len(), 1);
+    assert_eq!(engine.projectiles[0].visual, ProjectileVisual::Rocket);
+    assert_eq!(engine.projectiles[0].damage_type, DamageType::Explosive);
+    engine.projectiles.clear();
+    engine.units.retain(|u| u.id == 99);
+
+    // Test 3: TaoistSwordmaster -> FlyingSword
+    let mut swordmaster = cfg.create_unit(3, Team::Player, UnitType::TaoistSwordmaster, 100.0, 100.0);
+    swordmaster.order = UnitOrder::AttackTarget { target_id: 99, is_building: false };
+    engine.units.push(swordmaster);
+    update_units(&mut engine, 0.05);
+    assert_eq!(engine.projectiles.len(), 1);
+    assert_eq!(engine.projectiles[0].visual, ProjectileVisual::FlyingSword);
+    assert_eq!(engine.projectiles[0].damage_type, DamageType::Arcane);
+}

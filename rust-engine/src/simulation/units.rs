@@ -447,6 +447,8 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
                                         lifetime: 0.0,
                                         is_melee: true,
                                         building_damage_mult: 2.0,
+                                        visual: ProjectileVisual::Bullet,
+                                        angle: 0.0,
                                     });
                                 } else if unit.unit_type == UnitType::ShockTrooper
                                     || unit.unit_type == UnitType::Vanguard
@@ -469,6 +471,8 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
                                         lifetime: 0.0,
                                         is_melee: true,
                                         building_damage_mult: 1.0,
+                                        visual: ProjectileVisual::Bullet,
+                                        angle: 0.0,
                                     });
                                 } else {
                                     // Tầm xa
@@ -482,11 +486,20 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
                                     } else {
                                         750.0
                                     };
+                                    let spawn_y = unit.y - 12.0;
+                                    let angle = (hit_y - spawn_y).atan2(hit_x - unit.x);
+                                    let visual = match unit.unit_type {
+                                        UnitType::Rifleman => ProjectileVisual::Bullet,
+                                        UnitType::DarkRocketeer => ProjectileVisual::Rocket,
+                                        UnitType::TaoistSwordmaster => ProjectileVisual::FlyingSword,
+                                        UnitType::LaserMarksman => ProjectileVisual::Laser,
+                                        _ => ProjectileVisual::Bullet,
+                                    };
                                     new_projectiles.push(Projectile {
                                         id: 0,
                                         team: unit.team,
                                         x: unit.x,
-                                        y: unit.y - 12.0,
+                                        y: spawn_y,
                                         target_x: hit_x,
                                         target_y: hit_y,
                                         speed,
@@ -497,6 +510,8 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
                                         lifetime: if is_laser { 0.2 } else { 1.5 },
                                         is_melee: false,
                                         building_damage_mult: 1.0,
+                                        visual,
+                                        angle,
                                     });
                                 }
                             }
@@ -538,14 +553,16 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
     // Giao khoáng sản vào kinh tế từng team
     for (team, amount, fx, fy) in mineral_deliveries {
         let t_idx = team.index() % 8;
-        engine.team_minerals_mined[t_idx] += amount;
+        let bot_mult = engine.bot_resource_multiplier(team);
+        let actual_amount = amount * bot_mult;
+        engine.team_minerals_mined[t_idx] += actual_amount;
         let eco = match team {
             Team::Player => {
-                engine.minerals_mined_accumulator += amount;
+                engine.minerals_mined_accumulator += actual_amount;
                 if !engine.is_headless {
                     new_floating_texts.push(FloatingText {
                         id: 0,
-                        text: format!("+{} 💎", amount as u32),
+                        text: format!("+{} 💎", actual_amount as u32),
                         x: fx,
                         y: fy,
                         color: "#00e5ff".to_string(),
@@ -558,7 +575,7 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
             Team::Enemy => &mut engine.enemy_eco,
             _ => &mut engine.extra_ecos[team.index() - 2],
         };
-        eco.minerals += amount;
+        eco.minerals += actual_amount;
     }
 
     // Xóa lính chết do tự nổ

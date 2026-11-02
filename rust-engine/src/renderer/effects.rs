@@ -1,4 +1,4 @@
-use crate::components::{BuildingType, DamageType, Team};
+use crate::components::{BuildingType, ProjectileVisual, Team};
 use crate::renderer::buildings::draw_building_graphic;
 use crate::GameEngine;
 
@@ -123,7 +123,7 @@ pub fn render_projectiles(engine: &GameEngine) {
             continue;
         }
 
-        if p.is_laser {
+        if p.is_laser || p.visual == ProjectileVisual::Laser {
             ctx.set_stroke_style_str(if p.team == Team::Player {
                 "#38bdf8"
             } else {
@@ -134,31 +134,155 @@ pub fn render_projectiles(engine: &GameEngine) {
             ctx.move_to(p.x as f64, p.y as f64);
             ctx.line_to(p.target_x as f64, p.target_y as f64);
             ctx.stroke();
-        } else {
-            let color = match p.damage_type {
-                DamageType::Explosive => "#fb923c",
-                DamageType::Arcane => "#c084fc",
-                DamageType::Energy => "#38bdf8",
-                DamageType::Physical => "#facc15",
-            };
-            ctx.set_fill_style_str(color);
-            ctx.begin_path();
-            let radius = if p.aoe_radius > 0.0 { 4.5 } else { 3.0 };
-            let _ = ctx.arc(
-                p.x as f64,
-                p.y as f64,
-                radius,
-                0.0,
-                std::f64::consts::PI * 2.0,
-            );
-            ctx.fill();
-
-            if p.aoe_radius > 0.0 {
-                ctx.set_stroke_style_str(color);
-                ctx.set_line_width(1.0);
-                ctx.stroke();
-            }
+            continue;
         }
+
+        ctx.save();
+        let _ = ctx.translate(p.x as f64, p.y as f64);
+        let _ = ctx.rotate(p.angle as f64);
+
+        match p.visual {
+            ProjectileVisual::Bullet => {
+                // 1. Rifleman & Đạn súng thường: Tia đạn (Bullet Tracer)
+                // Vệt mờ đuôi đạn
+                ctx.set_stroke_style_str("rgba(250, 204, 21, 0.45)");
+                ctx.set_line_width(3.0);
+                ctx.begin_path();
+                ctx.move_to(-14.0, 0.0);
+                ctx.line_to(0.0, 0.0);
+                ctx.stroke();
+
+                // Thân tia đạn vàng sáng
+                ctx.set_stroke_style_str("#facc15");
+                ctx.set_line_width(2.0);
+                ctx.begin_path();
+                ctx.move_to(-9.0, 0.0);
+                ctx.line_to(3.0, 0.0);
+                ctx.stroke();
+
+                // Lõi sáng trắng rực tại đầu đạn
+                ctx.set_stroke_style_str("#ffffff");
+                ctx.set_line_width(1.2);
+                ctx.begin_path();
+                ctx.move_to(-3.0, 0.0);
+                ctx.line_to(3.0, 0.0);
+                ctx.stroke();
+
+                // Đầu mũi đạn điểm sáng nhỏ
+                ctx.set_fill_style_str("#ffffff");
+                ctx.begin_path();
+                let _ = ctx.arc(3.0, 0.0, 1.2, 0.0, std::f64::consts::PI * 2.0);
+                ctx.fill();
+            }
+            ProjectileVisual::Rocket => {
+                // 2. DarkRocketeer: Quả tên lửa (Rocket/Missile)
+                // Luồng lửa phản lực ở đuôi
+                ctx.set_fill_style_str("#ea580c");
+                ctx.begin_path();
+                ctx.move_to(-6.0, -2.2);
+                ctx.line_to(-12.0, 0.0);
+                ctx.line_to(-6.0, 2.2);
+                ctx.close_path();
+                ctx.fill();
+
+                ctx.set_fill_style_str("#fef08a");
+                ctx.begin_path();
+                ctx.move_to(-6.0, -1.2);
+                ctx.line_to(-9.5, 0.0);
+                ctx.line_to(-6.0, 1.2);
+                ctx.close_path();
+                ctx.fill();
+
+                // Cánh đuôi định hướng (Fins)
+                ctx.set_stroke_style_str("#c2410c");
+                ctx.set_line_width(1.6);
+                ctx.begin_path();
+                ctx.move_to(-6.0, -4.0);
+                ctx.line_to(-3.0, -2.0);
+                ctx.line_to(-3.0, 2.0);
+                ctx.line_to(-6.0, 4.0);
+                ctx.stroke();
+
+                // Thân tên lửa hình khối trụ
+                ctx.set_fill_style_str("#475569");
+                ctx.fill_rect(-6.0, -2.0, 9.0, 4.0);
+                ctx.set_stroke_style_str("#ea580c");
+                ctx.set_line_width(1.2);
+                ctx.stroke_rect(-6.0, -2.0, 9.0, 4.0);
+
+                // Đầu đạn nhọn hình nón màu đỏ rực
+                ctx.set_fill_style_str("#ef4444");
+                ctx.begin_path();
+                ctx.move_to(3.0, -2.2);
+                ctx.line_to(7.5, 0.0);
+                ctx.line_to(3.0, 2.2);
+                ctx.close_path();
+                ctx.fill();
+
+                // Đốm sáng phản quang ở chóp đạn
+                ctx.set_fill_style_str("#fca5a5");
+                ctx.begin_path();
+                let _ = ctx.arc(6.0, -0.6, 0.8, 0.0, std::f64::consts::PI * 2.0);
+                ctx.fill();
+            }
+            ProjectileVisual::FlyingSword => {
+                // 3. TaoistSwordmaster: Cổ phi kiếm ngự chân khí
+                // Vệt kiếm khí hào quang lướt theo sau
+                ctx.set_stroke_style_str("rgba(56, 189, 248, 0.35)");
+                ctx.set_line_width(3.2);
+                ctx.begin_path();
+                ctx.move_to(-12.0, 0.0);
+                ctx.line_to(0.0, 0.0);
+                ctx.stroke();
+
+                // Quả táo chuôi kiếm (Pommel)
+                ctx.set_fill_style_str("#facc15");
+                ctx.begin_path();
+                let _ = ctx.arc(-6.5, 0.0, 1.2, 0.0, std::f64::consts::PI * 2.0);
+                ctx.fill();
+
+                // Chuôi kiếm
+                ctx.set_stroke_style_str("#64748b");
+                ctx.set_line_width(1.8);
+                ctx.begin_path();
+                ctx.move_to(-6.5, 0.0);
+                ctx.line_to(-4.0, 0.0);
+                ctx.stroke();
+
+                // Thanh chắn kiếm chữ thập (Crossguard) vàng hoàng kim
+                ctx.set_stroke_style_str("#facc15");
+                ctx.set_line_width(1.8);
+                ctx.begin_path();
+                ctx.move_to(-4.0, -3.2);
+                ctx.line_to(-4.0, 3.2);
+                ctx.stroke();
+
+                // Lưỡi phi kiếm xanh lam sắc nét
+                ctx.set_stroke_style_str("#38bdf8");
+                ctx.set_line_width(2.2);
+                ctx.begin_path();
+                ctx.move_to(-4.0, 0.0);
+                ctx.line_to(7.5, 0.0);
+                ctx.stroke();
+
+                // Sống kiếm và mũi kiếm sáng trắng chân khí
+                ctx.set_stroke_style_str("#ffffff");
+                ctx.set_line_width(1.0);
+                ctx.begin_path();
+                ctx.move_to(-3.5, 0.0);
+                ctx.line_to(7.5, 0.0);
+                ctx.stroke();
+
+                // Chân khí tỏa sáng nơi mũi kiếm
+                ctx.set_fill_style_str("#e0f2fe");
+                ctx.begin_path();
+                let _ = ctx.arc(7.5, 0.0, 1.0, 0.0, std::f64::consts::PI * 2.0);
+                ctx.fill();
+            }
+            ProjectileVisual::Laser => {}
+        }
+
+        ctx.restore();
     }
 }
 

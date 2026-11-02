@@ -311,20 +311,21 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
           </label>
           <div className="grid grid-cols-3 gap-2">
             {[
-              { id: 'easy', label: 'TÂN BINH (EASY)' },
-              { id: 'normal', label: 'TIÊU CHUẨN (NORMAL)' },
-              { id: 'hard', label: 'CHUYÊN GIA (HARD)' },
+              { id: 'easy', label: 'TÂN BINH', desc: 'Bot -20% tài nguyên' },
+              { id: 'normal', label: 'TIÊU CHUẨN', desc: 'Tài nguyên bình thường' },
+              { id: 'hard', label: 'CHUYÊN GIA', desc: 'Bot +20% tài nguyên' },
             ].map((diff) => (
               <button
                 key={diff.id}
                 onClick={() => setDifficulty(diff.id)}
-                className={`py-2 px-3 rounded text-xs font-bold transition-all border cursor-pointer ${
+                className={`py-2 px-3 rounded text-center transition-all border cursor-pointer flex flex-col items-center justify-center ${
                   difficulty === diff.id
                     ? 'bg-cyan-950/80 border-cyan-400 text-cyan-300 shadow-[0_0_10px_rgba(0,229,255,0.3)]'
                     : 'bg-slate-900/40 border-slate-800 text-slate-400 hover:border-slate-700'
                 }`}
               >
-                {diff.label}
+                <span className="text-xs font-bold">{diff.label}</span>
+                <span className="text-[10px] text-slate-400">{diff.desc}</span>
               </button>
             ))}
           </div>

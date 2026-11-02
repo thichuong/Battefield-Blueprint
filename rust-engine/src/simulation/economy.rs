@@ -117,9 +117,10 @@ pub fn update_economy(engine: &mut GameEngine, dt: f32) {
             continue;
         }
         let team = Team::from_index(i);
+        let bot_mult = engine.bot_resource_multiplier(team);
         let has_overcharged = engine.team_tech(team).overcharged_reactors;
         let mult = if has_overcharged { 1.5 } else { 1.0 };
-        let energy_rate = (base_energy + team_reactors[i] as f32 * reactor_energy) * mult;
+        let energy_rate = (base_energy + team_reactors[i] as f32 * reactor_energy) * mult * bot_mult;
 
         let num_converters = team_converters[i];
         let eco = match team {
@@ -132,9 +133,10 @@ pub fn update_economy(engine: &mut GameEngine, dt: f32) {
 
         // Chuyển hóa Năng lượng thành Khoáng sản
         if num_converters > 0 {
-            let (used_energy, gained_minerals) =
+            let (used_energy, gained_minerals_raw) =
                 calculate_energy_conversion(eco.energy, num_converters, dt);
             if used_energy > 0.0 {
+                let gained_minerals = gained_minerals_raw * bot_mult;
                 eco.energy -= used_energy;
                 eco.minerals += gained_minerals;
                 engine.team_minerals_mined[i] += gained_minerals;

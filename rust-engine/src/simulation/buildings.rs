@@ -253,6 +253,14 @@ pub fn process_building_combat_with_factions(
 
         let spawn_y = b.y - (b.height * 0.25).min(20.0);
         let is_laser = !has_dark_rockets && base_dmg_type == DamageType::Energy;
+        let angle = (*ey - spawn_y).atan2(*ex - b.x);
+        let visual = if has_dark_rockets {
+            ProjectileVisual::Rocket
+        } else if is_laser {
+            ProjectileVisual::Laser
+        } else {
+            ProjectileVisual::Bullet
+        };
 
         Some(Projectile {
             id: 0,
@@ -287,6 +295,8 @@ pub fn process_building_combat_with_factions(
             },
             is_melee: false,
             building_damage_mult: 1.0,
+            visual,
+            angle,
         })
     } else {
         None

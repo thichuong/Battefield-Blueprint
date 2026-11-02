@@ -316,6 +316,19 @@ impl GameEngine {
     }
 
     #[inline]
+    pub fn bot_resource_multiplier(&self, team: Team) -> f32 {
+        let slot = &self.player_slots[team.index() % 8];
+        if team == Team::Player || slot.is_human {
+            return 1.0;
+        }
+        match self.difficulty.as_str() {
+            "easy" => 0.8,
+            "hard" => 1.2,
+            _ => 1.0,
+        }
+    }
+
+    #[inline]
     pub fn get_faction(&self, team: Team) -> u8 {
         self.player_slots[team.index() % 8].faction
     }

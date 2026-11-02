@@ -18,28 +18,6 @@ pub fn process_commands(engine: &mut GameEngine) {
                 }
                 // Dọn sạch toàn bộ thực thể & dữ liệu của màn cũ trước khi khởi động màn mới
                 engine.reset_game();
-                let initial_min = if difficulty == "hard" {
-                    400.0
-                } else if difficulty == "easy" {
-                    100.0
-                } else {
-                    200.0
-                };
-                let initial_en = if difficulty == "hard" {
-                    150.0
-                } else if difficulty == "easy" {
-                    0.0
-                } else {
-                    50.0
-                };
-                for i in 1..8 {
-                    if engine.player_slots[i].active {
-                        let team = Team::from_index(i);
-                        let eco = engine.team_eco_mut(team);
-                        eco.minerals = initial_min;
-                        eco.energy = initial_en;
-                    }
-                }
                 engine.is_paused = false;
                 send_sync_event(engine);
             }
@@ -63,16 +41,8 @@ pub fn process_commands(engine: &mut GameEngine) {
                 engine.settings.show_grid = show_grid;
             }
             ReactToEngineCommand::RestartGame => {
-                let diff = engine.difficulty.clone();
                 // Dọn sạch toàn bộ thực thể & dữ liệu của màn cũ
                 engine.reset_game();
-                if diff == "hard" {
-                    engine.enemy_eco.minerals = 400.0;
-                    engine.enemy_eco.energy = 150.0;
-                } else if diff == "easy" {
-                    engine.enemy_eco.minerals = 100.0;
-                    engine.enemy_eco.energy = 0.0;
-                }
                 engine.is_paused = false;
                 send_sync_event(engine);
             }

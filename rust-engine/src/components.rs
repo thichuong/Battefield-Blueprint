@@ -421,6 +421,15 @@ pub struct MineralNode {
     pub amount: f32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ProjectileVisual {
+    #[default]
+    Bullet,
+    Rocket,
+    FlyingSword,
+    Laser,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Projectile {
     pub id: u32,
@@ -439,6 +448,10 @@ pub struct Projectile {
     pub is_melee: bool,
     #[serde(default = "default_mult_one")]
     pub building_damage_mult: f32,
+    #[serde(default)]
+    pub visual: ProjectileVisual,
+    #[serde(default)]
+    pub angle: f32,
 }
 
 fn default_mult_one() -> f32 {

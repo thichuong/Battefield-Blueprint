@@ -241,6 +241,9 @@ function __wbg_get_imports() {
         __wbg_restore_ab535bc88702bcc0: function(arg0) {
             arg0.restore();
         },
+        __wbg_rotate_6a6e81bc63bce7d8: function() { return handleError(function (arg0, arg1) {
+            arg0.rotate(arg1);
+        }, arguments); },
         __wbg_save_cd0bc920468bfe2c: function(arg0) {
             arg0.save();
         },
