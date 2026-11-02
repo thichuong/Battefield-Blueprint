@@ -54,7 +54,18 @@ Dự án kết hợp kiến trúc hiệu năng cao giữa **Rust WebAssembly (Wa
   - 📋 **Vòng lặp Thẻ bài (Loop Cards Engine)**: Thiết lập các vòng lặp độc lập (Sản xuất, Quân sự, v.v.) với điều kiện kích hoạt linh hoạt (giới hạn quân số, khoáng sản, năng lượng, trần supply, tỷ lệ lò phản ứng).
   - 🛡️ **Tuyến Phòng Thủ Tháp Canh (Turret Defense Line)**: Kéo thả và tính toán vector tự động bố trí tháp pháo 1 đến 3 hàng chắn giữa các trục xung yếu của căn cứ.
 - **Hệ Thống Trí Tuệ Nhân Tạo & Huấn Luyện Tự Động (AI & RL Self-Play Trainer)**:
-  - 🧠 **Não bộ RL Q-Learning (`RlBrain`)**: Mạng nơ-ron học sâu trích xuất 24 chiều vector trạng thái chiến trường (kinh tế, supply, số lượng quân, công nghệ, khoảng cách đe dọa) và lựa chọn 11 nhánh hành động chiến lược.
+  - 🧠 **Não bộ RL Deep Dual-Head MLP (`RlBrain`)**:
+    - **64 Chiều Đầu Vào (`STATE_DIM = 64`)**: Trích xuất chi tiết trạng thái chiến trường, đặc biệt chuyên sâu về lưu lượng tài nguyên, dòng chảy năng lượng, trạng thái chuyển đổi năng lượng $\rightarrow$ khoáng sản và trữ lượng mỏ quặng.
+    - **768 Nơ-ron Ẩn (2 Tầng Ẩn Sâu)**: Layer 1 (`512 neurons`) + Layer 2 (`256 neurons`) sử dụng hàm kích hoạt LeakyReLU ($\alpha = 0.01$).
+    - **Tổng số 170,005 tham số** (gấp ~28.5 lần kiến trúc cũ), cho phép phân tích chiến thuật vĩ mô và phối hợp vi mô phức tạp.
+    - **Đầu ra kép (Dual-Head)**: Dự đoán đồng thời điểm Q cho **15 Hành động chiến lược** và **6 Đội hình tác chiến**.
+  - 🚀 **Tăng Tốc Huấn Luyện Bằng GPU NVIDIA CUDA**:
+    - Tích hợp CUDA kernel FFI (`src/cuda/rl_kernel.cu`) thực thi trực tiếp trên GPU (NVIDIA GeForce RTX 3060).
+    - Tính toán song song Mini-Batch Experience Replay cho Forward và Backpropagation trên hàng trăm CUDA cores, tăng tốc độ hội tụ mô hình.
+    - Tự động fallback CPU mượt mà khi chạy trên môi trường không có GPU.
+  - ⚡ **Khuyến Khích Farm Kinh Tế Vĩ Mô & Năng Lượng**:
+    - AI tự động xây dựng quy mô lớn lên đến **36 Lò Phản ứng Năng lượng (PowerReactor)** và **16 Trạm Chuyển Hóa (EnergyConverter)**, cho phép khởi công song song 2 công trình cùng lúc.
+    - Cơ chế **Reward Shaping** thưởng điểm lớn khi hoàn thành công trình kinh tế và thưởng liên tục khi vận hành cỗ máy chuyển hóa năng lượng thặng dư (>1000) thành khoáng sản vàng.
   - ⚔️ **Auto Chuyên Sâu & Tùy Biến Giữa Trận (Adaptive Deep Auto)**:
     - 5 Archetype chiến thuật xoay tua: *Pháo binh Laser & Rocket*, *Tiên kiếm & Vu sư Hư không*, *Bọ nổ & Quái thú Titan*, *Bộ binh Đột kích*, *Đại công sự Kinh tế*.
     - *Tùy biến giữa trận (Mid-Match Adaptation)*: Khi trận đấu diễn ra và công nghệ mới được nghiên cứu xong, Auto tự động phát hiện và bổ sung các thẻ mua binh chủng mới tương ứng, đồng thời chuyển dịch cơ cấu giảm lính cơ bản để dồn tài nguyên cho quân chủ lực.
@@ -97,14 +108,18 @@ Dự án kết hợp kiến trúc hiệu năng cao giữa **Rust WebAssembly (Wa
    npm run build
    ```
 
-5. **Huấn luyện AI Bot (RL Trainer & Self-Play)**:
-   Bạn có thể tự chạy trình giả lập huấn luyện siêu tốc (Headless Simulation ~30-70 ep/s) để huấn luyện bộ não AI và cập nhật trọng số mới:
+5. **Huấn luyện AI Bot (RL Trainer Trên GPU NVIDIA CUDA)**:
+   Bạn có thể tự chạy trình giả lập huấn luyện siêu tốc (Headless Simulation) trên GPU để huấn luyện mạng Deep Neural 170,005 tham số:
    ```bash
-   # Huấn luyện 60 trận với bước nhảy thời gian 0.15s/step
-   ./train_bot.sh 60 0.15
+   # Cấp quyền thực thi nếu cần
+   chmod +x train_bot.sh
 
-   # Hoặc chạy trực tiếp qua cargo binary
-   cargo run --release --manifest-path rust-engine/Cargo.toml --bin train_bot -- --episodes 100 --dt 0.15 --output assets/rl_model.json
+   # Huấn luyện mặc định trên GPU cho toàn bộ 6 chế độ chơi
+   ./train_bot.sh 60 0.25 1800
+
+   # Huấn luyện riêng cho một chế độ cụ thể (1v1, 2v2, 3v3, 4v4, 2v2v2, ffa)
+   ./train_bot.sh 50 0.25 1800 1v1
+   ./train_bot.sh 50 0.25 1800 4v4
    ```
    Sau khi huấn luyện xong, chạy `./build-wasm.sh` để biên dịch lại gói WASM và nhúng trọng số mới vào trò chơi.
 

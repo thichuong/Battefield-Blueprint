@@ -1,4 +1,7 @@
-use crate::rl::{RlBrain, ACTION_DIM, FORMATION_DIM, STATE_DIM, DEFAULT_HIDDEN_SIZE, DEFAULT_HIDDEN2_SIZE};
+use crate::rl::RlBrain;
+
+#[cfg(has_cuda)]
+use crate::rl::{ACTION_DIM, FORMATION_DIM, STATE_DIM, DEFAULT_HIDDEN_SIZE, DEFAULT_HIDDEN2_SIZE};
 
 #[cfg(has_cuda)]
 extern "C" {
