@@ -1,6 +1,7 @@
 /* tslint:disable */
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
+export const engine_frame: (a: number, b: number, c: number, d: number) => number;
 export const engine_render: (a: number) => void;
 export const engine_tick: (a: number) => void;
 export const handle_key_down: (a: number, b: number) => void;

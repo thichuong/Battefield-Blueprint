@@ -2,6 +2,7 @@ pub mod buildings;
 pub mod command_card;
 pub mod effects;
 pub mod environment;
+pub mod gpu_cache;
 pub mod hud;
 pub mod units;
 
@@ -9,6 +10,7 @@ pub use buildings::*;
 pub use command_card::*;
 pub use effects::*;
 pub use environment::*;
+pub use gpu_cache::*;
 pub use hud::*;
 pub use units::*;
 
@@ -42,7 +44,24 @@ pub fn render(engine: &mut GameEngine) {
     if engine.is_headless || engine.context.is_none() {
         return;
     }
-    let ctx = engine.context.as_ref().unwrap();
+
+    // Tối ưu hóa: Cập nhật GPU Fog Texture chỉ khi sương mù thay đổi
+    if engine.fog_dirty {
+        if let Some(ref cache) = engine.gpu_cache {
+            cache.update_fog_texture(&engine.fog.grid);
+        }
+        engine.fog_dirty = false;
+    }
+
+    // Đồng bộ selected_unit_set (nếu kích thước hoặc nội dung khác nhau)
+    if engine.selected_unit_set.len() != engine.selected_unit_ids.len() {
+        engine.selected_unit_set.clear();
+        for &id in &engine.selected_unit_ids {
+            engine.selected_unit_set.insert(id);
+        }
+    }
+
+    let ctx = engine.context.as_ref().unwrap().clone();
     let vw = engine.camera.viewport_w;
     let vh = engine.camera.viewport_h;
 

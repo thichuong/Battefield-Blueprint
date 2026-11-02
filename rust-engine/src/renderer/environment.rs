@@ -7,6 +7,31 @@ pub fn render_blueprint_grid(engine: &GameEngine) {
         Some(c) => c,
         None => return,
     };
+
+    if let Some(ref cache) = engine.gpu_cache {
+        let (min_x, min_y, max_x, max_y) = engine.camera.viewport_bounds(512.0);
+        let tile_size = 512.0;
+        let start_x = ((min_x / tile_size).floor() * tile_size).max(0.0);
+        let end_x = ((max_x / tile_size).ceil() * tile_size).min(MAP_WIDTH as f32);
+        let start_y = ((min_y / tile_size).floor() * tile_size).max(0.0);
+        let end_y = ((max_y / tile_size).ceil() * tile_size).min(MAP_HEIGHT as f32);
+
+        let mut x = start_x;
+        while x < end_x {
+            let mut y = start_y;
+            while y < end_y {
+                let _ = ctx.draw_image_with_html_canvas_element(
+                    &cache.grid_canvas,
+                    x as f64,
+                    y as f64,
+                );
+                y += tile_size;
+            }
+            x += tile_size;
+        }
+        return;
+    }
+
     ctx.set_stroke_style_str(&engine.config.render.grid_line_color);
     ctx.set_line_width(1.0);
     ctx.begin_path();
@@ -75,20 +100,28 @@ pub fn render_minerals(engine: &GameEngine) {
             continue;
         }
 
-        // Tinh thể phát sáng Neon Cyan
-        ctx.set_stroke_style_str("#38bdf8");
-        ctx.set_fill_style_str("rgba(56, 189, 248, 0.28)");
-        ctx.set_line_width(2.0);
+        if let Some(ref cache) = engine.gpu_cache {
+            let _ = ctx.draw_image_with_html_canvas_element(
+                &cache.mineral_canvas,
+                (m.x - 32.0) as f64,
+                (m.y - 28.0) as f64,
+            );
+        } else {
+            // Tinh thể phát sáng Neon Cyan
+            ctx.set_stroke_style_str("#38bdf8");
+            ctx.set_fill_style_str("rgba(56, 189, 248, 0.28)");
+            ctx.set_line_width(2.0);
 
-        ctx.begin_path();
-        ctx.move_to(m.x as f64, (m.y - 18.0) as f64);
-        ctx.line_to((m.x + 16.0) as f64, (m.y - 5.0) as f64);
-        ctx.line_to((m.x + 12.0) as f64, (m.y + 16.0) as f64);
-        ctx.line_to((m.x - 12.0) as f64, (m.y + 16.0) as f64);
-        ctx.line_to((m.x - 16.0) as f64, (m.y - 5.0) as f64);
-        ctx.close_path();
-        ctx.fill();
-        ctx.stroke();
+            ctx.begin_path();
+            ctx.move_to(m.x as f64, (m.y - 18.0) as f64);
+            ctx.line_to((m.x + 16.0) as f64, (m.y - 5.0) as f64);
+            ctx.line_to((m.x + 12.0) as f64, (m.y + 16.0) as f64);
+            ctx.line_to((m.x - 12.0) as f64, (m.y + 16.0) as f64);
+            ctx.line_to((m.x - 16.0) as f64, (m.y - 5.0) as f64);
+            ctx.close_path();
+            ctx.fill();
+            ctx.stroke();
+        }
 
         // Nhãn trữ lượng
         ctx.set_font("bold 10px monospace");
@@ -106,6 +139,18 @@ pub fn render_fog_of_war(engine: &GameEngine) {
         Some(c) => c,
         None => return,
     };
+
+    if let Some(ref cache) = engine.gpu_cache {
+        let _ = ctx.draw_image_with_html_canvas_element_and_dw_and_dh(
+            &cache.fog_canvas,
+            0.0,
+            0.0,
+            MAP_WIDTH as f64,
+            MAP_HEIGHT as f64,
+        );
+        return;
+    }
+
     use crate::fog::{CELL_H, CELL_W, FOG_COLS, FOG_ROWS};
 
     let (min_x, min_y, max_x, max_y) = engine.camera.viewport_bounds(CELL_W.max(CELL_H));

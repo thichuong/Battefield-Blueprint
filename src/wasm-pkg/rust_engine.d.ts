@@ -51,6 +51,15 @@ export enum UnitType {
 }
 
 /**
+ * Vòng lặp tối ưu hóa hợp nhất: 1 lần gọi duy nhất mỗi frame giữa JS và Wasm!
+ * - Gom tọa độ chuột (mouse_x, mouse_y)
+ * - Quản lý Fixed Timestep Simulation bên trong Wasm (không cần JS loop nhiều lần)
+ * - Đo FPS và thời gian từ now_ms truyền từ JS (không gọi window.performance.now() qua FFI)
+ * - Trả về bitmask u32: Bit 0 = 1 nếu có sự kiện mới cần JS poll
+ */
+export function engine_frame(now_ms: number, mouse_x: number, mouse_y: number, should_render: boolean): number;
+
+/**
  * Vòng lặp 2: Vẽ khung hình lên Canvas (chạy theo requestAnimationFrame / VSync)
  * Nhận hệ số `alpha` [0.0..1.0] để nội suy vị trí mượt mà giữa 2 tick mô phỏng
  */
@@ -90,6 +99,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
+    readonly engine_frame: (a: number, b: number, c: number, d: number) => number;
     readonly engine_render: (a: number) => void;
     readonly engine_tick: (a: number) => void;
     readonly handle_key_down: (a: number, b: number) => void;

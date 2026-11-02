@@ -1,52 +1,50 @@
 use crate::components::{HarvestPhase, Team, Unit, UnitOrder, UnitType};
 use crate::renderer::get_team_color;
+use crate::renderer::gpu_cache::get_color_index;
 use crate::GameEngine;
 use web_sys::CanvasRenderingContext2d;
 
-pub fn render_units(engine: &GameEngine) {
+pub fn render_units(engine: &mut GameEngine) {
     let ctx = match engine.context.as_ref() {
-        Some(c) => c,
+        Some(c) => c.clone(),
         None => return,
     };
     let alpha = engine.render_alpha;
 
-    // Tối ưu hóa Giai đoạn 3: Chuyển đổi danh sách chọn thành HashSet để tra cứu O(1)
-    let selected_set: std::collections::HashSet<u32> =
-        engine.selected_unit_ids.iter().copied().collect();
+    // Tối ưu hóa: Tái sử dụng engine.visible_unit_indices để 0 cấp phát bộ nhớ mỗi frame
+    engine.visible_unit_indices.clear();
 
-    // Lọc và sắp xếp các unit theo trục Y để vẽ đúng chiều sâu 2.5D (Depth Sorting)
-    let mut visible_units: Vec<(&Unit, f64, f64)> = engine
-        .units
-        .iter()
-        .filter_map(|u| {
-            let draw_x = (u.prev_x + (u.x - u.prev_x) * alpha) as f64;
-            let draw_y = (u.prev_y + (u.y - u.prev_y) * alpha) as f64;
-            if !engine
-                .camera
-                .is_point_visible(draw_x as f32, draw_y as f32, 40.0)
-            {
-                return None;
-            }
-            let is_visible =
-                engine.are_allies(Team::Player, u.team) || engine.fog.is_visible(u.x, u.y);
-            if !is_visible {
-                return None;
-            }
-            Some((u, draw_x, draw_y))
-        })
-        .collect();
+    for (idx, u) in engine.units.iter().enumerate() {
+        let draw_x = (u.prev_x + (u.x - u.prev_x) * alpha) as f64;
+        let draw_y = (u.prev_y + (u.y - u.prev_y) * alpha) as f64;
+        if !engine
+            .camera
+            .is_point_visible(draw_x as f32, draw_y as f32, 40.0)
+        {
+            continue;
+        }
+        let is_visible =
+            engine.are_allies(Team::Player, u.team) || engine.fog.is_visible(u.x, u.y);
+        if !is_visible {
+            continue;
+        }
+        engine.visible_unit_indices.push((idx, draw_x, draw_y));
+    }
 
-    visible_units.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
+    // Sắp xếp chiều sâu 2.5D theo trục Y
+    engine.visible_unit_indices.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
 
-    for (u, draw_x, draw_y) in visible_units {
-        let is_selected = selected_set.contains(&u.id);
-        let base_color = get_team_color(engine, u.team).0;
-        // Hiệu ứng Juice: Hit Flash chớp trắng khi vừa nhận sát thương
-        let color = if u.hit_flash_timer > 0.0 {
-            "#ffffff"
-        } else {
-            base_color
-        };
+    let player_faction = engine.get_faction(Team::Player);
+    let team_factions = engine.team_factions();
+
+    let num_visible = engine.visible_unit_indices.len();
+    for v_i in 0..num_visible {
+        let (u_idx, draw_x, draw_y) = engine.visible_unit_indices[v_i];
+        let u = &engine.units[u_idx];
+
+        let is_selected = engine.selected_unit_set.contains(&u.id);
+        let is_hit_flash = u.hit_flash_timer > 0.0;
+        let color_idx = get_color_index(u.team, is_hit_flash, player_faction, &team_factions);
 
         // 1. Vòng tròn chọn dưới chân
         if is_selected {
@@ -84,16 +82,123 @@ pub fn render_units(engine: &GameEngine) {
             _ => false,
         };
 
-        // 2. Vẽ khung xương người que tối giản + vũ khí chi tiết & tư thế (sử dụng tọa độ nội suy)
-        draw_procedural_stickman(
-            ctx,
-            u,
-            color,
-            engine.game_time as f64,
-            is_welding,
-            draw_x,
-            draw_y,
-        );
+        // 2. Render lính từ GPU Texture Atlas
+        let mut rendered_from_cache = false;
+        // Riêng Engineer khi đang hàn/khai quặng cần hiệu ứng tia lửa động theo thời gian thực (game_time)
+        let can_use_cache = !(u.unit_type == UnitType::Engineer && is_welding);
+
+        if can_use_cache {
+            if let Some(ref cache) = engine.gpu_cache {
+                let ut_idx = u.unit_type as usize;
+                if ut_idx < cache.unit_sprites.len() {
+                    let facing_idx = if u.facing_right { 1 } else { 0 };
+                    let is_moving = !is_welding && matches!(
+                        u.order,
+                        UnitOrder::MoveTo { .. }
+                            | UnitOrder::AttackMove { .. }
+                            | UnitOrder::Harvest {
+                                phase: HarvestPhase::MovingToNode | HarvestPhase::ReturningToBase,
+                                ..
+                            }
+                            | UnitOrder::Build { .. }
+                    );
+
+                    let frame_idx = if u.attack_anim_timer > 0.0 {
+                        let p = (1.0 - u.attack_anim_timer).clamp(0.0, 1.0);
+                        ((p * 3.99) as usize).min(3)
+                    } else if is_moving {
+                        let norm = (u.walk_cycle / std::f32::consts::TAU).fract();
+                        let f = (norm * 7.99) as usize;
+                        f.clamp(0, 7)
+                    } else {
+                        0
+                    };
+
+                    let sprite_canvas = &cache.unit_sprites[ut_idx][color_idx][facing_idx][frame_idx];
+                    let sprite_dim = if u.unit_type == UnitType::BehemothTitan { 96.0 } else { 64.0 };
+                    let dx = draw_x - sprite_dim * 0.5;
+                    let dy = draw_y - sprite_dim * 0.75;
+                    let _ = ctx.draw_image_with_html_canvas_element(sprite_canvas, dx, dy);
+                    rendered_from_cache = true;
+
+                    // Với TaoistSwordmaster: Vẽ động số lượng phi kiếm thực tế còn lại (0..7)
+                    if u.unit_type == UnitType::TaoistSwordmaster {
+                        let swords_count = u.flying_swords.min(7) as usize;
+                        if swords_count > 0 {
+                            let flip = if u.facing_right { 1.0 } else { -1.0 };
+                            let spine_tilt = if is_moving { 1.5 * flip } else { 0.0 };
+                            let chest_x = draw_x + spine_tilt;
+                            let chest_y = draw_y - 17.0;
+                            let shoulder_x = chest_x;
+                            let shoulder_y = chest_y + 1.5;
+
+                            for i in 0..swords_count {
+                                let arc_offset = ((i as f64) - (swords_count as f64 - 1.0) * 0.5) * 5.0;
+                                let sw_x = shoulder_x - (9.0 + (i as f64) * 1.5) * flip;
+                                let sw_y = shoulder_y - 12.0 + arc_offset;
+
+                                // Thân phi kiếm
+                                ctx.set_stroke_style_str("#38bdf8");
+                                ctx.set_line_width(2.0);
+                                ctx.begin_path();
+                                ctx.move_to(sw_x, sw_y);
+                                ctx.line_to(sw_x + 11.0 * flip, sw_y - 4.5);
+                                ctx.stroke();
+
+                                // Chuôi kiếm vàng
+                                ctx.set_stroke_style_str("#facc15");
+                                ctx.set_line_width(1.5);
+                                ctx.begin_path();
+                                ctx.move_to(sw_x - 1.0 * flip, sw_y + 1.0);
+                                ctx.line_to(sw_x + 1.0 * flip, sw_y - 1.0);
+                                ctx.stroke();
+                            }
+                        }
+                    }
+
+                    // Nếu là LaserMarksman đang bắn, vẽ tia laser trực tiếp
+                    if u.unit_type == UnitType::LaserMarksman {
+                        if let Some((target_x, target_y)) = u.last_attack_pos {
+                            let tx = target_x as f64;
+                            let ty = target_y as f64;
+                            let flip = if u.facing_right { 1.0 } else { -1.0 };
+                            let gun_tip_x = draw_x + 23.0 * flip;
+                            let gun_tip_y = draw_y - 17.5;
+                            let stacks = u.laser_stacks.min(25) as f64;
+                            let beam_width = 1.5 + stacks * 0.25;
+
+                            ctx.set_stroke_style_str("#c084fc");
+                            ctx.set_line_width(beam_width + 1.5);
+                            ctx.begin_path();
+                            ctx.move_to(gun_tip_x, gun_tip_y);
+                            ctx.line_to(tx, ty);
+                            ctx.stroke();
+
+                            ctx.set_stroke_style_str("#ffffff");
+                            ctx.set_line_width(beam_width * 0.6);
+                            ctx.begin_path();
+                            ctx.move_to(gun_tip_x, gun_tip_y);
+                            ctx.line_to(tx, ty);
+                            ctx.stroke();
+                        }
+                    }
+                }
+            }
+        }
+
+        if !rendered_from_cache {
+            let base_color = get_team_color(engine, u.team).0;
+            let color = if is_hit_flash { "#ffffff" } else { base_color };
+            draw_procedural_stickman_direct(
+                &ctx,
+                u,
+                color,
+                engine.game_time as f64,
+                is_welding,
+                draw_x,
+                draw_y,
+            );
+        }
 
         // 3. Thanh máu và thanh khiên trên đầu
         let hp_pct = (u.hp / u.max_hp).clamp(0.0, 1.0) as f64;
@@ -123,7 +228,7 @@ pub fn render_units(engine: &GameEngine) {
     }
 }
 
-fn draw_procedural_stickman(
+pub fn draw_procedural_stickman_direct(
     ctx: &CanvasRenderingContext2d,
     u: &Unit,
     color: &str,

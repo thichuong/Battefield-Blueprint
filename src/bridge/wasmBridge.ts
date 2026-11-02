@@ -1,5 +1,6 @@
 import init, {
   init_engine,
+  engine_frame,
   engine_step,
   engine_tick,
   engine_render,
@@ -8,7 +9,6 @@ import init, {
   resize_canvas,
   handle_mouse_down,
   handle_mouse_up,
-  handle_mouse_move,
   handle_mouse_wheel,
   handle_key_down,
   handle_key_up,
@@ -147,12 +147,25 @@ export type EngineEventCallback = (
 class WasmBridge {
   private isInitialized = false;
   private eventListeners: EngineEventCallback[] = [];
+  public mouseX = 0;
+  public mouseY = 0;
 
   public async initialize(canvas: HTMLCanvasElement): Promise<void> {
     if (this.isInitialized) return;
     await init();
     init_engine(canvas);
     this.isInitialized = true;
+  }
+
+  /**
+   * Vòng lặp tối ưu hóa: 1 lần gọi duy nhất mỗi frame giữa JS và Wasm!
+   */
+  public frame(nowMs: number, shouldRender: boolean) {
+    if (!this.isInitialized) return;
+    const flags = engine_frame(nowMs, this.mouseX, this.mouseY, shouldRender);
+    if (flags !== 0) {
+      this.pollEvents();
+    }
   }
 
   public tick(dt: number) {
@@ -228,8 +241,8 @@ class WasmBridge {
   }
 
   public onMouseMove(x: number, y: number) {
-    if (!this.isInitialized) return;
-    handle_mouse_move(x, y);
+    this.mouseX = x;
+    this.mouseY = y;
   }
 
   public onMouseWheel(deltaY: number) {

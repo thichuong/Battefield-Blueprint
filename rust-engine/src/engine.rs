@@ -82,6 +82,15 @@ pub struct GameEngine {
     pub render_time_ms: f32,
     pub last_render_time: f64,
 
+    // Tối ưu hóa GPU Cache & Render Scratchpad
+    pub gpu_cache: Option<crate::renderer::gpu_cache::GpuCacheManager>,
+    pub visible_unit_indices: Vec<(usize, f64, f64)>,
+    pub selected_unit_set: std::collections::HashSet<u32>,
+    pub sim_accumulator: f32,
+    pub fog_dirty: bool,
+    pub tech_dirty: bool,
+    pub autoplay_dirty: bool,
+
     // Kênh thông điệp
     pub pending_commands: VecDeque<ReactToEngineCommand>,
     pub outgoing_events: Vec<EngineToReactEvent>,
@@ -230,10 +239,18 @@ impl GameEngine {
             sim_time_ms: 0.0,
             render_time_ms: 0.0,
             last_render_time: 0.0,
+            gpu_cache: None,
+            visible_unit_indices: Vec::with_capacity(512),
+            selected_unit_set: std::collections::HashSet::with_capacity(128),
+            sim_accumulator: 0.0,
+            fog_dirty: true,
+            tech_dirty: true,
+            autoplay_dirty: true,
             pending_commands: VecDeque::new(),
             outgoing_events: Vec::new(),
         };
 
+        engine.gpu_cache = crate::renderer::gpu_cache::GpuCacheManager::new(&engine.config);
         engine.init_base();
         simulation::update_fog(&mut engine);
         engine
@@ -328,6 +345,13 @@ impl GameEngine {
             sim_time_ms: 0.0,
             render_time_ms: 0.0,
             last_render_time: 0.0,
+            gpu_cache: None,
+            visible_unit_indices: Vec::with_capacity(512),
+            selected_unit_set: std::collections::HashSet::with_capacity(128),
+            sim_accumulator: 0.0,
+            fog_dirty: true,
+            tech_dirty: true,
+            autoplay_dirty: true,
             pending_commands: VecDeque::new(),
             outgoing_events: Vec::new(),
         };

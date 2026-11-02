@@ -65,6 +65,23 @@ export const UnitType = Object.freeze({
 });
 
 /**
+ * Vòng lặp tối ưu hóa hợp nhất: 1 lần gọi duy nhất mỗi frame giữa JS và Wasm!
+ * - Gom tọa độ chuột (mouse_x, mouse_y)
+ * - Quản lý Fixed Timestep Simulation bên trong Wasm (không cần JS loop nhiều lần)
+ * - Đo FPS và thời gian từ now_ms truyền từ JS (không gọi window.performance.now() qua FFI)
+ * - Trả về bitmask u32: Bit 0 = 1 nếu có sự kiện mới cần JS poll
+ * @param {number} now_ms
+ * @param {number} mouse_x
+ * @param {number} mouse_y
+ * @param {boolean} should_render
+ * @returns {number}
+ */
+export function engine_frame(now_ms, mouse_x, mouse_y, should_render) {
+    const ret = wasm.engine_frame(now_ms, mouse_x, mouse_y, should_render);
+    return ret >>> 0;
+}
+
+/**
  * Vòng lặp 2: Vẽ khung hình lên Canvas (chạy theo requestAnimationFrame / VSync)
  * Nhận hệ số `alpha` [0.0..1.0] để nội suy vị trí mượt mà giữa 2 tick mô phỏng
  * @param {number | null} [alpha]
@@ -199,9 +216,26 @@ function __wbg_get_imports() {
         __wbg_beginPath_ca2dfce389ff20d2: function(arg0) {
             arg0.beginPath();
         },
+        __wbg_clearRect_520d2bbc2437bfaa: function(arg0, arg1, arg2, arg3, arg4) {
+            arg0.clearRect(arg1, arg2, arg3, arg4);
+        },
         __wbg_closePath_0e752092e41e1e22: function(arg0) {
             arg0.closePath();
         },
+        __wbg_createElement_fcbc0805de826d62: function() { return handleError(function (arg0, arg1, arg2) {
+            const ret = arg0.createElement(getStringFromWasm0(arg1, arg2));
+            return ret;
+        }, arguments); },
+        __wbg_document_179650d6cb13c263: function(arg0) {
+            const ret = arg0.document;
+            return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
+        },
+        __wbg_drawImage_da8fc3deda491cc8: function() { return handleError(function (arg0, arg1, arg2, arg3, arg4, arg5) {
+            arg0.drawImage(arg1, arg2, arg3, arg4, arg5);
+        }, arguments); },
+        __wbg_drawImage_ed90024b5b4e0514: function() { return handleError(function (arg0, arg1, arg2, arg3) {
+            arg0.drawImage(arg1, arg2, arg3);
+        }, arguments); },
         __wbg_ellipse_06527522251a4849: function() { return handleError(function (arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
             arg0.ellipse(arg1, arg2, arg3, arg4, arg5, arg6, arg7);
         }, arguments); },
@@ -222,6 +256,16 @@ function __wbg_get_imports() {
             let result;
             try {
                 result = arg0 instanceof CanvasRenderingContext2D;
+            } catch (_) {
+                result = false;
+            }
+            const ret = result;
+            return ret;
+        },
+        __wbg_instanceof_HtmlCanvasElement_ed02ed9136056019: function(arg0) {
+            let result;
+            try {
+                result = arg0 instanceof HTMLCanvasElement;
             } catch (_) {
                 result = false;
             }
@@ -286,6 +330,9 @@ function __wbg_get_imports() {
         },
         __wbg_set_font_33fee74f2c82cb6f: function(arg0, arg1, arg2) {
             arg0.font = getStringFromWasm0(arg1, arg2);
+        },
+        __wbg_set_globalAlpha_9b3de2f2aa9958de: function(arg0, arg1) {
+            arg0.globalAlpha = arg1;
         },
         __wbg_set_height_7d9d8f892e6964c6: function(arg0, arg1) {
             arg0.height = arg1 >>> 0;

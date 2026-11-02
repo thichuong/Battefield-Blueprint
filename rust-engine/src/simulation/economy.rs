@@ -203,6 +203,7 @@ pub fn update_fog(engine: &mut GameEngine) {
             engine.fog.reveal_circle(u.x, u.y, r);
         }
     }
+    engine.fog_dirty = true;
 }
 
 pub fn check_game_over(engine: &mut GameEngine) {

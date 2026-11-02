@@ -1,5 +1,6 @@
 use super::get_team_color;
 use crate::components::*;
+use crate::renderer::gpu_cache::get_color_index;
 use crate::GameEngine;
 use web_sys::CanvasRenderingContext2d;
 
@@ -8,6 +9,10 @@ pub fn render_buildings(engine: &GameEngine) {
         Some(c) => c,
         None => return,
     };
+
+    let player_faction = engine.get_faction(Team::Player);
+    let team_factions = engine.team_factions();
+
     for b in &engine.buildings {
         let bw = b.width;
         let bh = b.height;
@@ -23,33 +28,73 @@ pub fn render_buildings(engine: &GameEngine) {
         }
 
         let is_selected = engine.selected_building_id == Some(b.id);
-        let (base_neon, color_fill) = get_team_color(engine, b.team);
-        // Hiệu ứng Juice: Hit Flash chớp trắng khi công trình trúng đạn
-        let color_neon = if b.hit_flash_timer > 0.0 {
-            "#ffffff"
-        } else {
-            base_neon
-        };
+        let is_hit_flash = b.hit_flash_timer > 0.0;
+        let color_idx = get_color_index(b.team, is_hit_flash, player_faction, &team_factions);
 
         let bx = (b.x - b.width * 0.5) as f64;
         let by = (b.y - b.height * 0.5) as f64;
         let bw = b.width as f64;
         let bh = b.height as f64;
 
-        // Khung nhà Blueprint
-        ctx.set_fill_style_str(color_fill);
-        ctx.fill_rect(bx, by, bw, bh);
+        // Vẽ từ GPU Texture Atlas
+        let mut rendered_from_cache = false;
+        if let Some(ref cache) = engine.gpu_cache {
+            let bt_idx = b.building_type as usize;
+            if bt_idx < cache.building_sprites.len() && color_idx < cache.building_sprites[bt_idx].len() {
+                let sprite_canvas = &cache.building_sprites[bt_idx][color_idx];
+                let dx = bx - 10.0;
+                let dy = by - 5.0;
+                let _ = ctx.draw_image_with_html_canvas_element(sprite_canvas, dx, dy);
+                rendered_from_cache = true;
+            }
+        }
 
-        ctx.set_stroke_style_str(if is_selected {
-            &engine.config.render.selection_color
-        } else {
-            color_neon
-        });
-        ctx.set_line_width(if is_selected { 2.5 } else { 1.5 });
-        ctx.stroke_rect(bx, by, bw, bh);
+        if !rendered_from_cache {
+            let (base_neon, color_fill) = get_team_color(engine, b.team);
+            let color_neon = if is_hit_flash { "#ffffff" } else { base_neon };
 
-        // Hiển thị vòng tròn tầm bắn của công trình khi được chọn
+            // Khung nhà Blueprint
+            ctx.set_fill_style_str(color_fill);
+            ctx.fill_rect(bx, by, bw, bh);
+
+            ctx.set_stroke_style_str(if is_selected {
+                &engine.config.render.selection_color
+            } else {
+                color_neon
+            });
+            ctx.set_line_width(if is_selected { 2.5 } else { 1.5 });
+            ctx.stroke_rect(bx, by, bw, bh);
+
+            // Ký hiệu góc kỹ thuật
+            draw_blueprint_brackets(ctx, bx, by, bw, bh, color_neon);
+
+            // Đồ họa 2D Tĩnh Cho Công Trình
+            draw_building_graphic(
+                ctx,
+                b.building_type,
+                b.x as f64,
+                b.y as f64,
+                bw,
+                bh,
+                color_neon,
+            );
+
+            // Tên công trình hiển thị bên dưới
+            ctx.set_font("bold 10px monospace");
+            ctx.set_text_align("center");
+            ctx.set_fill_style_str(color_neon);
+            let title = engine.config.get_building_short_name(b.building_type);
+            let _ = ctx.fill_text(title, b.x as f64, by + bh + 13.0);
+            ctx.set_text_align("left");
+        }
+
+        // Viền chọn highlight nếu được chọn
         if is_selected {
+            ctx.set_stroke_style_str(&engine.config.render.selection_color);
+            ctx.set_line_width(2.5);
+            ctx.stroke_rect(bx, by, bw, bh);
+
+            // Hiển thị vòng tròn tầm bắn của công trình khi được chọn
             let b_cfg = engine.config.get_building(b.building_type);
             let range = b_cfg.map(|c| c.turret_range).unwrap_or(0.0);
             if range > 0.0 {
@@ -66,28 +111,6 @@ pub fn render_buildings(engine: &GameEngine) {
                 ctx.stroke();
             }
         }
-
-        // Ký hiệu góc kỹ thuật
-        draw_blueprint_brackets(ctx, bx, by, bw, bh, color_neon);
-
-        // Vẽ Đồ Họa 2D Tĩnh Cho Công Trình
-        draw_building_graphic(
-            ctx,
-            b.building_type,
-            b.x as f64,
-            b.y as f64,
-            bw,
-            bh,
-            color_neon,
-        );
-
-        // Tên công trình hiển thị bên dưới (căn giữa chuẩn xác)
-        ctx.set_font("bold 10px monospace");
-        ctx.set_text_align("center");
-        ctx.set_fill_style_str(color_neon);
-        let title = engine.config.get_building_short_name(b.building_type);
-        let _ = ctx.fill_text(title, b.x as f64, by + bh + 13.0);
-        ctx.set_text_align("left");
 
         // Thanh tiến độ xây dựng hoặc Thanh máu
         if b.build_progress < 1.0 {

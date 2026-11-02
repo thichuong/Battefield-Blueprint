@@ -28,6 +28,18 @@ pub fn render_magic_circles(engine: &GameEngine) {
         let cx = circle.x as f64;
         let cy = circle.y as f64;
 
+        if let Some(ref cache) = engine.gpu_cache {
+            ctx.save();
+            ctx.set_global_alpha(alpha);
+            let _ = ctx.translate(cx, cy);
+            let _ = ctx.rotate(rot);
+            let scale = r / 85.0;
+            let _ = ctx.scale(scale, scale);
+            let _ = ctx.draw_image_with_html_canvas_element(&cache.magic_circle_canvas, -96.0, -96.0);
+            ctx.restore();
+            continue;
+        }
+
         ctx.save();
 
         // 1. Nền năng lượng tím hư không
@@ -151,6 +163,23 @@ pub fn render_projectiles(engine: &GameEngine) {
         ctx.save();
         let _ = ctx.translate(draw_x as f64, draw_y as f64);
         let _ = ctx.rotate(p.angle as f64);
+
+        if let Some(ref cache) = engine.gpu_cache {
+            match p.visual {
+                ProjectileVisual::Bullet => {
+                    let _ = ctx.draw_image_with_html_canvas_element(&cache.bullet_canvas, -20.0, -8.0);
+                }
+                ProjectileVisual::Rocket => {
+                    let _ = ctx.draw_image_with_html_canvas_element(&cache.rocket_canvas, -18.0, -9.0);
+                }
+                ProjectileVisual::FlyingSword => {
+                    let _ = ctx.draw_image_with_html_canvas_element(&cache.flying_sword_canvas, -18.0, -8.0);
+                }
+                ProjectileVisual::Laser => {}
+            }
+            ctx.restore();
+            continue;
+        }
 
         match p.visual {
             ProjectileVisual::Bullet => {
@@ -412,6 +441,27 @@ pub fn render_particles(engine: &GameEngine) {
         }
         let alpha = (p.lifetime / p.max_lifetime).clamp(0.0, 1.0);
         let sz = (p.size * alpha).max(0.5) as f64;
+
+        if let Some(ref cache) = engine.gpu_cache {
+            let p_canvas = match p.color.as_str() {
+                "#38bdf8" => &cache.particle_blue,
+                "#00e5ff" => &cache.particle_cyan,
+                "#facc15" | "#fef08a" => &cache.particle_yellow,
+                "#fb923c" | "#ea580c" => &cache.particle_orange,
+                "#ef4444" => &cache.particle_red,
+                "#c084fc" | "#a855f7" => &cache.particle_purple,
+                _ => &cache.particle_white,
+            };
+            let d = sz * 2.0;
+            let _ = ctx.draw_image_with_html_canvas_element_and_dw_and_dh(
+                p_canvas,
+                (p.x as f64) - sz,
+                (p.y as f64) - sz,
+                d,
+                d,
+            );
+            continue;
+        }
 
         ctx.set_fill_style_str(&p.color);
         ctx.begin_path();

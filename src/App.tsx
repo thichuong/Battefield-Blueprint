@@ -219,7 +219,6 @@ export const App: React.FC = () => {
     let isRunning = true;
     let animationFrameId: number | null = null;
     let timerId: number | null = null;
-    let lastTime = performance.now();
     let lastRenderTime = performance.now();
 
     const initEngine = async () => {
@@ -251,13 +250,7 @@ export const App: React.FC = () => {
         fps_limit: String(settings.fpsLimit),
       });
 
-      // Tách 2 vòng lặp:
-      // Vòng lặp 1: Fixed Timestep Accumulator cho Logic Mô phỏng (60 Ticks/giây)
-      // Vòng lặp 2: Render theo tùy chọn FPS (V-Sync, 60, 90, 120, 240, Bỏ giới hạn)
-      const FIXED_TIMESTEP = 1 / 60;
-      const MAX_SUB_STEPS = 5;
-      let accumulator = 0;
-
+      // Vòng lặp tối ưu hóa: 1 lệnh gọi Wasm duy nhất mỗi frame (Zero JS-Wasm boundary overhead)
       const scheduleNext = () => {
         if (!isRunning) return;
         const limit = fpsLimitRef.current;
@@ -279,29 +272,10 @@ export const App: React.FC = () => {
         }
       };
 
-      const loop = () => {
+      const loop = (timestamp?: number) => {
         if (!isRunning) return;
 
-        const now = performance.now();
-        let frameTime = (now - lastTime) / 1000;
-        lastTime = now;
-
-        // Giới hạn delta time tối đa 0.25s khi tab bị ẩn hoặc lag đột ngột (tránh Spiral of Death)
-        if (frameTime > 0.25) {
-          frameTime = 0.25;
-        }
-
-        accumulator += frameTime;
-
-        // VÒNG LẶP 1: LOGIC / SIMULATION (Fixed 60 Hz)
-        let subSteps = 0;
-        while (accumulator >= FIXED_TIMESTEP && subSteps < MAX_SUB_STEPS) {
-          wasmBridge.tick(FIXED_TIMESTEP);
-          accumulator -= FIXED_TIMESTEP;
-          subSteps++;
-        }
-
-        // VÒNG LẶP 2: RENDER (Có kiểm tra giới hạn FPS)
+        const now = timestamp || performance.now();
         const limit = fpsLimitRef.current;
         let shouldRender = false;
 
@@ -317,10 +291,8 @@ export const App: React.FC = () => {
           }
         }
 
-        if (shouldRender) {
-          const alpha = Math.min(Math.max(accumulator / FIXED_TIMESTEP, 0), 1);
-          wasmBridge.render(alpha);
-        }
+        // 1 LỆNH GỌI DUY NHẤT: Wasm tự lo fixed 60Hz tick + gom chuột + render GPU cache!
+        wasmBridge.frame(now, shouldRender);
 
         scheduleNext();
       };
