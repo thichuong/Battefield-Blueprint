@@ -71,6 +71,7 @@ pub struct GameEngine {
     pub ai_state: crate::ai::AiState,
     pub sync_timer: f32,
     pub minerals_mined_accumulator: f32,
+    pub team_minerals_mined: [f32; 8],
     pub income_calc_timer: f32,
     pub difficulty: String,
 
@@ -212,6 +213,7 @@ impl GameEngine {
             ai_state: crate::ai::AiState::default(),
             sync_timer: 0.0,
             minerals_mined_accumulator: 0.0,
+            team_minerals_mined: [0.0; 8],
             income_calc_timer: 0.0,
             difficulty: "normal".to_string(),
             pending_commands: VecDeque::new(),
@@ -302,6 +304,7 @@ impl GameEngine {
             ai_state: crate::ai::AiState::default(),
             sync_timer: 0.0,
             minerals_mined_accumulator: 0.0,
+            team_minerals_mined: [0.0; 8],
             income_calc_timer: 0.0,
             difficulty: "normal".to_string(),
             pending_commands: VecDeque::new(),
@@ -550,11 +553,10 @@ impl GameEngine {
         self.game_over = false;
         self.ai_think_timer = 0.0;
 
-        let mode = crate::rl::AiGameMode::detect_from_slots(&self.player_slots);
         let mode_brain = if self.ai_state.training_enabled {
             self.ai_state.rl_brain.clone()
         } else {
-            crate::rl::RlBrain::load_for_mode(mode)
+            crate::rl::RlBrain::default()
         };
         let training_enabled = self.ai_state.training_enabled;
 
@@ -573,6 +575,7 @@ impl GameEngine {
         }
 
         self.minerals_mined_accumulator = 0.0;
+        self.team_minerals_mined = [0.0; 8];
         self.income_calc_timer = 0.0;
         self.enemy_autoplay = crate::autoplay::AutoPlayState::default_for_enemy();
 

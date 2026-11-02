@@ -12,8 +12,6 @@ use rust_engine::GameEngine;
 use std::env;
 use std::fs::File;
 use std::io::Write;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
 use std::time::Instant;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -245,7 +243,6 @@ fn main() {
     let mut time_scale_dt = 0.25_f32; // Tăng tốc bước nhảy mô phỏng mặc định lên 0.25s
     let mut max_game_time = 1800.0_f32; // Tăng max game time lên 1800s (30 phút game)
     let mut specific_mode: Option<String> = None;
-    let mut parallel_modes = true;
 
     let mut i = 1;
     while i < args.len() {
@@ -274,9 +271,7 @@ fn main() {
                     i += 1;
                 }
             }
-            "--sequential" | "--no-parallel" => {
-                parallel_modes = false;
-            }
+            "--sequential" | "--no-parallel" => {}
             _ => {
                 if let Ok(ep) = args[i].parse::<usize>() {
                     total_episodes = ep;
@@ -318,7 +313,7 @@ fn main() {
     let total_params = dummy_brain.total_parameters();
 
     println!("============================================================");
-    println!("🧠 BATTLEFIELD BLUEPRINT // PARALLEL MULTI-MODE RL TRAINER");
+    println!("🧠 BATTLEFIELD BLUEPRINT // UNIFIED SINGLE-MODEL RL TRAINER");
     println!(
         "   Hardware Device:    {}",
         if gpu_avail {
@@ -356,16 +351,9 @@ fn main() {
     );
     println!("   Action Dimension:   {} strategic actions", ACTION_DIM);
     println!("   Formation Dimension:{} formations", FORMATION_DIM);
+    println!("   Unified Model File: rl_model.json");
     println!(
-        "   Parallel Branches:  {}",
-        if parallel_modes {
-            "ENABLED (Multi-threaded)"
-        } else {
-            "SEQUENTIAL"
-        }
-    );
-    println!(
-        "   Target Modes:       {:?}",
+        "   Scenarios Included: {:?}",
         target_scenarios
             .iter()
             .map(|s| s.name())
@@ -374,61 +362,85 @@ fn main() {
     println!("============================================================");
 
     let start_wall_time = Instant::now();
-    let config = Arc::new(TrainConfig {
+    let config = TrainConfig {
         episodes_per_mode: total_episodes,
         time_scale_dt,
         max_game_time,
-    });
+    };
 
-    let completed_counter = Arc::new(AtomicUsize::new(0));
+    // Nạp trọng số sẵn có từ rl_model.json để huấn luyện liên tục
+    let mut unified_brain = RlBrain::default();
+    println!("🧠 Đã nạp thành công bộ não AI gốc ({}) tham số.", unified_brain.total_parameters());
 
-    if parallel_modes && target_scenarios.len() > 1 {
-        std::thread::scope(|s| {
-            for &scenario in &target_scenarios {
-                let cfg = Arc::clone(&config);
-                let counter = Arc::clone(&completed_counter);
-                s.spawn(move || {
-                    let brain = train_mode(scenario, &cfg);
-                    save_mode_model(scenario, &brain);
-                    counter.fetch_add(1, Ordering::SeqCst);
-                });
-            }
-        });
+    // Huấn luyện xoay vòng qua các kịch bản để tích lũy kinh nghiệm vào 1 model duy nhất
+    for (idx, &scenario) in target_scenarios.iter().enumerate() {
+        println!(
+            "\n>>> [Giai đoạn {}/{}] Huấn luyện kịch bản: {} ({} ván) <<<",
+            idx + 1,
+            target_scenarios.len(),
+            scenario.name(),
+            config.episodes_per_mode
+        );
+        unified_brain = train_scenario_with_brain(scenario, &config, unified_brain);
+        save_unified_model(&unified_brain);
+    }
+
+    println!("\n============================================================");
+    println!("⚔️  TIẾN HÀNH ĐẤU THỬ NGHIỆM ĐÁNH GIÁ (EVALUATION BENCHMARK)");
+    println!("   - Trạng thái AI: Greedy Exploitation (Epsilon = 0.00)");
+    println!("   - Đối thủ: Hệ thống Autoplay đa phong cách & Đại sư đa công nghệ");
+    println!("============================================================");
+
+    let eval_matches = 5; // Số ván test mỗi chế độ
+    println!("{:<22} | {:<7} | {:<16} | {:<12}", "Chế độ (Mode)", "Tỉ lệ", "Thắng/Thua/Hòa", "Avg Game Time");
+    println!("------------------------------------------------------------");
+
+    let mut total_eval_wins = 0;
+    let mut total_eval_matches = 0;
+
+    for &scenario in &target_scenarios {
+        let (wins, losses, draws, avg_time) = evaluate_model_on_scenario(scenario, &unified_brain, eval_matches, time_scale_dt);
+        let win_rate = (wins as f32 / eval_matches as f32) * 100.0;
+        total_eval_wins += wins;
+        total_eval_matches += eval_matches;
+
+        println!(
+            "{:<22} | {:>5.1}%  | W:{} L:{} D:{}     | {:.1}s",
+            scenario.name(),
+            win_rate,
+            wins,
+            losses,
+            draws,
+            avg_time
+        );
+    }
+    println!("------------------------------------------------------------");
+    let overall_winrate = if total_eval_matches > 0 {
+        (total_eval_wins as f32 / total_eval_matches as f32) * 100.0
     } else {
-        for &scenario in &target_scenarios {
-            let brain = train_mode(scenario, &config);
-            save_mode_model(scenario, &brain);
-            completed_counter.fetch_add(1, Ordering::SeqCst);
-        }
-    }
-
-    // Sao chép model 4v4 hoặc model đầu tiên làm fallback rl_model.json
-    let default_source = "assets/rl_model_4v4.json";
-    let default_dest = "assets/rl_model.json";
-    if std::path::Path::new(default_source).exists() {
-        let _ = std::fs::copy(default_source, default_dest);
-        let _ = std::fs::copy(default_source, "rust-engine/assets/rl_model.json");
-    }
+        0.0
+    };
+    println!("🏆 TỔNG KẾT TỈ LỆ THẮNG TOÀN DIỆN: {:>5.1}% ({}/{} ván thắng)", overall_winrate, total_eval_wins, total_eval_matches);
 
     println!("============================================================");
     println!(
-        "🎉 HOÀN THÀNH HUẤN LUYỆN TOÀN BỘ {} CHẾ ĐỘ CHƠI!",
-        completed_counter.load(Ordering::SeqCst)
+        "🎉 HOÀN THÀNH HUẤN LUYỆN TOÀN DIỆN CHO 1 MODEL AI DUY NHẤT!"
     );
     println!(
         "⏱️  Tổng thời gian: {:.2}s",
         start_wall_time.elapsed().as_secs_f32()
     );
+    println!("💾 File model cập nhật: assets/rl_model.json");
     println!("============================================================");
 }
 
-fn train_mode(scenario: Scenario, config: &TrainConfig) -> RlBrain {
+fn train_scenario_with_brain(scenario: Scenario, config: &TrainConfig, mut brain: RlBrain) -> RlBrain {
     let mode = scenario.to_mode();
     let total_episodes = config.episodes_per_mode;
     let time_scale_dt = config.time_scale_dt;
     let max_game_time = config.max_game_time;
 
-    let mut champion_pool: Vec<RlBrain> = Vec::new();
+    let mut champion_pool: Vec<RlBrain> = vec![brain.clone()];
     let mut total_wins = 0;
     let mut total_losses = 0;
     let mut total_draws = 0;
@@ -438,7 +450,8 @@ fn train_mode(scenario: Scenario, config: &TrainConfig) -> RlBrain {
 
     let mut engine = GameEngine::new_headless();
     engine.ai_state.training_enabled = true;
-    engine.ai_state.rl_brain.epsilon = 0.25;
+    brain.epsilon = brain.epsilon.max(0.15); // Duy trì tỷ lệ thăm dò hợp lý
+    engine.ai_state.rl_brain = brain;
 
     let learner_team = Team::Enemy; // Slot 1 là Agent chính
 
@@ -649,10 +662,78 @@ fn train_mode(scenario: Scenario, config: &TrainConfig) -> RlBrain {
     engine.team_ai(learner_team).rl_brain.clone()
 }
 
-fn save_mode_model(scenario: Scenario, brain: &RlBrain) {
-    let mode = scenario.to_mode();
-    let filename = mode.model_filename();
+fn evaluate_model_on_scenario(
+    scenario: Scenario,
+    brain: &RlBrain,
+    matches: usize,
+    dt: f32,
+) -> (usize, usize, usize, f32) {
+    let mut wins = 0;
+    let mut losses = 0;
+    let mut draws = 0;
+    let mut total_time = 0.0;
+    let learner_team = Team::Enemy;
 
+    for match_idx in 1..=matches {
+        let mut engine = GameEngine::new_headless();
+        let slots = scenario.configure_slots();
+        engine.player_slots = slots;
+        engine.reset_game();
+        engine.is_headless = true;
+        engine.is_paused = false;
+
+        // Cấu hình AI phe ta với Brain đã train và Epsilon = 0 (khai thác tối đa)
+        let mut test_brain = brain.clone();
+        test_brain.epsilon = 0.0;
+        engine.team_ai_mut(learner_team).rl_brain = test_brain;
+        engine.team_ai_mut(learner_team).training_enabled = false;
+        engine.team_autoplay_mut(learner_team).config.enabled = false;
+
+        // Cấu hình đối thủ với các archetype đa dạng
+        let arch = match match_idx % 4 {
+            0 => AutoTrainingArchetype::OmniTechGrandmaster,
+            1 => AutoTrainingArchetype::CombinedTitanArtilleryMage,
+            2 => AutoTrainingArchetype::ScienceArtillery,
+            _ => AutoTrainingArchetype::MonsterSwarmBehemoth,
+        };
+
+        for slot_idx in 0..MAX_PLAYERS {
+            let team = Team::from_index(slot_idx);
+            if !engine.is_slot_active(team) || team == learner_team {
+                continue;
+            }
+            if engine.are_hostile(learner_team, team) {
+                let cfg = create_training_autoplay_config(team, arch);
+                engine.team_autoplay_mut(team).config = cfg;
+            } else {
+                let cfg = create_training_autoplay_config(team, AutoTrainingArchetype::MacroFortress);
+                engine.team_autoplay_mut(team).config = cfg;
+            }
+        }
+
+        while !engine.game_over && engine.game_time < 1200.0 {
+            rust_engine::simulation::step(&mut engine, dt);
+        }
+
+        total_time += engine.game_time;
+        let opp_ccs = count_hostile_ccs(&engine, learner_team);
+        let my_ccs = count_ally_ccs(&engine, learner_team);
+
+        if opp_ccs == 0 && my_ccs > 0 {
+            wins += 1;
+        } else if my_ccs == 0 && opp_ccs > 0 {
+            losses += 1;
+        } else {
+            draws += 1;
+        }
+    }
+
+    let avg_time = total_time / (matches.max(1) as f32);
+    (wins, losses, draws, avg_time)
+}
+
+fn save_unified_model(brain: &RlBrain) {
+    let filename = "rl_model.json";
     let model_json = serde_json::to_string_pretty(brain).expect("Serialize RL Brain failed");
 
     for dir in &["assets", "rust-engine/assets", "../assets"] {
@@ -660,7 +741,7 @@ fn save_mode_model(scenario: Scenario, brain: &RlBrain) {
             let path = format!("{}/{}", dir, filename);
             if let Ok(mut file) = File::create(&path) {
                 let _ = file.write_all(model_json.as_bytes());
-                println!("💾 [{}] Đã lưu model: {}", mode.name(), path);
+                println!("💾 [Unified Model] Đã lưu model: {}", path);
             }
         }
     }

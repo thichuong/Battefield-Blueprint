@@ -137,6 +137,7 @@ pub fn update_economy(engine: &mut GameEngine, dt: f32) {
             if used_energy > 0.0 {
                 eco.energy -= used_energy;
                 eco.minerals += gained_minerals;
+                engine.team_minerals_mined[i] += gained_minerals;
                 if team == Team::Player {
                     player_gained_minerals += gained_minerals;
                 }
@@ -152,11 +153,16 @@ pub fn update_economy(engine: &mut GameEngine, dt: f32) {
 
     engine.minerals_mined_accumulator += player_gained_minerals;
 
-    // Tính tốc độ thu nhập khoáng sản cho Player
+    // Tính tốc độ thu nhập khoáng sản cho toàn bộ 8 team
     engine.income_calc_timer += dt;
     if engine.income_calc_timer >= 1.0 {
-        engine.player_eco.minerals_per_sec =
-            engine.minerals_mined_accumulator / engine.income_calc_timer;
+        let elapsed = engine.income_calc_timer;
+        engine.player_eco.minerals_per_sec = engine.team_minerals_mined[0] / elapsed;
+        engine.enemy_eco.minerals_per_sec = engine.team_minerals_mined[1] / elapsed;
+        for i in 2..8 {
+            engine.extra_ecos[i - 2].minerals_per_sec = engine.team_minerals_mined[i] / elapsed;
+        }
+        engine.team_minerals_mined = [0.0; 8];
         engine.minerals_mined_accumulator = 0.0;
         engine.income_calc_timer = 0.0;
     }

@@ -537,6 +537,8 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
 
     // Giao khoáng sản vào kinh tế từng team
     for (team, amount, fx, fy) in mineral_deliveries {
+        let t_idx = team.index() % 8;
+        engine.team_minerals_mined[t_idx] += amount;
         let eco = match team {
             Team::Player => {
                 engine.minerals_mined_accumulator += amount;

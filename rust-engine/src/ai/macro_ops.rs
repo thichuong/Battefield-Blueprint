@@ -17,15 +17,30 @@ pub fn execute_team_continuous_recruitment(engine: &mut GameEngine, team: Team) 
         .filter(|u| u.team == team && u.unit_type != UnitType::Engineer)
         .count();
     let tech = engine.team_tech(team);
+    let total_unlocked = super::state::count_unlocked_techs(tech);
 
-    let needs_tech = !tech.dark_matter_rockets || !tech.behemoth_mutation || !tech.void_cataclysm;
-    let mineral_reserve = if needs_tech && team_combat >= 8 {
-        180.0
-    } else if team_combat >= 8 {
-        70.0
+    // Kiểm tra căn cứ có đang bị đe dọa không
+    let base_pos = engine.base_pos(team);
+    let base_threat = engine.units.iter().any(|u| {
+        engine.are_hostile(team, u.team)
+            && ((u.x - base_pos.0).powi(2) + (u.y - base_pos.1).powi(2)) < 800.0_f32.powi(2)
+    });
+
+    // Dồn tài nguyên nâng cấp công nghệ & mở rộng kinh tế:
+    // Nếu chưa xong toàn bộ công nghệ (< 19) và căn cứ không bị đe dọa, duy trì quỹ dự trữ lớn
+    let (mineral_reserve, energy_reserve) = if base_threat {
+        (0.0, 0.0)
+    } else if total_unlocked < 12 {
+        (250.0, 150.0)
+    } else if total_unlocked < 19 {
+        (180.0, 100.0)
+    } else if team_combat >= 24 {
+        (100.0, 50.0)
     } else {
-        0.0
+        (0.0, 0.0)
     };
+
+    let max_queue = if total_unlocked < 12 && !base_threat { 1 } else { 2 };
 
     let completed_barracks: Vec<u32> = engine
         .buildings
@@ -34,7 +49,7 @@ pub fn execute_team_continuous_recruitment(engine: &mut GameEngine, team: Team) 
             b.team == team
                 && b.building_type == BuildingType::Barracks
                 && b.build_progress >= 1.0
-                && b.training_queue.len() < 2
+                && b.training_queue.len() < max_queue
         })
         .map(|b| b.id)
         .collect();
@@ -120,7 +135,7 @@ pub fn execute_team_continuous_recruitment(engine: &mut GameEngine, team: Team) 
             }
 
             let eco = engine.team_eco_mut(team);
-            if eco.minerals >= mineral_reserve + min_cost && eco.energy >= en_cost {
+            if eco.minerals >= mineral_reserve + min_cost && eco.energy >= energy_reserve + en_cost {
                 eco.minerals -= min_cost;
                 eco.energy -= en_cost;
                 if let Some(b) = engine.buildings.iter_mut().find(|b| b.id == bid) {
@@ -131,7 +146,8 @@ pub fn execute_team_continuous_recruitment(engine: &mut GameEngine, team: Team) 
             }
         }
 
-        if !recruited {
+        // Chỉ mua lính cơ bản nếu căn cứ đang bị đe dọa hoặc đã xong phần lớn công nghệ
+        if !recruited && (base_threat || total_unlocked >= 12 || team_combat < 6) {
             let basic_units = [UnitType::ShockTrooper, UnitType::Rifleman];
             for &u_type in &basic_units {
                 let (mut min_cost, _) = engine.config.get_unit_cost(u_type);
@@ -546,6 +562,24 @@ pub fn execute_team_training(engine: &mut GameEngine, team: Team, candidate_unit
         return;
     }
 
+    let total_unlocked = super::state::count_unlocked_techs(engine.team_tech(team));
+    let base_pos = engine.base_pos(team);
+    let base_threat = engine.units.iter().any(|u| {
+        engine.are_hostile(team, u.team)
+            && ((u.x - base_pos.0).powi(2) + (u.y - base_pos.1).powi(2)) < 800.0_f32.powi(2)
+    });
+    let (mineral_reserve, energy_reserve) = if base_threat {
+        (0.0, 0.0)
+    } else if total_unlocked < 12 {
+        (250.0, 150.0)
+    } else if total_unlocked < 19 {
+        (180.0, 100.0)
+    } else {
+        (0.0, 0.0)
+    };
+
+    let max_queue = if total_unlocked < 12 && !base_threat { 1 } else { 2 };
+
     let completed_barracks: Vec<u32> = engine
         .buildings
         .iter()
@@ -553,7 +587,7 @@ pub fn execute_team_training(engine: &mut GameEngine, team: Team, candidate_unit
             b.team == team
                 && b.building_type == BuildingType::Barracks
                 && b.build_progress >= 1.0
-                && b.training_queue.len() < 2
+                && b.training_queue.len() < max_queue
         })
         .map(|b| b.id)
         .collect();
@@ -580,7 +614,7 @@ pub fn execute_team_training(engine: &mut GameEngine, team: Team, candidate_unit
             }
 
             let eco = engine.team_eco_mut(team);
-            if eco.minerals >= min_cost && eco.energy >= en_cost {
+            if eco.minerals >= mineral_reserve + min_cost && eco.energy >= energy_reserve + en_cost {
                 eco.minerals -= min_cost;
                 eco.energy -= en_cost;
                 if let Some(b) = engine.buildings.iter_mut().find(|b| b.id == bid) {

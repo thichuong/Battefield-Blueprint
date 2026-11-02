@@ -30,14 +30,7 @@ impl AiGameMode {
     }
 
     pub fn model_filename(&self) -> &'static str {
-        match self {
-            Self::Duel1v1 => "rl_model_1v1.json",
-            Self::Team2v2 => "rl_model_2v2.json",
-            Self::Team3v3 => "rl_model_3v3.json",
-            Self::Team4v4 => "rl_model_4v4.json",
-            Self::ThreeWay2v2v2 => "rl_model_2v2v2.json",
-            Self::FreeForAll8 => "rl_model_ffa8.json",
-        }
+        "rl_model.json"
     }
 
     pub fn detect_from_slots(slots: &[crate::components::PlayerSlotConfig; 8]) -> Self {
@@ -362,21 +355,8 @@ impl RlBrain {
         target
     }
 
-    pub fn load_for_mode(mode: AiGameMode) -> Self {
-        let model_str = match mode {
-            AiGameMode::Duel1v1 => include_str!("../assets/rl_model_1v1.json"),
-            AiGameMode::Team2v2 => include_str!("../assets/rl_model_2v2.json"),
-            AiGameMode::Team3v3 => include_str!("../assets/rl_model_3v3.json"),
-            AiGameMode::Team4v4 => include_str!("../assets/rl_model_4v4.json"),
-            AiGameMode::ThreeWay2v2v2 => include_str!("../assets/rl_model_2v2v2.json"),
-            AiGameMode::FreeForAll8 => include_str!("../assets/rl_model_ffa8.json"),
-        };
-
-        if let Ok(brain) = serde_json::from_str::<Self>(model_str) {
-            brain.ensure_dimensions()
-        } else {
-            Self::default()
-        }
+    pub fn load_for_mode(_mode: AiGameMode) -> Self {
+        Self::default()
     }
 
     pub fn load_default_weights() -> Option<Self> {

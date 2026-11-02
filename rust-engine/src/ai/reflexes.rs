@@ -119,18 +119,35 @@ pub fn apply_strategic_action_for_team(
     team: Team,
     action: BotStrategicAction,
 ) {
+    // 1. Kiểm tra quân số chiến đấu hiện tại
+    let my_combat = engine
+        .units
+        .iter()
+        .filter(|u| u.team == team && u.unit_type != UnitType::Engineer)
+        .count();
+    let tech = engine.team_tech(team);
+    let has_endgame_tech = tech.behemoth_mutation || tech.void_cataclysm || tech.dark_matter_rockets;
+    let wave_assault_threshold = if has_endgame_tech { 20 } else { 24 };
+
+    // Kiểm tra căn cứ có bị đe dọa trực tiếp không
+    let base_pos = engine.base_pos(team);
+    let base_threat = engine.units.iter().any(|u| {
+        engine.are_hostile(team, u.team)
+            && ((u.x - base_pos.0).powi(2) + (u.y - base_pos.1).powi(2)) < 800.0_f32.powi(2)
+    });
+
     match action {
         BotStrategicAction::ExpandEco => {
             execute_team_eco(engine, team, true);
-            execute_team_training(engine, team, &[UnitType::ShockTrooper, UnitType::Rifleman]);
+            // Không spam lính cơ bản khi mở rộng kinh tế, ưu tiên dồn tiền cho CC & Thợ mỏ
         }
         BotStrategicAction::BuildInfrastructure => {
             execute_team_infrastructure(engine, team);
-            execute_team_training(engine, team, &[UnitType::ShockTrooper, UnitType::Rifleman]);
+            // Không spam lính cơ bản khi xây hạ tầng (Reactors/Converters)
         }
         BotStrategicAction::BuildDefenseGrid => {
             execute_team_defense(engine, team);
-            execute_team_training(engine, team, &[UnitType::ShockTrooper, UnitType::Rifleman]);
+            // Không spam lính cơ bản khi xây tháp canh phòng thủ
         }
         BotStrategicAction::TechScienceBranch => {
             try_team_research(
@@ -213,7 +230,11 @@ pub fn apply_strategic_action_for_team(
                     UnitType::AcidBaneling,
                 ],
             );
-            command_team_military(engine, team, MilitaryCommand::HarassOrAttack);
+            if my_combat >= wave_assault_threshold || base_threat {
+                command_team_military(engine, team, MilitaryCommand::HarassOrAttack);
+            } else {
+                command_team_military(engine, team, MilitaryCommand::Regroup);
+            }
         }
         BotStrategicAction::DefendAndCounter => {
             command_team_military(engine, team, MilitaryCommand::DefendBase);
@@ -229,7 +250,6 @@ pub fn apply_strategic_action_for_team(
             );
         }
         BotStrategicAction::HarassEconomy => {
-            command_team_military(engine, team, MilitaryCommand::HarassWorkers);
             execute_team_training(
                 engine,
                 team,
@@ -240,9 +260,13 @@ pub fn apply_strategic_action_for_team(
                     UnitType::AcidBaneling,
                 ],
             );
+            if my_combat >= wave_assault_threshold || base_threat {
+                command_team_military(engine, team, MilitaryCommand::HarassWorkers);
+            } else {
+                command_team_military(engine, team, MilitaryCommand::Regroup);
+            }
         }
         BotStrategicAction::AllOutAssault => {
-            command_team_military(engine, team, MilitaryCommand::AllOutAssault);
             execute_team_training(
                 engine,
                 team,
@@ -254,6 +278,11 @@ pub fn apply_strategic_action_for_team(
                     UnitType::ShockTrooper,
                 ],
             );
+            if my_combat >= wave_assault_threshold || base_threat {
+                command_team_military(engine, team, MilitaryCommand::AllOutAssault);
+            } else {
+                command_team_military(engine, team, MilitaryCommand::Regroup);
+            }
         }
         BotStrategicAction::RegroupAndConsolidate => {
             command_team_military(engine, team, MilitaryCommand::Regroup);
@@ -294,8 +323,6 @@ pub fn apply_strategic_action_for_team(
             );
         }
         BotStrategicAction::SiegeArtilleryPush => {
-            // Đội hình công thành phá tháp pháo địch
-            command_team_military(engine, team, MilitaryCommand::SiegePush);
             execute_team_training(
                 engine,
                 team,
@@ -306,12 +333,19 @@ pub fn apply_strategic_action_for_team(
                     UnitType::Vanguard,
                 ],
             );
+            if my_combat >= wave_assault_threshold || base_threat {
+                command_team_military(engine, team, MilitaryCommand::SiegePush);
+            } else {
+                command_team_military(engine, team, MilitaryCommand::Regroup);
+            }
         }
         BotStrategicAction::CoordinateAllySupport => {
             if let Some(ally_threat_pos) = find_threatened_ally_base(engine, team) {
                 command_team_military(engine, team, MilitaryCommand::SupportAlly(ally_threat_pos));
-            } else {
+            } else if my_combat >= wave_assault_threshold || base_threat {
                 command_team_military(engine, team, MilitaryCommand::AllOutAssault);
+            } else {
+                command_team_military(engine, team, MilitaryCommand::Regroup);
             }
             execute_team_training(
                 engine,
@@ -325,9 +359,6 @@ pub fn apply_strategic_action_for_team(
             );
         }
         BotStrategicAction::FocusWeakestEnemy => {
-            let weakest = find_weakest_hostile_team(engine, team);
-            let weakest_base = engine.base_pos(weakest);
-            command_team_military(engine, team, MilitaryCommand::AttackSpecific(weakest_base));
             execute_team_training(
                 engine,
                 team,
@@ -339,6 +370,13 @@ pub fn apply_strategic_action_for_team(
                     UnitType::AcidBaneling,
                 ],
             );
+            if my_combat >= wave_assault_threshold || base_threat {
+                let weakest = find_weakest_hostile_team(engine, team);
+                let weakest_base = engine.base_pos(weakest);
+                command_team_military(engine, team, MilitaryCommand::AttackSpecific(weakest_base));
+            } else {
+                command_team_military(engine, team, MilitaryCommand::Regroup);
+            }
         }
     }
 }
@@ -707,21 +745,18 @@ pub fn maintain_continuous_ai_reflexes_for_team(engine: &mut GameEngine, team: T
         return;
     }
 
-    // 6.2. Tiến công
+    // 6.2. Tiến công: Chỉ phát động tấn công khi đã tập trung thành đợt lớn
     let tech = engine.team_tech(team);
-    let has_siege_tech = tech.dark_matter_rockets || tech.focused_laser;
-    let assault_threshold = if has_siege_tech { 16 } else { 22 };
+    let has_endgame_tech = tech.behemoth_mutation || tech.void_cataclysm || tech.dark_matter_rockets;
+    let assault_threshold = if has_endgame_tech { 20 } else { 24 };
 
-    let is_on_offensive = my_combat >= assault_threshold
-        || engine.units.iter().any(|u| {
-            u.team == team
-                && u.unit_type != UnitType::Engineer
-                && ((u.x - base_pos.0).powi(2) + (u.y - base_pos.1).powi(2)) > 1000.0_f32.powi(2)
-        });
-
-    if is_on_offensive {
+    // Chỉ khi đạt quân số đợt lớn mới xuất quân AllOutAssault
+    if my_combat >= assault_threshold {
         command_team_military(engine, team, MilitaryCommand::AllOutAssault);
         return;
+    } else if my_combat < 10 {
+        // Nếu đợt quân tấn công trước đó bị hao hụt chỉ còn dưới 10 con lính, chủ động rút về tập kết
+        command_team_military(engine, team, MilitaryCommand::Regroup);
     }
 
     // 6.3. Tập kết quân mới sinh

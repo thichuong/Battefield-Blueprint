@@ -65,6 +65,7 @@ fn test_compute_ai_step_reward_penalizes_excess_banelings() {
     let prev = RewardSnapshot {
         my_banelings: 0,
         my_ccs: 1,
+        my_combat: 5,
         ..Default::default()
     };
 
@@ -82,10 +83,44 @@ fn test_compute_ai_step_reward_penalizes_excess_banelings() {
     );
 
     // Phạt baneling vượt ngưỡng: -1.5 * (5 - 2) = -4.5
-    // Phạt SwarmRush khi my_ccs < 2: -1.5
+    // Phạt hành động tấn công khi my_combat < 18: -2.0
     assert!(
         r < 0.0,
-        "Reward should be negative for spamming banelings without expansion, got {}",
+        "Reward should be negative for spamming banelings and attacking early, got {}",
+        r
+    );
+}
+
+#[test]
+fn test_compute_ai_step_reward_tech_branch_and_resources() {
+    let prev = RewardSnapshot {
+        my_unlocked_techs: 3,
+        sci_techs: 3,
+        minerals_rate: 10.0,
+        energy_rate: 20.0,
+        ..Default::default()
+    };
+
+    let mut cur = prev.clone();
+    cur.my_unlocked_techs = 4;
+    cur.sci_techs = 4; // Hoàn thành nhánh Science!
+    cur.minerals_rate = 30.0; // Tăng tốc độ khoáng sản
+    cur.energy_rate = 50.0; // Tăng tốc độ năng lượng
+
+    let r = compute_ai_step_reward(
+        &prev,
+        &cur,
+        BotStrategicAction::TechScienceBranch,
+        FormationType::Line,
+        false,
+        150.0,
+        1800.0,
+    );
+
+    // Mở khóa tech mới (+38.0), hoàn thành nhánh Khoa học (+90.0), tốc độ tài nguyên, duy trì nhánh...
+    assert!(
+        r > 120.0,
+        "Reward should strongly reward completing a tech branch and resource generation, got {}",
         r
     );
 }
