@@ -64,4 +64,15 @@ impl FogOfWar {
         let r = r.min(FOG_ROWS - 1);
         self.grid[r * FOG_COLS + c] == Visibility::Visible
     }
+
+    pub fn is_explored(&self, world_x: f32, world_y: f32) -> bool {
+        if !(0.0..MAP_WIDTH).contains(&world_x) || !(0.0..MAP_HEIGHT).contains(&world_y) {
+            return false;
+        }
+        let c = (world_x / CELL_W) as usize;
+        let r = (world_y / CELL_H) as usize;
+        let c = c.min(FOG_COLS - 1);
+        let r = r.min(FOG_ROWS - 1);
+        self.grid[r * FOG_COLS + c] != Visibility::Hidden
+    }
 }

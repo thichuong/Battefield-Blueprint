@@ -52,8 +52,9 @@ export enum UnitType {
 
 /**
  * Vòng lặp 2: Vẽ khung hình lên Canvas (chạy theo requestAnimationFrame / VSync)
+ * Nhận hệ số `alpha` [0.0..1.0] để nội suy vị trí mượt mà giữa 2 tick mô phỏng
  */
-export function engine_render(): void;
+export function engine_render(alpha?: number | null): void;
 
 /**
  * Giữ lại hàm cũ để đảm bảo tính tương thích ngược
@@ -81,7 +82,7 @@ export function init_engine(canvas: HTMLCanvasElement): void;
 
 export function poll_events_from_engine(): string;
 
-export function resize_canvas(width: number, height: number): void;
+export function resize_canvas(width: number, height: number, dpr?: number | null): void;
 
 export function send_command_to_engine(cmd_json: string): void;
 
@@ -89,19 +90,19 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
+    readonly engine_render: (a: number) => void;
+    readonly engine_tick: (a: number) => void;
     readonly handle_key_down: (a: number, b: number) => void;
     readonly handle_key_up: (a: number, b: number) => void;
     readonly init_engine: (a: any) => [number, number];
     readonly poll_events_from_engine: () => [number, number];
+    readonly resize_canvas: (a: number, b: number, c: number) => void;
     readonly send_command_to_engine: (a: number, b: number) => void;
     readonly engine_step: (a: number) => void;
-    readonly engine_tick: (a: number) => void;
     readonly handle_mouse_down: (a: number, b: number, c: number) => void;
     readonly handle_mouse_up: (a: number, b: number, c: number) => void;
-    readonly resize_canvas: (a: number, b: number) => void;
     readonly handle_mouse_wheel: (a: number) => void;
     readonly handle_mouse_move: (a: number, b: number) => void;
-    readonly engine_render: () => void;
     readonly __wbindgen_exn_store: (a: number) => void;
     readonly __externref_table_alloc: () => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;

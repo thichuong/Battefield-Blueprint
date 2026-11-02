@@ -33,6 +33,12 @@ pub fn step(engine: &mut GameEngine, dt: f32) {
     let dt = if engine.is_headless { dt } else { dt.min(0.05) };
     engine.game_time += dt;
 
+    // Lưu vị trí trước đó của đơn vị lính phục vụ nội suy khung hình (Frame Interpolation)
+    for u in &mut engine.units {
+        u.prev_x = u.x;
+        u.prev_y = u.y;
+    }
+
     // 2. Di chuyển Camera bằng phím WASD / Mũi tên và Edge Scrolling
     if !engine.is_headless {
         update_camera(engine, dt);
@@ -56,10 +62,32 @@ pub fn step(engine: &mut GameEngine, dt: f32) {
     // 7. Cập nhật Đạn & Tia Laser (sát thương đơn vị & công trình)
     update_projectiles(engine, dt);
 
-    // 8. Cập nhật Hiệu ứng Chữ nổi (Floating numbers) & Fog
+    // 8. Cập nhật Hiệu ứng Chữ nổi (Floating numbers), Hạt (Particles), Rung chấn Camera & Fog
     if !engine.is_headless {
         update_floating_texts(engine, dt);
         update_fog(engine);
+
+        // Cập nhật hệ thống hạt (Particles)
+        for p in &mut engine.particles {
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            p.vx *= 0.94;
+            p.vy *= 0.94;
+            p.lifetime -= dt;
+        }
+        engine.particles.retain(|p| p.lifetime > 0.0);
+
+        // Giảm thời gian chớp sáng trúng đòn (Hit Flash)
+        for u in &mut engine.units {
+            if u.hit_flash_timer > 0.0 {
+                u.hit_flash_timer = (u.hit_flash_timer - dt).max(0.0);
+            }
+        }
+        for b in &mut engine.buildings {
+            if b.hit_flash_timer > 0.0 {
+                b.hit_flash_timer = (b.hit_flash_timer - dt).max(0.0);
+            }
+        }
     }
 
     // 10. Cập nhật AI Đối thủ (kinh tế + điều quân càn quét nhà)

@@ -218,9 +218,12 @@ export const App: React.FC = () => {
         if (!canvasRef.current) return;
         const width = window.innerWidth;
         const height = window.innerHeight;
-        canvasRef.current.width = width;
-        canvasRef.current.height = height;
-        wasmBridge.resize(width, height);
+        const dpr = window.devicePixelRatio || 1;
+        canvasRef.current.width = Math.round(width * dpr);
+        canvasRef.current.height = Math.round(height * dpr);
+        canvasRef.current.style.width = `${width}px`;
+        canvasRef.current.style.height = `${height}px`;
+        wasmBridge.resize(width, height, dpr);
       };
 
       window.addEventListener('resize', resize);
@@ -261,8 +264,9 @@ export const App: React.FC = () => {
           subSteps++;
         }
 
-        // VÒNG LẶP 2: RENDER (Chạy theo tần số màn hình)
-        wasmBridge.render();
+        // VÒNG LẶP 2: RENDER (Chạy theo tần số màn hình, kèm hệ số alpha nội suy)
+        const alpha = Math.min(Math.max(accumulator / FIXED_TIMESTEP, 0), 1);
+        wasmBridge.render(alpha);
 
         animationFrameId = requestAnimationFrame(loop);
       };

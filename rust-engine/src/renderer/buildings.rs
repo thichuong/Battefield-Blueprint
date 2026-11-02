@@ -23,7 +23,13 @@ pub fn render_buildings(engine: &GameEngine) {
         }
 
         let is_selected = engine.selected_building_id == Some(b.id);
-        let (color_neon, color_fill) = get_team_color(engine, b.team);
+        let (base_neon, color_fill) = get_team_color(engine, b.team);
+        // Hiệu ứng Juice: Hit Flash chớp trắng khi công trình trúng đạn
+        let color_neon = if b.hit_flash_timer > 0.0 {
+            "#ffffff"
+        } else {
+            base_neon
+        };
 
         let bx = (b.x - b.width * 0.5) as f64;
         let by = (b.y - b.height * 0.5) as f64;
@@ -64,17 +70,6 @@ pub fn render_buildings(engine: &GameEngine) {
         // Ký hiệu góc kỹ thuật
         draw_blueprint_brackets(ctx, bx, by, bw, bh, color_neon);
 
-        // Hiệu ứng khói / tia lửa nếu công trình hư hỏng nặng (< 45% HP)
-        if b.hp < b.max_hp * 0.45 && b.build_progress >= 1.0 {
-            ctx.set_stroke_style_str("#f97316");
-            ctx.set_line_width(1.5);
-            ctx.begin_path();
-            ctx.move_to(bx + bw * 0.3, by + bh * 0.4);
-            ctx.line_to(bx + bw * 0.4, by + bh * 0.2);
-            ctx.line_to(bx + bw * 0.35, by + bh * 0.1);
-            ctx.stroke();
-        }
-
         // Vẽ Đồ Họa 2D Tĩnh Cho Công Trình
         draw_building_graphic(
             ctx,
@@ -86,13 +81,13 @@ pub fn render_buildings(engine: &GameEngine) {
             color_neon,
         );
 
-        // Tên công trình hiển thị bên dưới
+        // Tên công trình hiển thị bên dưới (căn giữa chuẩn xác)
         ctx.set_font("bold 10px monospace");
+        ctx.set_text_align("center");
         ctx.set_fill_style_str(color_neon);
         let title = engine.config.get_building_short_name(b.building_type);
-        // Căn giữa dòng chữ dưới công trình
-        let text_w = (title.len() as f64) * 6.2;
-        let _ = ctx.fill_text(title, b.x as f64 - text_w * 0.5, by + bh + 13.0);
+        let _ = ctx.fill_text(title, b.x as f64, by + bh + 13.0);
+        ctx.set_text_align("left");
 
         // Thanh tiến độ xây dựng hoặc Thanh máu
         if b.build_progress < 1.0 {

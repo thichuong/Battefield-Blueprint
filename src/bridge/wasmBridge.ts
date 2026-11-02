@@ -161,9 +161,9 @@ class WasmBridge {
     this.pollEvents();
   }
 
-  public render() {
+  public render(alpha?: number) {
     if (!this.isInitialized) return;
-    engine_render();
+    engine_render(alpha ?? 1.0);
   }
 
   public pollEvents() {
@@ -212,9 +212,9 @@ class WasmBridge {
     this.eventListeners.forEach((l) => l(type, payload));
   }
 
-  public resize(w: number, h: number) {
+  public resize(w: number, h: number, dpr?: number) {
     if (!this.isInitialized) return;
-    resize_canvas(w, h);
+    resize_canvas(w, h, dpr ?? window.devicePixelRatio ?? 1.0);
   }
 
   public onMouseDown(button: number, x: number, y: number) {

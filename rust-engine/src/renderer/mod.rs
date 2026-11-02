@@ -46,6 +46,10 @@ pub fn render(engine: &mut GameEngine) {
     let vw = engine.camera.viewport_w;
     let vh = engine.camera.viewport_h;
 
+    // Chuẩn hóa HiDPI (DPR scaling) để Canvas 2D render siêu sắc nét trên màn hình Retina / 4K
+    let dpr = engine.camera.dpr.max(0.5) as f64;
+    let _ = ctx.set_transform(dpr, 0.0, 0.0, dpr, 0.0, 0.0);
+
     // 1. Xóa màn hình với màu nền Blueprint Dark
     ctx.set_fill_style_str(&engine.config.render.bg_color);
     ctx.fill_rect(0.0, 0.0, vw as f64, vh as f64);
@@ -77,17 +81,20 @@ pub fn render(engine: &mut GameEngine) {
     // 6. Vẽ Mỏ khoáng sản
     render_minerals(engine);
 
+    // 6.5. Vẽ Vòng ma thuật hư không dưới đất (nằm dưới chân công trình và lính)
+    render_magic_circles(engine);
+
     // 7. Vẽ Công trình
     render_buildings(engine);
-
-    // 7.5. Vẽ Vòng ma thuật hư không dưới đất
-    render_magic_circles(engine);
 
     // 8. Vẽ Lính người que (2.5D Oblique Procedural Stickmen + Tia hàn)
     render_units(engine);
 
     // 9. Vẽ Đạn / Tia Laser / Vết chém
     render_projectiles(engine);
+
+    // 9.5. Vẽ Hiệu ứng Hạt (Particles - Mảnh vụn nổ, khói lửa, tia lửa)
+    render_particles(engine);
 
     // 10. Vẽ Bóng công trình khi đang đặt móng (Ghost Building)
     if let Some(b_type) = engine.build_mode {
@@ -126,4 +133,7 @@ pub fn render(engine: &mut GameEngine) {
 
     // Toàn bộ In-game HUD
     render_in_game_hud(engine);
+
+    // Bảng thông số hiệu năng FPS & Thời gian xử lý (Debug Performance Overlay)
+    render_debug_overlay(engine);
 }

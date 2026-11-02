@@ -40,22 +40,46 @@ pub fn init_engine(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     Ok(())
 }
 
+fn get_performance_now() -> f64 {
+    web_sys::window()
+        .and_then(|w| w.performance())
+        .map(|p| p.now())
+        .unwrap_or(0.0)
+}
+
 /// Vòng lặp 1: Cập nhật mô phỏng logic (AI, kinh tế, di chuyển, va chạm, đạn)
 #[wasm_bindgen]
 pub fn engine_tick(dt: f32) {
     ENGINE_STATE.with(|state| {
         if let Some(ref mut engine) = *state.borrow_mut() {
+            let t0 = get_performance_now();
             simulation::step(engine, dt);
+            let t1 = get_performance_now();
+            engine.sim_time_ms = (t1 - t0) as f32;
         }
     });
 }
 
 /// Vòng lặp 2: Vẽ khung hình lên Canvas (chạy theo requestAnimationFrame / VSync)
+/// Nhận hệ số `alpha` [0.0..1.0] để nội suy vị trí mượt mà giữa 2 tick mô phỏng
 #[wasm_bindgen]
-pub fn engine_render() {
+pub fn engine_render(alpha: Option<f32>) {
+    let a = alpha.unwrap_or(1.0).clamp(0.0, 1.0);
     ENGINE_STATE.with(|state| {
         if let Some(ref mut engine) = *state.borrow_mut() {
+            let now = get_performance_now();
+            if engine.last_render_time > 0.0 {
+                let dt_ms = (now - engine.last_render_time).max(1.0);
+                let instant_fps = (1000.0 / dt_ms).min(360.0) as f32;
+                engine.fps = engine.fps * 0.90 + instant_fps * 0.10;
+            }
+            engine.last_render_time = now;
+
+            let t0 = get_performance_now();
+            engine.render_alpha = a;
             renderer::render(engine);
+            let t1 = get_performance_now();
+            engine.render_time_ms = (t1 - t0) as f32;
         }
     });
 }
@@ -99,15 +123,17 @@ pub fn poll_events_from_engine() -> String {
 }
 
 #[wasm_bindgen]
-pub fn resize_canvas(width: f32, height: f32) {
+pub fn resize_canvas(width: f32, height: f32, dpr: Option<f32>) {
+    let dpr_val = dpr.unwrap_or(1.0).max(0.5);
     ENGINE_STATE.with(|state| {
         if let Some(ref mut engine) = *state.borrow_mut() {
             if let Some(ref canvas) = engine.canvas {
-                canvas.set_width(width as u32);
-                canvas.set_height(height as u32);
+                canvas.set_width((width * dpr_val) as u32);
+                canvas.set_height((height * dpr_val) as u32);
             }
             engine.camera.viewport_w = width;
             engine.camera.viewport_h = height;
+            engine.camera.dpr = dpr_val;
         }
     });
 }
@@ -153,6 +179,9 @@ pub fn handle_mouse_wheel(delta_y: f32) {
 pub fn handle_key_down(key: &str) {
     ENGINE_STATE.with(|state| {
         if let Some(ref mut engine) = *state.borrow_mut() {
+            if key == "F3" || key == "`" || key == "~" {
+                engine.show_debug_overlay = !engine.show_debug_overlay;
+            }
             engine.keys_down.insert(key.to_string());
             simulation::handle_hotkeys(engine, key);
         }

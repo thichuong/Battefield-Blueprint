@@ -167,6 +167,34 @@ pub fn update_buildings(engine: &mut GameEngine, dt: f32) {
         engine.projectiles.push(p);
     }
 
+    // Hiệu ứng khói lửa bốc lên từ các công trình bị hư hại nặng (< 45% HP)
+    if !engine.is_headless && fastrand::f32() < 0.3 {
+        let damaged_pos: Vec<(f32, f32)> = engine
+            .buildings
+            .iter()
+            .filter(|b| b.hp < b.max_hp * 0.45 && b.build_progress >= 1.0)
+            .map(|b| (b.x + (fastrand::f32() - 0.5) * b.width * 0.5, b.y - b.height * 0.2))
+            .collect();
+        for (rx, ry) in damaged_pos {
+            engine.spawn_particles(rx, ry, 1, "#f97316", 30.0, 2.2, 0.45);
+            engine.spawn_particles(rx, ry, 1, "#475569", 22.0, 3.0, 0.65);
+        }
+    }
+
+    // Sinh vụ nổ lớn và rung chấn màn hình khi công trình bị sập
+    if !engine.is_headless {
+        let dead_buildings: Vec<(f32, f32)> = engine
+            .buildings
+            .iter()
+            .filter(|b| b.hp <= 0.0)
+            .map(|b| (b.x, b.y))
+            .collect();
+        for (x, y) in dead_buildings {
+            engine.spawn_particles(x, y, 24, "#ea580c", 170.0, 3.8, 0.55);
+            engine.spawn_particles(x, y, 14, "#94a3b8", 110.0, 2.8, 0.5);
+        }
+    }
+
     // Xóa nhà sập
     engine.buildings.retain(|b| b.hp > 0.0);
 }
@@ -267,6 +295,8 @@ pub fn process_building_combat_with_factions(
             team: b.team,
             x: b.x,
             y: spawn_y,
+            prev_x: b.x,
+            prev_y: spawn_y,
             target_x: *ex,
             target_y: *ey,
             speed: if has_dark_rockets {

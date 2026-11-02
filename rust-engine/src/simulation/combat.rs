@@ -27,6 +27,7 @@ pub fn apply_damage_to_unit(unit: &mut Unit, taken: f32) -> f32 {
     if remaining > 0.0 {
         unit.hp -= remaining;
     }
+    unit.hit_flash_timer = 0.08;
     taken
 }
 
@@ -141,9 +142,12 @@ pub fn update_projectiles(engine: &mut GameEngine, dt: f32) {
     let has_corrosive: [bool; 8] =
         std::array::from_fn(|i| engine.team_tech(Team::from_index(i)).corrosive_curse);
     let mut new_texts = Vec::new();
+    let mut explosions = Vec::new();
 
     for p in engine.projectiles.iter_mut() {
         p.lifetime -= dt;
+        p.prev_x = p.x;
+        p.prev_y = p.y;
         let dx = p.target_x - p.x;
         let dy = p.target_y - p.y;
         let dist = (dx * dx + dy * dy).sqrt();
@@ -214,6 +218,7 @@ pub fn update_projectiles(engine: &mut GameEngine, dt: f32) {
                             calculate_effective_damage(raw_dmg, p.damage_type, &b.resistances);
                         b.hp -= taken;
                         b.under_attack_timer = crate::config::BUILDING_UNDER_ATTACK_DURATION;
+                        b.hit_flash_timer = 0.08;
 
                         if !engine.is_headless {
                             new_texts.push(FloatingText {
@@ -234,7 +239,31 @@ pub fn update_projectiles(engine: &mut GameEngine, dt: f32) {
                 }
             }
 
+            if !engine.is_headless && !p.is_melee {
+                explosions.push((p.target_x, p.target_y, p.visual, is_aoe));
+            }
+
             p.lifetime = -1.0;
+        }
+    }
+
+    // Sinh hiệu ứng hạt khi đạn nổ trúng đích
+    for (ex, ey, visual, is_aoe) in explosions {
+        match visual {
+            ProjectileVisual::Rocket => {
+                engine.spawn_particles(ex, ey, 14, "#f97316", 150.0, 3.2, 0.4);
+                engine.spawn_particles(ex, ey, 6, "#ef4444", 110.0, 2.5, 0.3);
+            }
+            ProjectileVisual::FlyingSword => {
+                engine.spawn_particles(ex, ey, 6, "#38bdf8", 100.0, 2.0, 0.3);
+            }
+            _ => {
+                if is_aoe {
+                    engine.spawn_particles(ex, ey, 10, "#fbbf24", 130.0, 2.8, 0.35);
+                } else {
+                    engine.spawn_particles(ex, ey, 4, "#facc15", 85.0, 1.8, 0.25);
+                }
+            }
         }
     }
 

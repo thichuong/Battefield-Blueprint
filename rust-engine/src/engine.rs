@@ -27,6 +27,7 @@ pub struct GameEngine {
     pub projectiles: Vec<Projectile>,
     pub magic_circles: Vec<MagicCircle>,
     pub floating_texts: Vec<FloatingText>,
+    pub particles: Vec<Particle>,
     pub spatial_grid: SpatialGrid,
 
     // Trạng thái kinh tế & công nghệ 2 phe chính (giữ nguyên để tương thích ngược)
@@ -74,6 +75,12 @@ pub struct GameEngine {
     pub team_minerals_mined: [f32; 8],
     pub income_calc_timer: f32,
     pub difficulty: String,
+    pub render_alpha: f32,
+    pub show_debug_overlay: bool,
+    pub fps: f32,
+    pub sim_time_ms: f32,
+    pub render_time_ms: f32,
+    pub last_render_time: f64,
 
     // Kênh thông điệp
     pub pending_commands: VecDeque<ReactToEngineCommand>,
@@ -174,6 +181,7 @@ impl GameEngine {
             projectiles: Vec::new(),
             magic_circles: Vec::new(),
             floating_texts: Vec::new(),
+            particles: Vec::new(),
             spatial_grid: SpatialGrid::new(),
 
             player_eco,
@@ -216,6 +224,12 @@ impl GameEngine {
             team_minerals_mined: [0.0; 8],
             income_calc_timer: 0.0,
             difficulty: "normal".to_string(),
+            render_alpha: 1.0,
+            show_debug_overlay: false,
+            fps: 60.0,
+            sim_time_ms: 0.0,
+            render_time_ms: 0.0,
+            last_render_time: 0.0,
             pending_commands: VecDeque::new(),
             outgoing_events: Vec::new(),
         };
@@ -265,6 +279,7 @@ impl GameEngine {
             projectiles: Vec::new(),
             magic_circles: Vec::new(),
             floating_texts: Vec::new(),
+            particles: Vec::new(),
             spatial_grid: SpatialGrid::new(),
 
             player_eco,
@@ -307,6 +322,12 @@ impl GameEngine {
             team_minerals_mined: [0.0; 8],
             income_calc_timer: 0.0,
             difficulty: "normal".to_string(),
+            render_alpha: 1.0,
+            show_debug_overlay: false,
+            fps: 60.0,
+            sim_time_ms: 0.0,
+            render_time_ms: 0.0,
+            last_render_time: 0.0,
             pending_commands: VecDeque::new(),
             outgoing_events: Vec::new(),
         };
@@ -668,5 +689,45 @@ impl GameEngine {
         let sx = (wx - self.camera.x) * self.camera.zoom + self.camera.viewport_w * 0.5;
         let sy = (wy - self.camera.y) * self.camera.zoom + self.camera.viewport_h * 0.5;
         (sx, sy)
+    }
+
+    /// Tạo các hiệu ứng hạt ánh sáng / khói lửa / vụn nổ (Particle Pool)
+    pub fn spawn_particles(
+        &mut self,
+        x: f32,
+        y: f32,
+        count: usize,
+        color: &str,
+        speed: f32,
+        size: f32,
+        lifetime: f32,
+    ) {
+        if self.is_headless {
+            return;
+        }
+        // Giới hạn tối đa 400 hạt để giữ tốc độ 60-144 FPS mượt mà
+        if self.particles.len() >= 400 {
+            let overflow = (self.particles.len() + count).saturating_sub(400);
+            if overflow > 0 {
+                let remove_count = overflow.min(self.particles.len());
+                self.particles.drain(0..remove_count);
+            }
+        }
+        for _ in 0..count {
+            let angle = fastrand::f32() * std::f32::consts::TAU;
+            let spd = speed * (0.4 + fastrand::f32() * 0.8);
+            let p_size = size * (0.6 + fastrand::f32() * 0.8);
+            let p_life = lifetime * (0.5 + fastrand::f32() * 0.7);
+            self.particles.push(crate::components::Particle {
+                x,
+                y,
+                vx: angle.cos() * spd,
+                vy: angle.sin() * spd,
+                color: color.to_string(),
+                size: p_size,
+                lifetime: p_life,
+                max_lifetime: p_life,
+            });
+        }
     }
 }

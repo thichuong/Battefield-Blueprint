@@ -349,6 +349,10 @@ pub struct Unit {
     pub unit_type: UnitType,
     pub x: f32,
     pub y: f32,
+    #[serde(default)]
+    pub prev_x: f32,
+    #[serde(default)]
+    pub prev_y: f32,
     pub target_x: f32,
     pub target_y: f32,
     pub speed: f32,
@@ -387,6 +391,8 @@ pub struct Unit {
     pub last_attack_pos: Option<(f32, f32)>,
     #[serde(default)]
     pub percent_max_hp_dps: f32,
+    #[serde(default)]
+    pub hit_flash_timer: f32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -411,6 +417,20 @@ pub struct Building {
     // Hàng đợi sản xuất
     pub training_queue: Vec<UnitType>,
     pub training_timer: f32,
+    #[serde(default)]
+    pub hit_flash_timer: f32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Particle {
+    pub x: f32,
+    pub y: f32,
+    pub vx: f32,
+    pub vy: f32,
+    pub color: String,
+    pub size: f32,
+    pub lifetime: f32,
+    pub max_lifetime: f32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -436,6 +456,10 @@ pub struct Projectile {
     pub team: Team,
     pub x: f32,
     pub y: f32,
+    #[serde(default)]
+    pub prev_x: f32,
+    #[serde(default)]
+    pub prev_y: f32,
     pub target_x: f32,
     pub target_y: f32,
     pub speed: f32,

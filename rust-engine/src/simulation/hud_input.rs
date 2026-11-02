@@ -10,6 +10,12 @@ pub fn check_bevy_hud_click(engine: &mut GameEngine, sx: f32, sy: f32) -> bool {
     let vw = engine.camera.viewport_w;
     let vh = engine.camera.viewport_h;
 
+    // -1. Nút đo FPS ở thanh trên cùng (click để bật/tắt bảng chi tiết hiệu năng)
+    if (vw - 380.0..=vw - 302.0).contains(&sx) && (10.0..=42.0).contains(&sy) {
+        engine.show_debug_overlay = !engine.show_debug_overlay;
+        return true;
+    }
+
     // 0. Nút mở Auto-Play [B] ở thanh trên cùng (x ~ vw - 295, y: 10..42, w: 95)
     if (vw - 295.0..=vw - 200.0).contains(&sx) && (10.0..=42.0).contains(&sy) {
         engine

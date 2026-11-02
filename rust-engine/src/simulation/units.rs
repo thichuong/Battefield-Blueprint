@@ -437,6 +437,8 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
                                         team: unit.team,
                                         x: hit_x,
                                         y: hit_y,
+                                        prev_x: hit_x,
+                                        prev_y: hit_y,
                                         target_x: hit_x,
                                         target_y: hit_y,
                                         speed: 1500.0,
@@ -461,6 +463,8 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
                                         team: unit.team,
                                         x: hit_x,
                                         y: hit_y,
+                                        prev_x: hit_x,
+                                        prev_y: hit_y,
                                         target_x: hit_x,
                                         target_y: hit_y,
                                         speed: 2000.0,
@@ -500,6 +504,8 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
                                         team: unit.team,
                                         x: unit.x,
                                         y: spawn_y,
+                                        prev_x: unit.x,
+                                        prev_y: spawn_y,
                                         target_x: hit_x,
                                         target_y: hit_y,
                                         speed,
@@ -602,6 +608,27 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
     for mut ft in new_floating_texts {
         ft.id = engine.alloc_id();
         engine.floating_texts.push(ft);
+    }
+
+    // Sinh hiệu ứng hạt vụn tan biến khi lính tử trận
+    if !engine.is_headless {
+        let dead_units: Vec<(f32, f32, Team, UnitType)> = engine
+            .units
+            .iter()
+            .filter(|u| u.hp <= 0.0)
+            .map(|u| (u.x, u.y, u.team, u.unit_type))
+            .collect();
+        for (x, y, team, u_type) in dead_units {
+            let color = match team {
+                Team::Player => "#00e5ff",
+                _ => "#f43f5e",
+            };
+            if u_type == UnitType::AcidBaneling {
+                engine.spawn_particles(x, y, 18, "#84cc16", 180.0, 3.2, 0.45);
+            } else {
+                engine.spawn_particles(x, y, 8, color, 85.0, 2.0, 0.35);
+            }
+        }
     }
 
     // Xóa quặng đã khai thác hết

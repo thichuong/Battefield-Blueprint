@@ -202,6 +202,8 @@ impl GameConfig {
             unit_type: u_type,
             x,
             y,
+            prev_x: x,
+            prev_y: y,
             target_x: x,
             target_y: y,
             speed: cfg.speed,
@@ -229,6 +231,7 @@ impl GameConfig {
             attack_anim_timer: 0.0,
             last_attack_pos: None,
             percent_max_hp_dps: cfg.percent_max_hp_dps,
+            hit_flash_timer: 0.0,
         }
     }
 
@@ -282,6 +285,7 @@ impl GameConfig {
             rally_y: y + cfg.height * 0.5 + 20.0,
             training_queue: Vec::new(),
             training_timer: 0.0,
+            hit_flash_timer: 0.0,
         }
     }
 

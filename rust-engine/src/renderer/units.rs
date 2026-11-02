@@ -8,18 +8,41 @@ pub fn render_units(engine: &GameEngine) {
         Some(c) => c,
         None => return,
     };
-    for u in &engine.units {
-        if !engine.camera.is_point_visible(u.x, u.y, 40.0) {
-            continue;
-        }
+    let alpha = engine.render_alpha;
 
-        let is_visible = engine.are_allies(Team::Player, u.team) || engine.fog.is_visible(u.x, u.y);
-        if !is_visible {
-            continue;
-        }
+    // Tối ưu hóa Giai đoạn 3: Chuyển đổi danh sách chọn thành HashSet để tra cứu O(1)
+    let selected_set: std::collections::HashSet<u32> =
+        engine.selected_unit_ids.iter().copied().collect();
 
-        let is_selected = engine.selected_unit_ids.contains(&u.id);
-        let color = get_team_color(engine, u.team).0;
+    // Lọc và sắp xếp các unit theo trục Y để vẽ đúng chiều sâu 2.5D (Depth Sorting)
+    let mut visible_units: Vec<(&Unit, f64, f64)> = engine
+        .units
+        .iter()
+        .filter_map(|u| {
+            let draw_x = (u.prev_x + (u.x - u.prev_x) * alpha) as f64;
+            let draw_y = (u.prev_y + (u.y - u.prev_y) * alpha) as f64;
+            if !engine.camera.is_point_visible(draw_x as f32, draw_y as f32, 40.0) {
+                return None;
+            }
+            let is_visible = engine.are_allies(Team::Player, u.team) || engine.fog.is_visible(u.x, u.y);
+            if !is_visible {
+                return None;
+            }
+            Some((u, draw_x, draw_y))
+        })
+        .collect();
+
+    visible_units.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
+
+    for (u, draw_x, draw_y) in visible_units {
+        let is_selected = selected_set.contains(&u.id);
+        let base_color = get_team_color(engine, u.team).0;
+        // Hiệu ứng Juice: Hit Flash chớp trắng khi vừa nhận sát thương
+        let color = if u.hit_flash_timer > 0.0 {
+            "#ffffff"
+        } else {
+            base_color
+        };
 
         // 1. Vòng tròn chọn dưới chân
         if is_selected {
@@ -27,8 +50,8 @@ pub fn render_units(engine: &GameEngine) {
             ctx.set_line_width(1.5);
             ctx.begin_path();
             let _ = ctx.ellipse(
-                u.x as f64,
-                (u.y + 4.0) as f64,
+                draw_x,
+                draw_y + 4.0,
                 14.0,
                 7.0,
                 0.0,
@@ -57,15 +80,15 @@ pub fn render_units(engine: &GameEngine) {
             _ => false,
         };
 
-        // 2. Vẽ khung xương người que tối giản + vũ khí chi tiết & tư thế
-        draw_procedural_stickman(ctx, u, color, engine.game_time as f64, is_welding);
+        // 2. Vẽ khung xương người que tối giản + vũ khí chi tiết & tư thế (sử dụng tọa độ nội suy)
+        draw_procedural_stickman(ctx, u, color, engine.game_time as f64, is_welding, draw_x, draw_y);
 
         // 3. Thanh máu và thanh khiên trên đầu
         let hp_pct = (u.hp / u.max_hp).clamp(0.0, 1.0) as f64;
         let bar_w = 24.0;
         let bar_h = 3.5;
-        let bar_x = (u.x - 12.0) as f64;
-        let bar_y = (u.y - 32.0) as f64;
+        let bar_x = draw_x - 12.0;
+        let bar_y = draw_y - 32.0;
 
         ctx.set_fill_style_str("#1e293b");
         ctx.fill_rect(bar_x, bar_y, bar_w, bar_h);
@@ -94,6 +117,8 @@ fn draw_procedural_stickman(
     color: &str,
     game_time: f64,
     is_welding: bool,
+    x: f64,
+    y: f64,
 ) {
     ctx.save();
     ctx.set_stroke_style_str(color);
@@ -113,9 +138,6 @@ fn draw_procedural_stickman(
                 | UnitOrder::Build { .. }
         );
     let anim = u.attack_anim_timer as f64; // 1.0 -> 0.0
-
-    let x = u.x as f64;
-    let y = u.y as f64;
 
     // Riêng AcidBaneling là dạng bọ côn trùng đặc thù
     if u.unit_type == UnitType::AcidBaneling {

@@ -100,6 +100,7 @@ pub struct CameraState {
     pub zoom: f32,
     pub viewport_w: f32,
     pub viewport_h: f32,
+    pub dpr: f32,
 }
 
 impl Default for CameraState {
@@ -110,6 +111,7 @@ impl Default for CameraState {
             zoom: 1.0,
             viewport_w: 1280.0,
             viewport_h: 720.0,
+            dpr: 1.0,
         }
     }
 }

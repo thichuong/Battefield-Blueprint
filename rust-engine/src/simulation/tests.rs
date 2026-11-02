@@ -1,5 +1,6 @@
 use super::*;
 use crate::components::*;
+use crate::config::GameConfig;
 use crate::resources::{PlayerEconomy, TechTreeState};
 
 #[test]
@@ -680,4 +681,81 @@ fn test_ranged_units_projectile_visuals() {
     assert_eq!(engine.projectiles.len(), 1);
     assert_eq!(engine.projectiles[0].visual, ProjectileVisual::FlyingSword);
     assert_eq!(engine.projectiles[0].damage_type, DamageType::Arcane);
+}
+
+#[test]
+fn test_unit_prev_position_and_interpolation() {
+    let mut engine = GameEngine::new_headless();
+    engine.units.clear();
+    engine.is_paused = false;
+    let cfg = GameConfig::default();
+    let mut unit = cfg.create_unit(1, Team::Player, UnitType::Rifleman, 200.0, 200.0);
+    unit.order = UnitOrder::MoveTo { x: 500.0, y: 200.0 };
+    engine.units.push(unit);
+
+    assert_eq!(engine.units[0].prev_x, 200.0);
+    assert_eq!(engine.units[0].x, 200.0);
+
+    // Chạy 1 step mô phỏng
+    step(&mut engine, 0.1);
+
+    // prev_x phải lưu lại vị trí ban đầu (200.0), trong khi x đã tăng lên vì di chuyển sang phải
+    assert_eq!(engine.units[0].prev_x, 200.0);
+    assert!(engine.units[0].x > 200.0);
+
+    // Kiểm tra tính toán nội suy
+    let alpha = 0.5;
+    let interp_x = engine.units[0].prev_x + (engine.units[0].x - engine.units[0].prev_x) * alpha;
+    assert!(interp_x > 200.0 && interp_x < engine.units[0].x);
+}
+
+#[test]
+fn test_fog_of_war_is_explored_and_visible() {
+    let mut engine = GameEngine::new_headless();
+    // Vị trí (1000, 1000) ban đầu chưa được khám phá
+    assert!(!engine.fog.is_visible(1000.0, 1000.0));
+    assert!(!engine.fog.is_explored(1000.0, 1000.0));
+
+    // Mở sương mù tại (1000, 1000) với bán kính 100.0
+    engine.fog.reveal_circle(1000.0, 1000.0, 100.0);
+    assert!(engine.fog.is_visible(1000.0, 1000.0));
+    assert!(engine.fog.is_explored(1000.0, 1000.0));
+
+    // Chuyển tầm nhìn về Explored
+    engine.fog.reset_visibility_to_explored();
+    assert!(!engine.fog.is_visible(1000.0, 1000.0));
+    assert!(engine.fog.is_explored(1000.0, 1000.0));
+}
+
+#[test]
+fn test_particle_pool_and_lifecycle() {
+    let mut engine = GameEngine::new_headless();
+    engine.is_headless = false; // Bật để test sinh hạt
+    assert_eq!(engine.particles.len(), 0);
+
+    engine.spawn_particles(100.0, 100.0, 20, "#f97316", 100.0, 2.5, 0.4);
+    assert_eq!(engine.particles.len(), 20);
+
+    // Test giới hạn pool 400
+    for _ in 0..30 {
+        engine.spawn_particles(100.0, 100.0, 20, "#f97316", 100.0, 2.5, 0.4);
+    }
+    assert!(engine.particles.len() <= 400);
+
+    // Cập nhật hạt suy giảm thời gian sống
+    for p in &mut engine.particles {
+        p.lifetime = 0.0;
+    }
+    engine.particles.retain(|p| p.lifetime > 0.0);
+    assert_eq!(engine.particles.len(), 0);
+}
+
+#[test]
+fn test_hit_flash() {
+    let cfg = GameConfig::default();
+    let mut unit = cfg.create_unit(1, Team::Player, UnitType::Rifleman, 200.0, 200.0);
+
+    assert_eq!(unit.hit_flash_timer, 0.0);
+    apply_damage_to_unit(&mut unit, 10.0);
+    assert!(unit.hit_flash_timer > 0.0);
 }

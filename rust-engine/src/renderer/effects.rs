@@ -111,34 +111,45 @@ pub fn render_projectiles(engine: &GameEngine) {
         Some(c) => c,
         None => return,
     };
+    let alpha = engine.render_alpha;
+
     for p in &engine.projectiles {
         // Đòn cận chiến không hiển thị tia đạn
         if p.is_melee {
             continue;
         }
 
-        if !engine.camera.is_point_visible(p.x, p.y, 40.0)
+        // Tọa độ nội suy của đạn
+        let draw_x = p.prev_x + (p.x - p.prev_x) * alpha;
+        let draw_y = p.prev_y + (p.y - p.prev_y) * alpha;
+
+        if !engine.camera.is_point_visible(draw_x, draw_y, 40.0)
             && !engine.camera.is_point_visible(p.target_x, p.target_y, 40.0)
         {
             continue;
         }
 
+        // Không vẽ đạn nếu cả điểm xuất phát/hiện tại và đích đến đều nằm ngoài tầm nhìn sương mù
+        let is_visible = engine.are_allies(Team::Player, p.team)
+            || engine.fog.is_visible(draw_x, draw_y)
+            || engine.fog.is_visible(p.target_x, p.target_y);
+        if !is_visible {
+            continue;
+        }
+
         if p.is_laser || p.visual == ProjectileVisual::Laser {
-            ctx.set_stroke_style_str(if p.team == Team::Player {
-                "#38bdf8"
-            } else {
-                "#f43f5e"
-            });
+            let (laser_color, _) = crate::renderer::get_team_color(engine, p.team);
+            ctx.set_stroke_style_str(laser_color);
             ctx.set_line_width(2.5);
             ctx.begin_path();
-            ctx.move_to(p.x as f64, p.y as f64);
+            ctx.move_to(draw_x as f64, draw_y as f64);
             ctx.line_to(p.target_x as f64, p.target_y as f64);
             ctx.stroke();
             continue;
         }
 
         ctx.save();
-        let _ = ctx.translate(p.x as f64, p.y as f64);
+        let _ = ctx.translate(draw_x as f64, draw_y as f64);
         let _ = ctx.rotate(p.angle as f64);
 
         match p.visual {
@@ -315,16 +326,17 @@ pub fn render_build_ghost(engine: &GameEngine, b_type: BuildingType) {
         &engine.config.render.player_color,
     );
 
-    // Tên công trình bên dưới ghost
+    // Tên công trình bên dưới ghost (căn giữa chuẩn xác)
     ctx.set_font("bold 10px monospace");
+    ctx.set_text_align("center");
     ctx.set_fill_style_str(&engine.config.render.player_color);
     let ghost_title = engine.config.get_building_short_name(b_type);
-    let text_w = (ghost_title.len() as f64) * 6.2;
     let _ = ctx.fill_text(
         ghost_title,
-        wx as f64 - text_w * 0.5,
+        wx as f64,
         by + (h as f64) + 13.0,
     );
+    ctx.set_text_align("left");
 
     // Hiển thị vòng tròn tầm bắn của công trình khi đang đặt móng
     let range = engine
@@ -354,6 +366,12 @@ pub fn render_floating_texts(engine: &GameEngine) {
     };
     ctx.set_font("bold 13px monospace");
     for ft in &engine.floating_texts {
+        if !engine.camera.is_point_visible(ft.x, ft.y, 40.0) {
+            continue;
+        }
+        if !engine.fog.is_visible(ft.x, ft.y) {
+            continue;
+        }
         let (sx, sy) = engine.world_to_screen(ft.x, ft.y);
         let alpha = (ft.lifetime / ft.max_lifetime).clamp(0.0, 1.0);
         ctx.set_fill_style_str(&format!("rgba(0, 229, 255, {})", alpha));
@@ -382,4 +400,26 @@ pub fn render_attack_move_cursor(engine: &GameEngine) {
     ctx.set_font("bold 11px monospace");
     ctx.set_fill_style_str("#ef4444");
     let _ = ctx.fill_text("ATTACK-MOVE", mx + 18.0, my + 4.0);
+}
+
+pub fn render_particles(engine: &GameEngine) {
+    let ctx = match engine.context.as_ref() {
+        Some(c) => c,
+        None => return,
+    };
+    for p in &engine.particles {
+        if !engine.camera.is_point_visible(p.x, p.y, 20.0) {
+            continue;
+        }
+        if !engine.fog.is_visible(p.x, p.y) {
+            continue;
+        }
+        let alpha = (p.lifetime / p.max_lifetime).clamp(0.0, 1.0);
+        let sz = (p.size * alpha).max(0.5) as f64;
+
+        ctx.set_fill_style_str(&p.color);
+        ctx.begin_path();
+        let _ = ctx.arc(p.x as f64, p.y as f64, sz, 0.0, std::f64::consts::PI * 2.0);
+        ctx.fill();
+    }
 }
