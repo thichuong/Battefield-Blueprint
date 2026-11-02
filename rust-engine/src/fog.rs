@@ -10,6 +10,8 @@ pub enum Visibility {
 
 pub struct FogOfWar {
     pub grid: Vec<Visibility>,
+    pub prev_grid: Vec<Visibility>,
+    pub update_timer: f32,
 }
 
 impl Default for FogOfWar {
@@ -22,6 +24,8 @@ impl FogOfWar {
     pub fn new() -> Self {
         Self {
             grid: vec![Visibility::Hidden; FOG_COLS * FOG_ROWS],
+            prev_grid: vec![Visibility::Hidden; FOG_COLS * FOG_ROWS],
+            update_timer: 0.0,
         }
     }
 

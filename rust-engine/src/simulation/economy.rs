@@ -203,7 +203,11 @@ pub fn update_fog(engine: &mut GameEngine) {
             engine.fog.reveal_circle(u.x, u.y, r);
         }
     }
-    engine.fog_dirty = true;
+
+    if engine.fog.grid != engine.fog.prev_grid {
+        engine.fog_dirty = true;
+        engine.fog.prev_grid.copy_from_slice(&engine.fog.grid);
+    }
 }
 
 pub fn check_game_over(engine: &mut GameEngine) {
@@ -239,8 +243,18 @@ pub fn check_game_over(engine: &mut GameEngine) {
 }
 
 pub fn send_sync_event(engine: &mut GameEngine) {
-    let tech_json = serde_json::to_string(&engine.player_tech).unwrap_or_default();
-    let autoplay_json = serde_json::to_string(&engine.autoplay.config).unwrap_or_default();
+    let tech_json = if engine.tech_dirty {
+        engine.tech_dirty = false;
+        serde_json::to_string(&engine.player_tech).unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let autoplay_json = if engine.autoplay_dirty {
+        engine.autoplay_dirty = false;
+        serde_json::to_string(&engine.autoplay.config).unwrap_or_default()
+    } else {
+        String::new()
+    };
     let current_form = engine
         .team_formation(Team::Player)
         .button_label()

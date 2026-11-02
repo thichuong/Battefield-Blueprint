@@ -23,7 +23,7 @@ pub fn update_ai_with_dt(engine: &mut GameEngine, dt: f32) {
             && !engine.player_slots[i].is_human
             && !engine.team_autoplay(team).config.enabled
         {
-            let mut ai_state = engine.team_ai(team).clone();
+            let mut ai_state = std::mem::take(engine.team_ai_mut(team));
             update_ai_for_team_with_dt(engine, team, &mut ai_state, dt);
             *engine.team_ai_mut(team) = ai_state;
         }
@@ -90,7 +90,7 @@ pub fn assign_idle_team_workers(engine: &mut GameEngine, team: Team) {
         .collect();
 
     for wid in team_workers {
-        if let Some(w) = engine.units.iter_mut().find(|u| u.id == wid) {
+        if let Some(w) = engine.get_unit_mut_by_id(wid) {
             let nearest_mineral = available_minerals
                 .iter()
                 .min_by(|a, b| {
@@ -789,7 +789,7 @@ pub fn maintain_continuous_ai_reflexes_for_team(engine: &mut GameEngine, team: T
             form,
         );
         for (uid, tx, ty, off_x, off_y) in form_pos {
-            if let Some(u) = engine.units.iter_mut().find(|u| u.id == uid) {
+            if let Some(u) = engine.get_unit_mut_by_id(uid) {
                 u.formation_offset = (off_x, off_y);
                 u.order = UnitOrder::MoveTo { x: tx, y: ty };
             }

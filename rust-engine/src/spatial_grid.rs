@@ -1,10 +1,12 @@
 use crate::components::Team;
 pub use crate::config::{CELL_SIZE, COLS, ROWS};
 use glam::Vec2;
+use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug)]
 pub struct GridEntity {
     pub id: u32,
+    pub index: usize,
     pub team: Team,
     pub faction: u8,
     pub pos: Vec2,
@@ -15,6 +17,8 @@ pub struct GridEntity {
 
 pub struct SpatialGrid {
     cells: Vec<Vec<GridEntity>>,
+    pub unit_id_to_index: HashMap<u32, usize>,
+    pub building_id_to_index: HashMap<u32, usize>,
 }
 
 impl Default for SpatialGrid {
@@ -30,13 +34,19 @@ impl SpatialGrid {
         for _ in 0..total_cells {
             cells.push(Vec::with_capacity(8));
         }
-        Self { cells }
+        Self {
+            cells,
+            unit_id_to_index: HashMap::with_capacity(512),
+            building_id_to_index: HashMap::with_capacity(128),
+        }
     }
 
     pub fn clear(&mut self) {
         for cell in self.cells.iter_mut() {
             cell.clear();
         }
+        self.unit_id_to_index.clear();
+        self.building_id_to_index.clear();
     }
 
     /// Tái tạo lưới từ danh sách đơn vị và công trình kèm thông tin phe phái
@@ -47,10 +57,12 @@ impl SpatialGrid {
         factions: &[u8; 8],
     ) {
         self.clear();
-        for u in units {
+        for (idx, u) in units.iter().enumerate() {
+            self.unit_id_to_index.insert(u.id, idx);
             let faction = factions[u.team.index() % 8];
             self.insert(GridEntity {
                 id: u.id,
+                index: idx,
                 team: u.team,
                 faction,
                 pos: Vec2::new(u.x, u.y),
@@ -59,12 +71,14 @@ impl SpatialGrid {
                 is_threat: u.unit_type != crate::components::UnitType::Engineer,
             });
         }
-        for b in buildings {
+        for (idx, b) in buildings.iter().enumerate() {
+            self.building_id_to_index.insert(b.id, idx);
             let faction = factions[b.team.index() % 8];
             let is_threat = b.building_type == crate::components::BuildingType::TurretTower
                 || b.building_type == crate::components::BuildingType::CommandCenter;
             self.insert(GridEntity {
                 id: b.id,
+                index: idx,
                 team: b.team,
                 faction,
                 pos: Vec2::new(b.x, b.y),
@@ -196,6 +210,58 @@ impl SpatialGrid {
         }
 
         best_threat.or(best_other)
+    }
+
+    /// Duyệt qua tất cả thực thể thù địch trong bán kính radius (Zero Heap Allocation)
+    #[inline]
+    pub fn for_each_hostile_in_radius<F>(&self, pos: Vec2, radius: f32, my_faction: u8, mut f: F)
+    where
+        F: FnMut(&GridEntity, f32),
+    {
+        let min_c = (((pos.x - radius) / CELL_SIZE).max(0.0) as usize).min(COLS - 1);
+        let max_c = (((pos.x + radius) / CELL_SIZE).max(0.0) as usize).min(COLS - 1);
+        let min_r = (((pos.y - radius) / CELL_SIZE).max(0.0) as usize).min(ROWS - 1);
+        let max_r = (((pos.y + radius) / CELL_SIZE).max(0.0) as usize).min(ROWS - 1);
+
+        for r in min_r..=max_r {
+            for c in min_c..=max_c {
+                let idx = self.cell_index(c, r);
+                for entity in &self.cells[idx] {
+                    if entity.faction != my_faction {
+                        let d_sq = pos.distance_squared(entity.pos);
+                        let reach = radius + entity.radius;
+                        if d_sq <= reach * reach {
+                            f(entity, d_sq.sqrt());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Kiểm tra nhanh xem có quân thù địch trong bán kính không (phục vụ placement, reflexes)
+    #[inline]
+    pub fn has_hostile_in_radius(&self, pos: Vec2, radius: f32, my_faction: u8) -> bool {
+        let min_c = (((pos.x - radius) / CELL_SIZE).max(0.0) as usize).min(COLS - 1);
+        let max_c = (((pos.x + radius) / CELL_SIZE).max(0.0) as usize).min(COLS - 1);
+        let min_r = (((pos.y - radius) / CELL_SIZE).max(0.0) as usize).min(ROWS - 1);
+        let max_r = (((pos.y + radius) / CELL_SIZE).max(0.0) as usize).min(ROWS - 1);
+
+        for r in min_r..=max_r {
+            for c in min_c..=max_c {
+                let idx = self.cell_index(c, r);
+                for entity in &self.cells[idx] {
+                    if entity.faction != my_faction {
+                        let d_sq = pos.distance_squared(entity.pos);
+                        let reach = radius + entity.radius;
+                        if d_sq <= reach * reach {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
     }
 
     /// Tìm tất cả thực thể trong bán kính radius

@@ -70,11 +70,12 @@ pub fn render_units(engine: &mut GameEngine) {
                 ..
             } => true,
             UnitOrder::Build { target_building_id } => {
-                if let Some(b) = engine.buildings.iter().find(|b| b.id == target_building_id) {
+                if let Some(b) = engine.get_building_by_id(target_building_id) {
                     let dx = b.x - u.x;
                     let dy = b.y - u.y;
-                    let dist = (dx * dx + dy * dy).sqrt();
-                    dist <= (b.width.max(b.height) * 0.5 + 45.0) && b.build_progress < 1.0
+                    let dist_sq = dx * dx + dy * dy;
+                    let max_reach = b.width.max(b.height) * 0.5 + 45.0;
+                    dist_sq <= max_reach * max_reach && b.build_progress < 1.0
                 } else {
                     false
                 }

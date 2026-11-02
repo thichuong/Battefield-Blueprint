@@ -65,7 +65,11 @@ pub fn step(engine: &mut GameEngine, dt: f32) {
     // 8. Cập nhật Hiệu ứng Chữ nổi (Floating numbers), Hạt (Particles), Rung chấn Camera & Fog
     if !engine.is_headless {
         update_floating_texts(engine, dt);
-        update_fog(engine);
+        engine.fog.update_timer += dt;
+        if engine.fog.update_timer >= 0.05 {
+            engine.fog.update_timer = 0.0;
+            update_fog(engine);
+        }
 
         // Cập nhật hệ thống hạt (Particles)
         for p in &mut engine.particles {

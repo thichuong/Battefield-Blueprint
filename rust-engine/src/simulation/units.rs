@@ -31,27 +31,7 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
         .rebuild_with_factions(&engine.units, &engine.buildings, &factions);
     let spatial_grid = &engine.spatial_grid;
 
-    // Snapshot vị trí công trình chưa xây xong và mỏ quặng
-    // (id, team, x, y, radius, build_progress)
-    let building_targets: Vec<(u32, Team, f32, f32, f32, f32)> = engine
-        .buildings
-        .iter()
-        .map(|b| {
-            (
-                b.id,
-                b.team,
-                b.x,
-                b.y,
-                (b.width.max(b.height) * 0.5),
-                b.build_progress,
-            )
-        })
-        .collect();
-    let unit_targets: Vec<(u32, Team, f32, f32)> = engine
-        .units
-        .iter()
-        .map(|u| (u.id, u.team, u.x, u.y))
-        .collect();
+    // Snapshot danh sách mỏ quặng và CCs (kích thước nhỏ: quặng ~30-40, CC ~8-16)
     let mineral_nodes: Vec<(u32, f32, f32)> =
         engine.minerals.iter().map(|m| (m.id, m.x, m.y)).collect();
     let cc_targets: Vec<(Team, f32, f32)> = engine
@@ -61,7 +41,72 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
         .map(|b| (b.team, b.x, b.y))
         .collect();
 
-    for unit in engine.units.iter_mut() {
+    let num_units = engine.units.len();
+    for u_idx in 0..num_units {
+        let (u_team, u_order) = {
+            let u = &engine.units[u_idx];
+            (u.team, u.order)
+        };
+        let u_team_idx = u_team.index() % 8;
+        let my_faction = factions[u_team_idx];
+
+        // Lấy thông tin mục tiêu AttackTarget hoặc Build nhanh O(1) qua spatial_grid
+        let attack_target_info = if let UnitOrder::AttackTarget { target_id, is_building } = u_order {
+            if is_building {
+                if let Some(&b_idx) = spatial_grid.building_id_to_index.get(&target_id) {
+                    if b_idx < engine.buildings.len() {
+                        let b = &engine.buildings[b_idx];
+                        if b.id == target_id && factions[b.team.index() % 8] != my_faction {
+                            Some((b.x, b.y, b.width.max(b.height) * 0.5))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                if let Some(&t_idx) = spatial_grid.unit_id_to_index.get(&target_id) {
+                    if t_idx < engine.units.len() {
+                        let target_u = &engine.units[t_idx];
+                        if target_u.id == target_id && factions[target_u.team.index() % 8] != my_faction {
+                            Some((target_u.x, target_u.y, 10.0))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        let build_target_info = if let UnitOrder::Build { target_building_id } = u_order {
+            if let Some(&b_idx) = spatial_grid.building_id_to_index.get(&target_building_id) {
+                if b_idx < engine.buildings.len() {
+                    let b = &engine.buildings[b_idx];
+                    if b.id == target_building_id {
+                        Some((b.x, b.y, b.build_progress))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let unit = &mut engine.units[u_idx];
         if unit.current_cooldown > 0.0 {
             unit.current_cooldown -= dt;
         }
@@ -274,14 +319,9 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
                     }
                 }
             }
-            UnitOrder::Build { target_building_id } => {
-                let target_building = building_targets
-                    .iter()
-                    .find(|(id, _, _, _, _, _)| *id == target_building_id);
-
-                let is_still_building = if let Some((_, _, bx, by, _, build_prog)) = target_building
-                {
-                    if *build_prog < 1.0 {
+            UnitOrder::Build { .. } => {
+                let is_still_building = if let Some((bx, by, build_prog)) = build_target_info {
+                    if build_prog < 1.0 {
                         let dx = bx - unit.x;
                         let dy = by - unit.y;
                         let dist = (dx * dx + dy * dy).sqrt();
@@ -325,21 +365,7 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
                 target_id,
                 is_building,
             } => {
-                let target_info = if is_building {
-                    building_targets
-                        .iter()
-                        .find(|(id, t, _, _, _, _)| {
-                            *id == target_id && factions[t.index() % 8] != my_faction
-                        })
-                        .map(|(_, _, x, y, r, _)| (*x, *y, *r))
-                } else {
-                    unit_targets
-                        .iter()
-                        .find(|(id, t, _, _)| {
-                            *id == target_id && factions[t.index() % 8] != my_faction
-                        })
-                        .map(|(_, _, x, y)| (*x, *y, 10.0))
-                };
+                let target_info = attack_target_info;
 
                 if let Some((tx, ty, target_radius)) = target_info {
                     let dx = tx - unit.x;

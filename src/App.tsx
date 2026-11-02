@@ -315,17 +315,21 @@ export const App: React.FC = () => {
       switch (type) {
         case 'SyncState': {
           let parsedTech = null;
-          try {
-            parsedTech = JSON.parse(payload.tech_state);
-          } catch (e) {
-            // ignore
+          if (payload.tech_state && payload.tech_state.length > 0) {
+            try {
+              parsedTech = JSON.parse(payload.tech_state);
+            } catch (e) {
+              // ignore
+            }
           }
 
           let parsedAutoPlay = null;
-          try {
-            parsedAutoPlay = JSON.parse(payload.autoplay_state);
-          } catch (e) {
-            // ignore
+          if (payload.autoplay_state && payload.autoplay_state.length > 0) {
+            try {
+              parsedAutoPlay = JSON.parse(payload.autoplay_state);
+            } catch (e) {
+              // ignore
+            }
           }
 
           setGameState((prev) => ({

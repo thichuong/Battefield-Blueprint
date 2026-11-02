@@ -769,3 +769,70 @@ fn test_hit_flash() {
     apply_damage_to_unit(&mut unit, 10.0);
     assert!(unit.hit_flash_timer > 0.0);
 }
+
+#[test]
+fn test_high_load_8_teams_simulation_performance() {
+    let mut engine = GameEngine::new_headless();
+    engine.units.clear();
+    engine.buildings.clear();
+    for i in 0..8 {
+        engine.player_slots[i].active = true;
+    }
+
+    // Spawn 80 units per team (640 units total) scattered across map
+    let cfg = GameConfig::default();
+    let mut uid = 100;
+    for team_idx in 0..8 {
+        let team = Team::from_index(team_idx);
+        let center_x = 500.0 + (team_idx as f32 % 4.0) * 1000.0;
+        let center_y = 500.0 + (team_idx as f32 / 4.0) * 2000.0;
+
+        // Base CC
+        engine.buildings.push(cfg.create_building(
+            uid,
+            team,
+            BuildingType::CommandCenter,
+            center_x,
+            center_y,
+            true,
+        ));
+        uid += 1;
+
+        for j in 0..80 {
+            let offset_x = (j % 10) as f32 * 35.0;
+            let offset_y = (j / 10) as f32 * 35.0;
+            let u_type = match j % 4 {
+                0 => UnitType::Rifleman,
+                1 => UnitType::ShockTrooper,
+                2 => UnitType::LaserMarksman,
+                _ => UnitType::Engineer,
+            };
+            let mut u = cfg.create_unit(uid, team, u_type, center_x + offset_x, center_y + offset_y);
+            // Issue orders to simulate real battle load
+            if j % 2 == 0 {
+                u.order = UnitOrder::AttackMove { x: 2400.0, y: 2400.0 };
+            } else {
+                u.order = UnitOrder::MoveTo { x: 2400.0, y: 2400.0 };
+            }
+            engine.units.push(u);
+            uid += 1;
+        }
+    }
+
+    assert_eq!(engine.units.len(), 640);
+    assert_eq!(engine.buildings.len(), 8);
+
+    // Run 60 simulation steps (1 full second at 60Hz)
+    let start = std::time::Instant::now();
+    for _ in 0..60 {
+        crate::simulation::step(&mut engine, 1.0 / 60.0);
+    }
+    let elapsed = start.elapsed();
+
+    // Verify simulation completed and runs within high performance threshold
+    assert!(
+        elapsed.as_millis() < 500,
+        "High-load 640-unit 8-team simulation took too long: {:?}",
+        elapsed
+    );
+}

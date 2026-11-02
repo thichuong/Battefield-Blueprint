@@ -90,8 +90,8 @@ pub fn find_defense_line_spot_for_team(
         }
 
         let collides_minerals = engine.minerals.iter().any(|m| {
-            let dist = ((sx - m.x).powi(2) + (sy - m.y).powi(2)).sqrt();
-            dist < 75.0
+            let dist_sq = (sx - m.x).powi(2) + (sy - m.y).powi(2);
+            dist_sq < 75.0 * 75.0
         });
         if collides_minerals {
             continue;
@@ -109,10 +109,11 @@ pub fn find_defense_line_spot_for_team(
         }
 
         // Không thể đặt móng công trình đè lên đầu quân địch đang giao chiến
-        let collides_enemies = engine
-            .units
-            .iter()
-            .any(|u| u.team != team && ((sx - u.x).powi(2) + (sy - u.y).powi(2)).sqrt() < 80.0);
+        let collides_enemies = engine.spatial_grid.has_hostile_in_radius(
+            glam::Vec2::new(sx, sy),
+            80.0,
+            engine.get_faction(team),
+        );
         if collides_enemies {
             continue;
         }
@@ -200,7 +201,7 @@ pub fn find_team_build_spot(
                 let collides_m = engine
                     .minerals
                     .iter()
-                    .any(|m| ((cand_x - m.x).powi(2) + (cand_y - m.y).powi(2)).sqrt() < 85.0);
+                    .any(|m| (cand_x - m.x).powi(2) + (cand_y - m.y).powi(2) < 85.0 * 85.0);
                 if collides_m {
                     continue;
                 }
@@ -301,8 +302,8 @@ pub fn find_team_build_spot(
                 }
 
                 let collides_minerals = engine.minerals.iter().any(|m| {
-                    let dist = ((cand_x - m.x).powi(2) + (cand_y - m.y).powi(2)).sqrt();
-                    dist < 75.0
+                    let dist_sq = (cand_x - m.x).powi(2) + (cand_y - m.y).powi(2);
+                    dist_sq < 75.0 * 75.0
                 });
                 if collides_minerals {
                     continue;
@@ -319,10 +320,11 @@ pub fn find_team_build_spot(
                     continue;
                 }
 
-                let collides_enemies = engine.units.iter().any(|u| {
-                    u.team != team
-                        && ((cand_x - u.x).powi(2) + (cand_y - u.y).powi(2)).sqrt() < 80.0
-                });
+                let collides_enemies = engine.spatial_grid.has_hostile_in_radius(
+                    glam::Vec2::new(cand_x, cand_y),
+                    80.0,
+                    engine.get_faction(team),
+                );
                 if collides_enemies {
                     continue;
                 }

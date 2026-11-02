@@ -83,6 +83,8 @@ pub struct GpuCacheManager {
     pub particle_orange: HtmlCanvasElement,
     pub particle_red: HtmlCanvasElement,
     pub particle_purple: HtmlCanvasElement,
+    pub particle_green: HtmlCanvasElement,
+    pub particle_slate: HtmlCanvasElement,
     pub particle_white: HtmlCanvasElement,
 }
 
@@ -323,6 +325,8 @@ impl GpuCacheManager {
         let particle_orange = bake_particle("#fb923c")?;
         let particle_red = bake_particle("#ef4444")?;
         let particle_purple = bake_particle("#c084fc")?;
+        let particle_green = bake_particle("#84cc16")?;
+        let particle_slate = bake_particle("#64748b")?;
         let particle_white = bake_particle("#ffffff")?;
 
         // --- 6. Bake Building Sprites ---
@@ -480,6 +484,8 @@ impl GpuCacheManager {
             particle_orange,
             particle_red,
             particle_purple,
+            particle_green,
+            particle_slate,
             particle_white,
         })
     }

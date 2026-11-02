@@ -15,9 +15,9 @@ pub fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
 
     let has_worker = engine.selected_unit_ids.iter().any(|uid| {
         engine
-            .units
-            .iter()
-            .any(|u| u.id == *uid && u.unit_type == UnitType::Engineer)
+            .get_unit_by_id(*uid)
+            .map(|u| u.unit_type == UnitType::Engineer)
+            .unwrap_or(false)
     });
 
     let mut tooltip: Option<(String, String)> = None;
@@ -227,9 +227,8 @@ pub fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
         }
     } else if let Some(bid) = engine.selected_building_id {
         if let Some(b) = engine
-            .buildings
-            .iter()
-            .find(|b| b.id == bid && b.team == Team::Player)
+            .get_building_by_id(bid)
+            .filter(|b| b.team == Team::Player)
         {
             match b.building_type {
                 BuildingType::CommandCenter => {

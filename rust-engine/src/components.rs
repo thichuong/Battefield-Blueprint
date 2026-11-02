@@ -421,13 +421,56 @@ pub struct Building {
     pub hit_flash_timer: f32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ParticleColor {
+    Blue,
+    Cyan,
+    Yellow,
+    Orange,
+    Red,
+    Purple,
+    Green,
+    Slate,
+    White,
+}
+
+impl ParticleColor {
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "#38bdf8" => ParticleColor::Blue,
+            "#00e5ff" => ParticleColor::Cyan,
+            "#facc15" | "#fef08a" | "#fbbf24" => ParticleColor::Yellow,
+            "#fb923c" | "#ea580c" | "#f97316" => ParticleColor::Orange,
+            "#ef4444" | "#f43f5e" => ParticleColor::Red,
+            "#c084fc" | "#a855f7" => ParticleColor::Purple,
+            "#84cc16" | "#a3e635" => ParticleColor::Green,
+            "#475569" | "#94a3b8" => ParticleColor::Slate,
+            _ => ParticleColor::White,
+        }
+    }
+
+    pub fn to_hex(&self) -> &'static str {
+        match self {
+            ParticleColor::Blue => "#38bdf8",
+            ParticleColor::Cyan => "#00e5ff",
+            ParticleColor::Yellow => "#facc15",
+            ParticleColor::Orange => "#ea580c",
+            ParticleColor::Red => "#ef4444",
+            ParticleColor::Purple => "#c084fc",
+            ParticleColor::Green => "#84cc16",
+            ParticleColor::Slate => "#475569",
+            ParticleColor::White => "#ffffff",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Particle {
     pub x: f32,
     pub y: f32,
     pub vx: f32,
     pub vy: f32,
-    pub color: String,
+    pub color: ParticleColor,
     pub size: f32,
     pub lifetime: f32,
     pub max_lifetime: f32,

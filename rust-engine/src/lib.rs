@@ -85,6 +85,9 @@ pub fn engine_frame(now_ms: f64, mouse_x: f32, mouse_y: f32, should_render: bool
         const MAX_SUB_STEPS: usize = 5;
         engine.sim_accumulator += delta_sec;
 
+        let measure_debug = engine.show_debug_overlay;
+        let t0 = if measure_debug { get_performance_now() } else { 0.0 };
+
         let mut sub_steps = 0;
         while engine.sim_accumulator >= FIXED_TIMESTEP && sub_steps < MAX_SUB_STEPS {
             simulation::step(engine, FIXED_TIMESTEP);
@@ -92,12 +95,22 @@ pub fn engine_frame(now_ms: f64, mouse_x: f32, mouse_y: f32, should_render: bool
             sub_steps += 1;
         }
 
+        if measure_debug {
+            let t1 = get_performance_now();
+            engine.sim_time_ms = (t1 - t0) as f32;
+        }
+
         // 4. Render nếu đến lượt khung hình
         if should_render {
             engine.last_render_time = now_ms;
             let alpha = (engine.sim_accumulator / FIXED_TIMESTEP).clamp(0.0, 1.0);
             engine.render_alpha = alpha;
+            let rt0 = if measure_debug { get_performance_now() } else { 0.0 };
             renderer::render(engine);
+            if measure_debug {
+                let rt1 = get_performance_now();
+                engine.render_time_ms = (rt1 - rt0) as f32;
+            }
         }
 
         // 5. Trả về cờ bitmask: bit 0 = có sự kiện mới

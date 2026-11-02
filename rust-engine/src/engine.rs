@@ -538,6 +538,50 @@ impl GameEngine {
         self.team_formations[team.index() % 8] = formation;
     }
 
+    #[inline]
+    pub fn get_unit_by_id(&self, id: u32) -> Option<&Unit> {
+        if let Some(&idx) = self.spatial_grid.unit_id_to_index.get(&id) {
+            if let Some(u) = self.units.get(idx) {
+                if u.id == id {
+                    return Some(u);
+                }
+            }
+        }
+        self.units.iter().find(|u| u.id == id)
+    }
+
+    #[inline]
+    pub fn get_unit_mut_by_id(&mut self, id: u32) -> Option<&mut Unit> {
+        if let Some(&idx) = self.spatial_grid.unit_id_to_index.get(&id) {
+            if idx < self.units.len() && self.units[idx].id == id {
+                return Some(&mut self.units[idx]);
+            }
+        }
+        self.units.iter_mut().find(|u| u.id == id)
+    }
+
+    #[inline]
+    pub fn get_building_by_id(&self, id: u32) -> Option<&Building> {
+        if let Some(&idx) = self.spatial_grid.building_id_to_index.get(&id) {
+            if let Some(b) = self.buildings.get(idx) {
+                if b.id == id {
+                    return Some(b);
+                }
+            }
+        }
+        self.buildings.iter().find(|b| b.id == id)
+    }
+
+    #[inline]
+    pub fn get_building_mut_by_id(&mut self, id: u32) -> Option<&mut Building> {
+        if let Some(&idx) = self.spatial_grid.building_id_to_index.get(&id) {
+            if idx < self.buildings.len() && self.buildings[idx].id == id {
+                return Some(&mut self.buildings[idx]);
+            }
+        }
+        self.buildings.iter_mut().find(|b| b.id == id)
+    }
+
     /// Dọn sạch toàn bộ thực thể và tài nguyên của màn chơi cũ, chuẩn bị cho màn chơi mới
     pub fn reset_game(&mut self) {
         // 1. Khởi tạo lại tài nguyên khoáng sản & chướng ngại vật mới tinh
@@ -747,7 +791,7 @@ impl GameEngine {
                 y,
                 vx: angle.cos() * spd,
                 vy: angle.sin() * spd,
-                color: color.to_string(),
+                color: crate::components::ParticleColor::from_str(color),
                 size: p_size,
                 lifetime: p_life,
                 max_lifetime: p_life,

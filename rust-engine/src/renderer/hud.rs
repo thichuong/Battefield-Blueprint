@@ -4,6 +4,16 @@ use crate::renderer::command_card::render_command_card;
 use crate::renderer::get_team_color;
 use crate::GameEngine;
 
+thread_local! {
+    static DASH_ARRAY: js_sys::Array = {
+        let arr = js_sys::Array::new();
+        arr.push(&wasm_bindgen::JsValue::from_f64(3.0));
+        arr.push(&wasm_bindgen::JsValue::from_f64(2.0));
+        arr
+    };
+    static EMPTY_DASH_ARRAY: js_sys::Array = js_sys::Array::new();
+}
+
 pub fn render_in_game_hud(engine: &GameEngine) {
     let ctx = match engine.context.as_ref() {
         Some(c) => c,
@@ -163,15 +173,16 @@ pub fn render_in_game_hud(engine: &GameEngine) {
 
         ctx.set_stroke_style_str("rgba(245, 158, 11, 0.85)");
         ctx.set_line_width(1.5);
-        let dash = js_sys::Array::new();
-        dash.push(&wasm_bindgen::JsValue::from_f64(3.0));
-        dash.push(&wasm_bindgen::JsValue::from_f64(2.0));
-        let _ = ctx.set_line_dash(&dash);
+        DASH_ARRAY.with(|dash| {
+            let _ = ctx.set_line_dash(dash);
+        });
         ctx.begin_path();
         ctx.move_to(p1x, p1y);
         ctx.line_to(p2x, p2y);
         ctx.stroke();
-        let _ = ctx.set_line_dash(&js_sys::Array::new());
+        EMPTY_DASH_ARRAY.with(|empty| {
+            let _ = ctx.set_line_dash(empty);
+        });
 
         // Điểm A (Cyan) & Điểm B (Purple)
         ctx.set_fill_style_str("#06b6d4");
@@ -186,73 +197,99 @@ pub fn render_in_game_hud(engine: &GameEngine) {
     }
 
     // Vẽ mỏ quặng trên Minimap (chỉ vẽ nếu đã từng được thám hiểm)
+    ctx.set_fill_style_str("#38bdf8");
     for m in &engine.minerals {
         if engine.fog.is_explored(m.x, m.y) {
             let mx = mm_x + (m.x / MAP_WIDTH) as f64 * mm_s;
             let my = mm_y + (m.y / MAP_HEIGHT) as f64 * mm_s;
-            ctx.set_fill_style_str("#38bdf8");
             ctx.fill_rect(mx - 1.5, my - 1.5, 3.0, 3.0);
         }
     }
 
-    // Vẽ công trình trên Minimap (đồng minh hoặc công trình địch đã từng được thám hiểm)
-    for b in &engine.buildings {
-        if engine.are_allies(Team::Player, b.team) || engine.fog.is_explored(b.x, b.y) {
-            let mx = mm_x + (b.x / MAP_WIDTH) as f64 * mm_s;
-            let my = mm_y + (b.y / MAP_HEIGHT) as f64 * mm_s;
-            let color = get_team_color(engine, b.team).0;
-            ctx.set_fill_style_str(color);
-            ctx.fill_rect(mx - 2.5, my - 2.5, 5.0, 5.0);
+    // Vẽ công trình trên Minimap gom nhóm theo Team (giảm số lần đổi context fill_style)
+    for i in 0..8 {
+        let team = Team::from_index(i);
+        let color = get_team_color(engine, team).0;
+        let mut color_set = false;
+
+        for b in &engine.buildings {
+            if b.team == team && (engine.are_allies(Team::Player, b.team) || engine.fog.is_explored(b.x, b.y)) {
+                if !color_set {
+                    ctx.set_fill_style_str(color);
+                    color_set = true;
+                }
+                let mx = mm_x + (b.x / MAP_WIDTH) as f64 * mm_s;
+                let my = mm_y + (b.y / MAP_HEIGHT) as f64 * mm_s;
+                ctx.fill_rect(mx - 2.5, my - 2.5, 5.0, 5.0);
+            }
         }
     }
 
     // Phủ sương mù chiến tranh lên Minimap (Minimap Fog of War Overlay)
-    use crate::fog::{Visibility, FOG_COLS, FOG_ROWS};
-    let cell_mm = mm_s / (FOG_COLS as f64);
-    for r in 0..FOG_ROWS {
-        let ry = mm_y + (r as f64) * cell_mm;
-        let mut current_vis = engine.fog.grid[r * FOG_COLS];
-        let mut start_c = 0;
-        let mut count = 0;
+    if let Some(ref cache) = engine.gpu_cache {
+        let _ = ctx.draw_image_with_html_canvas_element_and_dw_and_dh(
+            &cache.fog_canvas,
+            mm_x,
+            mm_y,
+            mm_s,
+            mm_s,
+        );
+    } else {
+        use crate::fog::{Visibility, FOG_COLS, FOG_ROWS};
+        let cell_mm = mm_s / (FOG_COLS as f64);
+        for r in 0..FOG_ROWS {
+            let ry = mm_y + (r as f64) * cell_mm;
+            let mut current_vis = engine.fog.grid[r * FOG_COLS];
+            let mut start_c = 0;
+            let mut count = 0;
 
-        for c in 0..FOG_COLS {
-            let vis = engine.fog.grid[r * FOG_COLS + c];
-            if vis == current_vis {
-                count += 1;
-            } else {
-                if current_vis == Visibility::Hidden {
-                    ctx.set_fill_style_str("rgba(2, 6, 13, 0.72)");
-                    ctx.fill_rect(
-                        mm_x + (start_c as f64) * cell_mm,
-                        ry,
-                        (count as f64) * cell_mm + 0.3,
-                        cell_mm + 0.3,
-                    );
+            for c in 0..FOG_COLS {
+                let vis = engine.fog.grid[r * FOG_COLS + c];
+                if vis == current_vis {
+                    count += 1;
+                } else {
+                    if current_vis == Visibility::Hidden {
+                        ctx.set_fill_style_str("rgba(2, 6, 13, 0.72)");
+                        ctx.fill_rect(
+                            mm_x + (start_c as f64) * cell_mm,
+                            ry,
+                            (count as f64) * cell_mm + 0.3,
+                            cell_mm + 0.3,
+                        );
+                    }
+                    current_vis = vis;
+                    start_c = c;
+                    count = 1;
                 }
-                current_vis = vis;
-                start_c = c;
-                count = 1;
             }
-        }
-        if current_vis == Visibility::Hidden {
-            ctx.set_fill_style_str("rgba(2, 6, 13, 0.72)");
-            ctx.fill_rect(
-                mm_x + (start_c as f64) * cell_mm,
-                ry,
-                (count as f64) * cell_mm + 0.3,
-                cell_mm + 0.3,
-            );
+            if current_vis == Visibility::Hidden {
+                ctx.set_fill_style_str("rgba(2, 6, 13, 0.72)");
+                ctx.fill_rect(
+                    mm_x + (start_c as f64) * cell_mm,
+                    ry,
+                    (count as f64) * cell_mm + 0.3,
+                    cell_mm + 0.3,
+                );
+            }
         }
     }
 
-    // Vẽ lính trên Minimap
-    for u in &engine.units {
-        if engine.are_allies(Team::Player, u.team) || engine.fog.is_visible(u.x, u.y) {
-            let mx = mm_x + (u.x / MAP_WIDTH) as f64 * mm_s;
-            let my = mm_y + (u.y / MAP_HEIGHT) as f64 * mm_s;
-            let color = get_team_color(engine, u.team).0;
-            ctx.set_fill_style_str(color);
-            ctx.fill_rect(mx - 1.5, my - 1.5, 3.0, 3.0);
+    // Vẽ lính trên Minimap gom nhóm theo Team
+    for i in 0..8 {
+        let team = Team::from_index(i);
+        let color = get_team_color(engine, team).0;
+        let mut color_set = false;
+
+        for u in &engine.units {
+            if u.team == team && (engine.are_allies(Team::Player, u.team) || engine.fog.is_visible(u.x, u.y)) {
+                if !color_set {
+                    ctx.set_fill_style_str(color);
+                    color_set = true;
+                }
+                let mx = mm_x + (u.x / MAP_WIDTH) as f64 * mm_s;
+                let my = mm_y + (u.y / MAP_HEIGHT) as f64 * mm_s;
+                ctx.fill_rect(mx - 1.5, my - 1.5, 3.0, 3.0);
+            }
         }
     }
 
@@ -291,7 +328,7 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
 
     // 1. Nếu đang chọn 1 công trình
     if let Some(bid) = engine.selected_building_id {
-        if let Some(b) = engine.buildings.iter().find(|b| b.id == bid) {
+        if let Some(b) = engine.get_building_by_id(bid) {
             let color = if b.team == Team::Player {
                 "#00e5ff"
             } else {
@@ -496,7 +533,7 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
     // 2. Nếu đang chọn 1 lính
     if engine.selected_unit_ids.len() == 1 {
         let uid = engine.selected_unit_ids[0];
-        if let Some(u) = engine.units.iter().find(|u| u.id == uid) {
+        if let Some(u) = engine.get_unit_by_id(uid) {
             ctx.set_font("bold 13px monospace");
             ctx.set_fill_style_str(if u.team == Team::Player {
                 "#00e5ff"
@@ -647,7 +684,7 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
         let mut evo_count = 0;
 
         for uid in &engine.selected_unit_ids {
-            if let Some(u) = engine.units.iter().find(|u| u.id == *uid) {
+            if let Some(u) = engine.get_unit_by_id(*uid) {
                 match u.unit_type {
                     UnitType::Engineer => workers += 1,
                     UnitType::ShockTrooper

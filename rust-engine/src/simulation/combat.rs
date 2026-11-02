@@ -33,6 +33,7 @@ pub fn apply_damage_to_unit(unit: &mut Unit, taken: f32) -> f32 {
 
 pub fn update_magic_circles(engine: &mut GameEngine, dt: f32) {
     let factions = engine.team_factions();
+    engine.spatial_grid.rebuild_with_factions(&engine.units, &engine.buildings, &factions);
     let has_corrosive: [bool; 8] =
         std::array::from_fn(|i| engine.team_tech(Team::from_index(i)).corrosive_curse);
     let mut new_texts = Vec::new();
@@ -61,69 +62,80 @@ pub fn update_magic_circles(engine: &mut GameEngine, dt: f32) {
         };
         let dmg_type = circle.damage_type;
 
-        // 1. Sát thương lên lính địch (áp dụng hệ thống kháng đòn & hiệu ứng công nghệ)
-        for u in engine.units.iter_mut() {
-            if factions[u.team.index() % 8] != c_faction {
-                let dist = ((u.x - circle.x).powi(2) + (u.y - circle.y).powi(2)).sqrt();
-                if dist <= circle.radius {
-                    // Sát thương theo % máu tối đa mỗi giây từ config (mặc định 10% max HP/s)
-                    let raw_dmg = circle_dps * u.max_hp * dt;
-                    // Sát thương tính qua hệ số Kháng sát thương như các đòn đánh thường
-                    let taken = calculate_effective_damage(raw_dmg, dmg_type, &u.resistances);
-                    apply_damage_to_unit(u, taken);
+        // 1. Sát thương lên lính & công trình địch qua SpatialGrid trong bán kính circle.radius
+        let mut affected_units = Vec::new();
+        let mut affected_buildings = Vec::new();
 
-                    // Hiệu ứng đòn đánh: Lời nguyền ăn mòn (Corrosive Curse) bào mòn kháng kẻ địch khi dính sát thương
-                    if has_corrosive[c_team_idx] && should_tick_text {
-                        u.resistances.physical = (u.resistances.physical - 0.04).max(0.0);
-                        u.resistances.energy = (u.resistances.energy - 0.04).max(0.0);
-                        u.resistances.explosive = (u.resistances.explosive - 0.04).max(0.0);
-                        u.resistances.arcane = (u.resistances.arcane - 0.04).max(0.0);
-                    }
+        engine.spatial_grid.for_each_hostile_in_radius(
+            glam::Vec2::new(circle.x, circle.y),
+            circle.radius,
+            c_faction,
+            |entity, dist| {
+                if entity.is_building {
+                    affected_buildings.push((entity.index, dist));
+                } else {
+                    affected_units.push((entity.index, dist));
+                }
+            },
+        );
 
-                    if should_tick_text && !engine.is_headless {
-                        let tick_raw = circle_dps * u.max_hp * 0.5;
-                        let tick_taken =
-                            calculate_effective_damage(tick_raw, dmg_type, &u.resistances);
-                        new_texts.push(FloatingText {
-                            id: 0,
-                            text: format!("-{:.0}", tick_taken),
-                            x: u.x,
-                            y: u.y - 12.0,
-                            color: dmg_type.color_code().to_string(),
-                            lifetime: 0.6,
-                            max_lifetime: 0.6,
-                        });
-                    }
+        for (u_idx, _dist) in affected_units {
+            if u_idx < engine.units.len() {
+                let u = &mut engine.units[u_idx];
+                // Sát thương theo % máu tối đa mỗi giây từ config (mặc định 10% max HP/s)
+                let raw_dmg = circle_dps * u.max_hp * dt;
+                // Sát thương tính qua hệ số Kháng sát thương như các đòn đánh thường
+                let taken = calculate_effective_damage(raw_dmg, dmg_type, &u.resistances);
+                apply_damage_to_unit(u, taken);
+
+                // Hiệu ứng đòn đánh: Lời nguyền ăn mòn (Corrosive Curse) bào mòn kháng kẻ địch khi dính sát thương
+                if has_corrosive[c_team_idx] && should_tick_text {
+                    u.resistances.physical = (u.resistances.physical - 0.04).max(0.0);
+                    u.resistances.energy = (u.resistances.energy - 0.04).max(0.0);
+                    u.resistances.explosive = (u.resistances.explosive - 0.04).max(0.0);
+                    u.resistances.arcane = (u.resistances.arcane - 0.04).max(0.0);
+                }
+
+                if should_tick_text && !engine.is_headless {
+                    let tick_raw = circle_dps * u.max_hp * 0.5;
+                    let tick_taken =
+                        calculate_effective_damage(tick_raw, dmg_type, &u.resistances);
+                    new_texts.push(FloatingText {
+                        id: 0,
+                        text: format!("-{:.0}", tick_taken),
+                        x: u.x,
+                        y: u.y - 12.0,
+                        color: dmg_type.color_code().to_string(),
+                        lifetime: 0.6,
+                        max_lifetime: 0.6,
+                    });
                 }
             }
         }
 
-        // 2. Sát thương lên công trình địch (áp dụng kháng, kích hoạt hiệu ứng bị tấn công)
-        for b in engine.buildings.iter_mut() {
-            if factions[b.team.index() % 8] != c_faction {
+        for (b_idx, _dist) in affected_buildings {
+            if b_idx < engine.buildings.len() {
+                let b = &mut engine.buildings[b_idx];
                 let b_rad = b.width.max(b.height) * 0.5;
-                let dist_to_b = ((b.x - circle.x).powi(2) + (b.y - circle.y).powi(2)).sqrt();
-                if dist_to_b <= b_rad + circle.radius {
-                    let raw_dmg = circle_dps * b.max_hp * dt;
-                    let taken = calculate_effective_damage(raw_dmg, dmg_type, &b.resistances);
-                    b.hp -= taken;
-                    // Hiệu ứng bị tấn công như các đơn vị khác (làm chậm xây dựng, báo động đỏ)
-                    b.under_attack_timer = crate::config::BUILDING_UNDER_ATTACK_DURATION;
+                let raw_dmg = circle_dps * b.max_hp * dt;
+                let taken = calculate_effective_damage(raw_dmg, dmg_type, &b.resistances);
+                b.hp -= taken;
+                // Hiệu ứng bị tấn công như các đơn vị khác (làm chậm xây dựng, báo động đỏ)
+                b.under_attack_timer = crate::config::BUILDING_UNDER_ATTACK_DURATION;
 
-                    if should_tick_text && !engine.is_headless {
-                        let tick_raw = circle_dps * b.max_hp * 0.5;
-                        let tick_taken =
-                            calculate_effective_damage(tick_raw, dmg_type, &b.resistances);
-                        new_texts.push(FloatingText {
-                            id: 0,
-                            text: format!("-{:.0}", tick_taken),
-                            x: b.x,
-                            y: b.y - b_rad,
-                            color: dmg_type.color_code().to_string(),
-                            lifetime: 0.7,
-                            max_lifetime: 0.7,
-                        });
-                    }
+                if should_tick_text && !engine.is_headless {
+                    let tick_raw = circle_dps * b.max_hp * 0.5;
+                    let tick_taken =
+                        calculate_effective_damage(tick_raw, dmg_type, &b.resistances);
+                    new_texts.push(FloatingText {
+                        id: 0,
+                        text: format!("-{:.0}", tick_taken),
+                        x: b.x,
+                        y: b.y - b_rad,
+                        color: dmg_type.color_code().to_string(),
+                        lifetime: 0.7,
+                        max_lifetime: 0.7,
+                    });
                 }
             }
         }
@@ -163,78 +175,90 @@ pub fn update_projectiles(engine: &mut GameEngine, dt: f32) {
             let p_team_idx = p.team.index() % 8;
             let p_faction = factions[p_team_idx];
 
+            // Sát thương lính & công trình địch bằng SpatialGrid (O(1) vùng nổ thay vì O(U+B))
+            let mut hit_units = Vec::new();
+            let mut hit_buildings = Vec::new();
+
+            engine.spatial_grid.for_each_hostile_in_radius(
+                glam::Vec2::new(p.target_x, p.target_y),
+                aoe_range,
+                p_faction,
+                |entity, dist| {
+                    if entity.is_building {
+                        hit_buildings.push((entity.index, dist));
+                    } else {
+                        hit_units.push((entity.index, dist));
+                    }
+                },
+            );
+
             // Sát thương lính địch (hấp thụ vào Khiên trước nếu có)
-            for u in engine.units.iter_mut() {
-                if factions[u.team.index() % 8] != p_faction {
-                    let d = ((u.x - p.target_x).powi(2) + (u.y - p.target_y).powi(2)).sqrt();
-                    if d <= aoe_range {
-                        let falloff = if is_aoe {
-                            (1.0 - (d / aoe_range) * 0.35).max(0.65)
-                        } else {
-                            1.0
-                        };
-                        let taken = calculate_effective_damage(
-                            p.damage * falloff,
-                            p.damage_type,
-                            &u.resistances,
-                        );
-                        apply_damage_to_unit(u, taken);
+            for (u_idx, d) in hit_units {
+                if u_idx < engine.units.len() {
+                    let u = &mut engine.units[u_idx];
+                    let falloff = if is_aoe {
+                        (1.0 - (d / aoe_range) * 0.35).max(0.65)
+                    } else {
+                        1.0
+                    };
+                    let taken = calculate_effective_damage(
+                        p.damage * falloff,
+                        p.damage_type,
+                        &u.resistances,
+                    );
+                    apply_damage_to_unit(u, taken);
 
-                        if has_corrosive[p_team_idx] {
-                            u.resistances.physical = (u.resistances.physical - 0.04).max(0.0);
-                            u.resistances.energy = (u.resistances.energy - 0.04).max(0.0);
-                            u.resistances.explosive = (u.resistances.explosive - 0.04).max(0.0);
-                            u.resistances.arcane = (u.resistances.arcane - 0.04).max(0.0);
-                        }
+                    if has_corrosive[p_team_idx] {
+                        u.resistances.physical = (u.resistances.physical - 0.04).max(0.0);
+                        u.resistances.energy = (u.resistances.energy - 0.04).max(0.0);
+                        u.resistances.explosive = (u.resistances.explosive - 0.04).max(0.0);
+                        u.resistances.arcane = (u.resistances.arcane - 0.04).max(0.0);
+                    }
 
-                        if !engine.is_headless {
-                            new_texts.push(FloatingText {
-                                id: 0,
-                                text: format!("-{:.0}", taken),
-                                x: u.x,
-                                y: u.y - 12.0,
-                                color: p.damage_type.color_code().to_string(),
-                                lifetime: 0.7,
-                                max_lifetime: 0.7,
-                            });
-                        }
+                    if !engine.is_headless {
+                        new_texts.push(FloatingText {
+                            id: 0,
+                            text: format!("-{:.0}", taken),
+                            x: u.x,
+                            y: u.y - 12.0,
+                            color: p.damage_type.color_code().to_string(),
+                            lifetime: 0.7,
+                            max_lifetime: 0.7,
+                        });
+                    }
 
-                        if !is_aoe {
-                            break;
-                        }
+                    if !is_aoe {
+                        break;
                     }
                 }
             }
 
             // Sát thương công trình địch (áp dụng building_damage_mult, ví dụ AcidBaneling x2)
-            for b in engine.buildings.iter_mut() {
-                if factions[b.team.index() % 8] != p_faction {
+            for (b_idx, _d) in hit_buildings {
+                if b_idx < engine.buildings.len() {
+                    let b = &mut engine.buildings[b_idx];
                     let b_rad = b.width.max(b.height) * 0.5;
-                    let dist_to_b =
-                        ((b.x - p.target_x).powi(2) + (b.y - p.target_y).powi(2)).sqrt();
-                    if dist_to_b <= b_rad + aoe_range {
-                        let raw_dmg = p.damage * p.building_damage_mult;
-                        let taken =
-                            calculate_effective_damage(raw_dmg, p.damage_type, &b.resistances);
-                        b.hp -= taken;
-                        b.under_attack_timer = crate::config::BUILDING_UNDER_ATTACK_DURATION;
-                        b.hit_flash_timer = 0.08;
+                    let raw_dmg = p.damage * p.building_damage_mult;
+                    let taken =
+                        calculate_effective_damage(raw_dmg, p.damage_type, &b.resistances);
+                    b.hp -= taken;
+                    b.under_attack_timer = crate::config::BUILDING_UNDER_ATTACK_DURATION;
+                    b.hit_flash_timer = 0.08;
 
-                        if !engine.is_headless {
-                            new_texts.push(FloatingText {
-                                id: 0,
-                                text: format!("-{:.0}", taken),
-                                x: b.x,
-                                y: b.y - b_rad,
-                                color: p.damage_type.color_code().to_string(),
-                                lifetime: 0.8,
-                                max_lifetime: 0.8,
-                            });
-                        }
+                    if !engine.is_headless {
+                        new_texts.push(FloatingText {
+                            id: 0,
+                            text: format!("-{:.0}", taken),
+                            x: b.x,
+                            y: b.y - b_rad,
+                            color: p.damage_type.color_code().to_string(),
+                            lifetime: 0.8,
+                            max_lifetime: 0.8,
+                        });
+                    }
 
-                        if !is_aoe {
-                            break;
-                        }
+                    if !is_aoe {
+                        break;
                     }
                 }
             }

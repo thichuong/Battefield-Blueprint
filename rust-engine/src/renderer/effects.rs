@@ -443,14 +443,17 @@ pub fn render_particles(engine: &GameEngine) {
         let sz = (p.size * alpha).max(0.5) as f64;
 
         if let Some(ref cache) = engine.gpu_cache {
-            let p_canvas = match p.color.as_str() {
-                "#38bdf8" => &cache.particle_blue,
-                "#00e5ff" => &cache.particle_cyan,
-                "#facc15" | "#fef08a" => &cache.particle_yellow,
-                "#fb923c" | "#ea580c" => &cache.particle_orange,
-                "#ef4444" => &cache.particle_red,
-                "#c084fc" | "#a855f7" => &cache.particle_purple,
-                _ => &cache.particle_white,
+            use crate::components::ParticleColor;
+            let p_canvas = match p.color {
+                ParticleColor::Blue => &cache.particle_blue,
+                ParticleColor::Cyan => &cache.particle_cyan,
+                ParticleColor::Yellow => &cache.particle_yellow,
+                ParticleColor::Orange => &cache.particle_orange,
+                ParticleColor::Red => &cache.particle_red,
+                ParticleColor::Purple => &cache.particle_purple,
+                ParticleColor::Green => &cache.particle_green,
+                ParticleColor::Slate => &cache.particle_slate,
+                ParticleColor::White => &cache.particle_white,
             };
             let d = sz * 2.0;
             let _ = ctx.draw_image_with_html_canvas_element_and_dw_and_dh(
@@ -463,7 +466,7 @@ pub fn render_particles(engine: &GameEngine) {
             continue;
         }
 
-        ctx.set_fill_style_str(&p.color);
+        ctx.set_fill_style_str(p.color.to_hex());
         ctx.begin_path();
         let _ = ctx.arc(p.x as f64, p.y as f64, sz, 0.0, std::f64::consts::PI * 2.0);
         ctx.fill();

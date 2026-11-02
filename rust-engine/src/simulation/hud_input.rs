@@ -21,6 +21,7 @@ pub fn check_bevy_hud_click(engine: &mut GameEngine, sx: f32, sy: f32) -> bool {
         engine
             .outgoing_events
             .push(EngineToReactEvent::OpenAutoPlayModal);
+        engine.autoplay_dirty = true;
         send_sync_event(engine);
         return true;
     }
@@ -33,6 +34,7 @@ pub fn check_bevy_hud_click(engine: &mut GameEngine, sx: f32, sy: f32) -> bool {
         engine
             .outgoing_events
             .push(EngineToReactEvent::OpenTechTreeModal);
+        engine.tech_dirty = true;
         send_sync_event(engine);
         return true;
     }

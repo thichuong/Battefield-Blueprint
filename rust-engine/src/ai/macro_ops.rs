@@ -677,7 +677,7 @@ pub fn command_team_military(engine: &mut GameEngine, team: Team, cmd: MilitaryC
         let mut sum_x = 0.0;
         let mut sum_y = 0.0;
         for (uid, _) in &combat_pairs {
-            if let Some(u) = engine.units.iter().find(|u| u.id == *uid) {
+            if let Some(u) = engine.get_unit_by_id(*uid) {
                 sum_x += u.x;
                 sum_y += u.y;
             }
@@ -710,7 +710,7 @@ pub fn command_team_military(engine: &mut GameEngine, team: Team, cmd: MilitaryC
             );
 
             for (uid, tx, ty, off_x, off_y) in form_pos {
-                if let Some(u) = engine.units.iter_mut().find(|u| u.id == uid) {
+                if let Some(u) = engine.get_unit_mut_by_id(uid) {
                     u.formation_offset = (off_x, off_y);
                     u.order = UnitOrder::AttackMove { x: tx, y: ty };
                 }
@@ -732,7 +732,7 @@ pub fn command_team_military(engine: &mut GameEngine, team: Team, cmd: MilitaryC
             );
 
             for (uid, tx, ty, off_x, off_y) in form_pos {
-                if let Some(u) = engine.units.iter_mut().find(|u| u.id == uid) {
+                if let Some(u) = engine.get_unit_mut_by_id(uid) {
                     u.formation_offset = (off_x, off_y);
                     u.order = UnitOrder::AttackMove { x: tx, y: ty };
                 }
@@ -757,7 +757,7 @@ pub fn command_team_military(engine: &mut GameEngine, team: Team, cmd: MilitaryC
             );
 
             for (uid, tx, ty, off_x, off_y) in form_pos {
-                if let Some(u) = engine.units.iter_mut().find(|u| u.id == uid) {
+                if let Some(u) = engine.get_unit_mut_by_id(uid) {
                     if let UnitOrder::AttackTarget { .. } = u.order {
                         continue;
                     }
@@ -802,7 +802,7 @@ pub fn command_team_military(engine: &mut GameEngine, team: Team, cmd: MilitaryC
             );
 
             for (uid, tx, ty, off_x, off_y) in form_pos {
-                if let Some(u) = engine.units.iter_mut().find(|u| u.id == uid) {
+                if let Some(u) = engine.get_unit_mut_by_id(uid) {
                     u.formation_offset = (off_x, off_y);
                     u.order = UnitOrder::AttackMove { x: tx, y: ty };
                 }
@@ -817,7 +817,7 @@ pub fn command_team_military(engine: &mut GameEngine, team: Team, cmd: MilitaryC
             );
 
             for (uid, tx, ty, off_x, off_y) in form_pos {
-                if let Some(u) = engine.units.iter_mut().find(|u| u.id == uid) {
+                if let Some(u) = engine.get_unit_mut_by_id(uid) {
                     u.formation_offset = (off_x, off_y);
                     u.order = UnitOrder::AttackMove { x: tx, y: ty };
                 }
@@ -832,7 +832,7 @@ pub fn command_team_military(engine: &mut GameEngine, team: Team, cmd: MilitaryC
             );
 
             for (uid, tx, ty, off_x, off_y) in form_pos {
-                if let Some(u) = engine.units.iter_mut().find(|u| u.id == uid) {
+                if let Some(u) = engine.get_unit_mut_by_id(uid) {
                     if let UnitOrder::AttackTarget { .. } = u.order {
                         continue;
                     }

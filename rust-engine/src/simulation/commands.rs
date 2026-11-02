@@ -55,6 +55,7 @@ pub fn process_commands(engine: &mut GameEngine) {
                     serde_json::from_str::<crate::autoplay::AutoPlayConfig>(&config_json)
                 {
                     engine.autoplay.config = cfg;
+                    engine.autoplay_dirty = true;
                 }
                 send_sync_event(engine);
             }
@@ -70,6 +71,7 @@ pub fn process_commands(engine: &mut GameEngine) {
                 } else {
                     engine.autoplay.config.priority_techs.push(tech_id);
                 }
+                engine.autoplay_dirty = true;
                 send_sync_event(engine);
             }
             ReactToEngineCommand::SetFormation { formation } => {
@@ -354,6 +356,7 @@ pub fn try_start_research(engine: &mut GameEngine, tech_id: &str) {
         &engine.config,
         tech_id,
     ) {
+        engine.tech_dirty = true;
         engine.outgoing_events.push(EngineToReactEvent::PlaySound {
             sound: "research_start".to_string(),
         });
@@ -400,6 +403,7 @@ pub fn update_tech_research(engine: &mut GameEngine, dt: f32) {
     }
 
     if !completed_player.is_empty() {
+        engine.tech_dirty = true;
         engine.outgoing_events.push(EngineToReactEvent::PlaySound {
             sound: "research_complete".to_string(),
         });

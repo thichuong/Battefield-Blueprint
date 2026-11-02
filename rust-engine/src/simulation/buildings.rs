@@ -27,33 +27,86 @@ pub fn update_buildings(engine: &mut GameEngine, dt: f32) {
     let team_techs: [TechTreeState; 8] =
         std::array::from_fn(|i| engine.team_tech(Team::from_index(i)).clone());
 
-    let engineer_pos: Vec<(Team, f32, f32)> = engine
-        .units
-        .iter()
-        .filter(|u| u.unit_type == UnitType::Engineer)
-        .map(|u| (u.team, u.x, u.y))
-        .collect();
+    let worker_build_range_sq = crate::config::WORKER_BUILD_RANGE * crate::config::WORKER_BUILD_RANGE;
 
-    let enemy_unit_targets: Vec<(Team, f32, f32)> =
-        engine.units.iter().map(|u| (u.team, u.x, u.y)).collect();
-    let enemy_building_targets: Vec<(Team, f32, f32)> = engine
-        .buildings
-        .iter()
-        .map(|b| (b.team, b.x, b.y))
-        .collect();
+    // Chỉ thu thập vị trí của Engineer khi có ít nhất 1 công trình chưa xây xong
+    let has_incomplete_building = engine.buildings.iter().any(|b| b.build_progress < 1.0);
+    let engineer_pos: Vec<(Team, f32, f32)> = if has_incomplete_building {
+        engine
+            .units
+            .iter()
+            .filter(|u| u.unit_type == UnitType::Engineer)
+            .map(|u| (u.team, u.x, u.y))
+            .collect()
+    } else {
+        Vec::new()
+    };
 
-    for b in engine.buildings.iter_mut() {
+    let num_buildings = engine.buildings.len();
+    for b_idx in 0..num_buildings {
+        let (b_team, b_type, b_x, b_y) = {
+            let b = &engine.buildings[b_idx];
+            (b.team, b.building_type, b.x, b.y)
+        };
+        let b_team_tech = &team_techs[b_team.index() % 8];
+        let my_faction = factions[b_team.index() % 8];
+
+        let b_cfg = engine.config.get_building(b_type);
+        let range = b_cfg.map(|c| c.turret_range).unwrap_or(0.0);
+        let base_damage = b_cfg.map(|c| c.turret_damage).unwrap_or(0.0);
+
+        let target_pos = if range > 0.0 && base_damage > 0.0 && engine.buildings[b_idx].current_cooldown <= 0.0 {
+            if let Some((target_id, is_target_building, _dist)) = engine
+                .spatial_grid
+                .find_nearest_hostile(glam::Vec2::new(b_x, b_y), range, my_faction)
+            {
+                if is_target_building {
+                    if let Some(&tb_idx) = engine.spatial_grid.building_id_to_index.get(&target_id) {
+                        if tb_idx < engine.buildings.len() {
+                            let tb = &engine.buildings[tb_idx];
+                            if tb.id == target_id {
+                                Some((tb.x, tb.y))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    if let Some(&t_idx) = engine.spatial_grid.unit_id_to_index.get(&target_id) {
+                        if t_idx < engine.units.len() {
+                            let tu = &engine.units[t_idx];
+                            if tu.id == target_id {
+                                Some((tu.x, tu.y))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let b = &mut engine.buildings[b_idx];
         if b.under_attack_timer > 0.0 {
             b.under_attack_timer = (b.under_attack_timer - dt).max(0.0);
         }
 
-        let b_team_tech = &team_techs[b.team.index() % 8];
-
         if b.build_progress < 1.0 {
             let is_worker_near = engineer_pos.iter().any(|(t, x, y)| {
                 *t == b.team
-                    && ((*x - b.x).powi(2) + (*y - b.y).powi(2)).sqrt()
-                        <= crate::config::WORKER_BUILD_RANGE
+                    && ((*x - b.x).powi(2) + (*y - b.y).powi(2)) <= worker_build_range_sq
             });
             let next_progress = calculate_building_construction_step(
                 b.build_progress,
@@ -86,17 +139,76 @@ pub fn update_buildings(engine: &mut GameEngine, dt: f32) {
                 }
             }
 
-            // Công trình phòng thủ / tấn công tự động
-            if let Some(p) = process_building_combat_with_factions(
-                b,
-                engine.config.get_building(b.building_type),
-                b_team_tech,
-                Some(&factions),
-                &enemy_unit_targets,
-                &enemy_building_targets,
-                dt,
-            ) {
-                new_turret_projectiles.push(p);
+            // Công trình phòng thủ / tấn công tự động: Sử dụng SpatialGrid để tìm mục tiêu O(1)
+            let b_cfg = engine.config.get_building(b_type);
+            let range = b_cfg.map(|c| c.turret_range).unwrap_or(0.0);
+            let base_damage = b_cfg.map(|c| c.turret_damage).unwrap_or(0.0);
+
+            if range > 0.0 && base_damage > 0.0 {
+                if b.current_cooldown > 0.0 {
+                    b.current_cooldown -= dt;
+                } else if let Some((ex, ey)) = target_pos {
+                    let base_cd = b_cfg.map(|c| c.turret_cooldown).unwrap_or(1.0).max(0.1);
+                    let base_dmg_type = b_cfg.map(|c| c.turret_damage_type).unwrap_or(b.damage_type);
+                    let base_speed = b_cfg
+                        .map(|c| c.turret_projectile_speed)
+                        .unwrap_or(900.0)
+                        .max(100.0);
+
+                    let has_overload = b_team_tech.overload_strike;
+                    b.current_cooldown = if has_overload { base_cd * 0.6 } else { base_cd };
+
+                    let has_dark_rockets = b_team_tech.dark_matter_rockets;
+                    let spawn_y = b.y - (b.height * 0.25).min(20.0);
+                    let is_laser = !has_dark_rockets && base_dmg_type == DamageType::Energy;
+                    let angle = (ey - spawn_y).atan2(ex - b.x);
+                    let visual = if has_dark_rockets {
+                        ProjectileVisual::Rocket
+                    } else if is_laser {
+                        ProjectileVisual::Laser
+                    } else {
+                        ProjectileVisual::Bullet
+                    };
+
+                    new_turret_projectiles.push(Projectile {
+                        id: 0,
+                        team: b.team,
+                        x: b.x,
+                        y: spawn_y,
+                        prev_x: b.x,
+                        prev_y: spawn_y,
+                        target_x: ex,
+                        target_y: ey,
+                        speed: if has_dark_rockets {
+                            base_speed * (750.0 / 900.0)
+                        } else {
+                            base_speed
+                        },
+                        damage: if has_dark_rockets {
+                            base_damage * 1.4
+                        } else {
+                            base_damage
+                        },
+                        damage_type: if has_dark_rockets {
+                            DamageType::Explosive
+                        } else {
+                            base_dmg_type
+                        },
+                        aoe_radius: if has_dark_rockets { 40.0 } else { 0.0 },
+                        is_laser,
+                        lifetime: if has_dark_rockets {
+                            1.2
+                        } else if is_laser {
+                            0.3
+                        } else {
+                            1.0
+                        },
+                        is_melee: false,
+                        building_damage_mult: 1.0,
+                        visual,
+                        angle,
+                    });
+                }
             }
         }
     }
