@@ -235,6 +235,9 @@ function __wbg_get_imports() {
             const ret = arg0.push(arg1);
             return ret;
         },
+        __wbg_quadraticCurveTo_c461b48b1c826818: function(arg0, arg1, arg2, arg3, arg4) {
+            arg0.quadraticCurveTo(arg1, arg2, arg3, arg4);
+        },
         __wbg_restore_ab535bc88702bcc0: function(arg0) {
             arg0.restore();
         },

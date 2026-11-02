@@ -658,29 +658,29 @@ fn render_units(engine: &GameEngine) {
             ctx.stroke();
         }
 
-        // 2. Tia hàn phát sáng khi thợ mỏ đang đào khoáng sản (Mining Sparks)
-        if let UnitOrder::Harvest {
-            target_mineral_id,
-            phase: HarvestPhase::Mining(t),
-        } = u.order
-        {
-            if let Some(m) = engine.minerals.iter().find(|m| m.id == target_mineral_id) {
-                let flicker = (t * 30.0).sin() > 0.0;
-                if flicker {
-                    ctx.set_stroke_style_str("#fef08a");
-                    ctx.set_line_width(1.5);
-                    ctx.begin_path();
-                    ctx.move_to(u.x as f64, (u.y - 8.0) as f64);
-                    ctx.line_to(m.x as f64, m.y as f64);
-                    ctx.stroke();
+        // Kiểm tra xem thợ có đang làm việc (khai thác mỏ hoặc xây dựng)
+        let is_welding = match u.order {
+            UnitOrder::Harvest {
+                phase: HarvestPhase::Mining(_),
+                ..
+            } => true,
+            UnitOrder::Build { target_building_id } => {
+                if let Some(b) = engine.buildings.iter().find(|b| b.id == target_building_id) {
+                    let dx = b.x - u.x;
+                    let dy = b.y - u.y;
+                    let dist = (dx * dx + dy * dy).sqrt();
+                    dist <= (b.width.max(b.height) * 0.5 + 45.0) && b.build_progress < 1.0
+                } else {
+                    false
                 }
             }
-        }
+            _ => false,
+        };
 
-        // 3. Vẽ khung xương đa khớp chi tiết + hoạt ảnh
-        draw_procedural_stickman(ctx, u, color);
+        // 2. Vẽ khung xương người que tối giản + vũ khí chi tiết & tư thế
+        draw_procedural_stickman(ctx, u, color, engine.game_time as f64, is_welding);
 
-        // 4. Thanh máu và thanh khiên trên đầu
+        // 3. Thanh máu và thanh khiên trên đầu
         let hp_pct = (u.hp / u.max_hp).clamp(0.0, 1.0) as f64;
         let bar_w = 24.0;
         let bar_h = 3.5;
@@ -708,54 +708,88 @@ fn render_units(engine: &GameEngine) {
     }
 }
 
-fn draw_procedural_stickman(ctx: &CanvasRenderingContext2d, u: &Unit, color: &str) {
+fn draw_procedural_stickman(
+    ctx: &CanvasRenderingContext2d,
+    u: &Unit,
+    color: &str,
+    game_time: f64,
+    is_welding: bool,
+) {
     ctx.save();
     ctx.set_stroke_style_str(color);
     ctx.set_fill_style_str(color);
     ctx.set_line_width(2.0);
 
     let flip = if u.facing_right { 1.0 } else { -1.0 };
-    let is_moving = matches!(u.order, UnitOrder::MoveTo { .. } | UnitOrder::AttackMove { .. } | UnitOrder::Harvest { phase: HarvestPhase::MovingToNode | HarvestPhase::ReturningToBase, .. } | UnitOrder::Build { .. });
-    let anim = u.attack_anim_timer as f64; // 0.0 -> 1.0
+    let is_moving = !is_welding
+        && matches!(
+            u.order,
+            UnitOrder::MoveTo { .. }
+                | UnitOrder::AttackMove { .. }
+                | UnitOrder::Harvest {
+                    phase: HarvestPhase::MovingToNode | HarvestPhase::ReturningToBase,
+                    ..
+                }
+                | UnitOrder::Build { .. }
+        );
+    let anim = u.attack_anim_timer as f64; // 1.0 -> 0.0
 
     let x = u.x as f64;
     let y = u.y as f64;
 
-    // Riêng AcidBaneling là dạng bọ côn trùng đa khớp đặc thù
+    // Riêng AcidBaneling là dạng bọ côn trùng đặc thù
     if u.unit_type == UnitType::AcidBaneling {
         let leg_phase = u.walk_cycle as f64;
-        let sac_pulse = (leg_phase * 2.0).sin() * 1.5;
 
-        // Túi dịch axit phát sáng căng phồng trên lưng
-        ctx.set_fill_style_str("rgba(132, 204, 22, 0.45)");
+        // Thân bọ bọc giáp hình bầu dục tĩnh, gọn gàng, không rung lắc
+        ctx.set_fill_style_str("rgba(132, 204, 22, 0.35)");
         ctx.set_stroke_style_str("#a3e635");
         ctx.set_line_width(1.5);
         ctx.begin_path();
-        let _ = ctx.arc(x - 3.0 * flip, y - 13.0, 8.0 + sac_pulse, 0.0, std::f64::consts::PI * 2.0);
+        let _ = ctx.ellipse(
+            x - 3.0 * flip,
+            y - 12.0,
+            9.0,
+            6.5,
+            0.0,
+            0.0,
+            std::f64::consts::PI * 2.0,
+        );
         ctx.fill();
         ctx.stroke();
 
-        // Đầu bọ & hàm kẹp
+        // Đầu bọ
         ctx.set_fill_style_str("#4d7c0f");
         ctx.begin_path();
-        let _ = ctx.arc(x + 7.0 * flip, y - 8.0, 4.0, 0.0, std::f64::consts::PI * 2.0);
+        let _ = ctx.arc(x + 7.0 * flip, y - 8.0, 3.5, 0.0, std::f64::consts::PI * 2.0);
         ctx.fill();
 
-        // 4 chân bọ có khớp gấp khúc (Hông -> Khớp gối nhọn -> Bàn chân)
+        // Cặp càng kẹp nhọn phía trước
+        ctx.set_stroke_style_str("#d9f99d");
+        ctx.set_line_width(1.5);
+        ctx.begin_path();
+        ctx.move_to(x + 8.0 * flip, y - 10.0);
+        ctx.line_to(x + 13.0 * flip, y - 12.0);
+        ctx.line_to(x + 14.0 * flip, y - 9.0);
+        ctx.move_to(x + 8.0 * flip, y - 6.0);
+        ctx.line_to(x + 13.0 * flip, y - 4.0);
+        ctx.line_to(x + 14.0 * flip, y - 7.0);
+        ctx.stroke();
+
+        // 4 chân bọ đơn giản
         ctx.set_stroke_style_str("#a3e635");
-        ctx.set_line_width(1.8);
+        ctx.set_line_width(1.5);
         for i in 0..4 {
-            let offset_x = (i as f64 - 1.5) * 5.0 * flip;
+            let offset_x = (i as f64 - 1.5) * 4.5 * flip;
             let phase = leg_phase + (i as f64) * 1.5;
-            let step_y = if is_moving { phase.sin() * 4.0 } else { 0.0 };
-            let step_x = if is_moving { phase.cos() * 5.0 } else { 0.0 };
+            let step_x = if is_moving { phase.cos() * 3.5 } else { 0.0 };
 
             let root_x = x + offset_x;
             let root_y = y - 7.0;
-            let knee_x = root_x + (if i < 2 { -6.0 } else { 6.0 }) * flip + step_x * 0.5;
-            let knee_y = root_y - 6.0 + step_y * 0.5;
-            let foot_x = root_x + (if i < 2 { -9.0 } else { 9.0 }) * flip + step_x;
-            let foot_y = y + 2.0 + step_y;
+            let knee_x = root_x + (if i < 2 { -4.0 } else { 4.0 }) * flip + step_x * 0.5;
+            let knee_y = root_y - 4.0;
+            let foot_x = root_x + (if i < 2 { -7.0 } else { 7.0 }) * flip + step_x;
+            let foot_y = y + 1.0;
 
             ctx.begin_path();
             ctx.move_to(root_x, root_y);
@@ -769,68 +803,49 @@ fn draw_procedural_stickman(ctx: &CanvasRenderingContext2d, u: &Unit, color: &st
     }
 
     // Tỉ lệ scale cho BehemothTitan
-    let scale = if u.unit_type == UnitType::BehemothTitan { 1.35 } else { 1.0 };
-    let bobbing = if is_moving { (u.walk_cycle as f64 * 2.0).sin().abs() * 2.0 } else { 0.0 };
+    let scale = if u.unit_type == UnitType::BehemothTitan {
+        1.35
+    } else {
+        1.0
+    };
 
-    // Vòng khiên năng lượng bao bọc Vanguard nếu có khiên > 0
-    if u.unit_type == UnitType::Vanguard && u.shield > 0.0 {
-        let pulse = (u.walk_cycle as f64 * 3.0).sin() * 1.5;
-        ctx.set_stroke_style_str("rgba(56, 189, 248, 0.75)");
-        ctx.set_fill_style_str("rgba(56, 189, 248, 0.12)");
-        ctx.set_line_width(1.5);
-        ctx.begin_path();
-        let _ = ctx.ellipse(x, y - 11.0, 18.0 + pulse, 22.0 + pulse, 0.0, 0.0, std::f64::consts::PI * 2.0);
-        ctx.fill();
-        ctx.stroke();
-    }
-
-    // Tọa độ các khớp chính
+    // Tọa độ các khớp chính (Không còn rung/bobbing khi di chuyển)
     let pelvis_x = x;
-    let pelvis_y = y - 6.0 * scale - bobbing;
-    let spine_tilt = if is_moving { 2.5 * flip } else { 0.0 } + (anim * 3.0 * flip);
+    let pelvis_y = y - 7.0 * scale;
+    let spine_tilt = if is_moving { 1.5 * flip } else { 0.0 };
     let chest_x = x + spine_tilt;
-    let chest_y = y - 16.0 * scale - bobbing;
-    let head_x = chest_x + 1.0 * flip;
-    let head_y = y - 23.0 * scale - bobbing;
+    let chest_y = y - 17.0 * scale;
+    let head_x = chest_x + 0.5 * flip;
+    let head_y = y - 24.0 * scale;
 
-    // 1. CHÂN SAU VÀ CHÂN TRƯỚC (Hông -> Đầu gối -> Cổ chân -> Bàn chân)
+    // 1. CHÂN NGƯỜI QUE: Dáng đi thẳng gọn tối giản, không rung giật, không chấm khớp gối
     let leg_cycle = u.walk_cycle as f64;
     for leg_idx in 0..2 {
         let is_front_leg = leg_idx == 1;
-        let phase = if is_front_leg { leg_cycle } else { leg_cycle + std::f64::consts::PI };
+        let phase = if is_front_leg {
+            leg_cycle
+        } else {
+            leg_cycle + std::f64::consts::PI
+        };
 
-        let hip_x = pelvis_x + (if is_front_leg { 1.5 } else { -1.5 }) * flip;
+        let hip_x = pelvis_x + (if is_front_leg { 1.2 } else { -1.2 }) * flip;
         let hip_y = pelvis_y;
 
-        // Tính góc đùi và cẳng chân theo chuyển động bước đi
-        let thigh_swing = if is_moving { phase.sin() * 0.45 } else { 0.0 };
-        let knee_bend = if is_moving { (phase.sin()).max(0.0) * 0.7 } else { 0.08 };
+        let swing = if is_moving { phase.sin() * 0.35 } else { 0.0 };
+        let leg_len = 13.5 * scale;
+        let foot_x = hip_x + (swing * flip) * leg_len;
+        let foot_y = y + 1.0;
 
-        let thigh_len = 7.0 * scale;
-        let shin_len = 7.0 * scale;
-
-        let knee_x = hip_x + (thigh_swing * flip) * thigh_len + (0.5 * flip);
-        let knee_y = hip_y + thigh_len * (1.0 - thigh_swing.abs() * 0.2);
-
-        let foot_x = knee_x + ((thigh_swing - knee_bend) * flip) * shin_len;
-        let foot_y = (knee_y + shin_len).min(y + 3.0);
-
-        ctx.set_line_width(if is_front_leg { 2.0 * scale } else { 1.5 * scale });
-        ctx.set_stroke_style_str(if is_front_leg { color } else { "rgba(148, 163, 184, 0.7)" });
-
-        // Đùi & Cẳng chân
+        ctx.set_stroke_style_str(color);
+        ctx.set_line_width(if is_front_leg {
+            2.0 * scale
+        } else {
+            1.6 * scale
+        });
         ctx.begin_path();
         ctx.move_to(hip_x, hip_y);
-        ctx.line_to(knee_x, knee_y);
         ctx.line_to(foot_x, foot_y);
-        // Bàn chân hướng theo chiều mặt
-        ctx.line_to(foot_x + 3.0 * flip, foot_y);
         ctx.stroke();
-
-        // Khớp gối (Joint dot)
-        ctx.begin_path();
-        let _ = ctx.arc(knee_x, knee_y, 1.2 * scale, 0.0, std::f64::consts::PI * 2.0);
-        ctx.fill();
     }
 
     // 2. THÂN & CỘT SỐNG (Spine)
@@ -841,272 +856,507 @@ fn draw_procedural_stickman(ctx: &CanvasRenderingContext2d, u: &Unit, color: &st
     ctx.line_to(chest_x, chest_y);
     ctx.stroke();
 
-    // 3. ĐẦU & PHỤ KIỆN
+    // 3. ĐẦU NGƯỜI QUE: Vòng tròn đơn giản, hoàn toàn bỏ bóng ở đầu
+    ctx.set_line_width(1.8 * scale);
     ctx.begin_path();
-    let _ = ctx.arc(head_x, head_y, 5.0 * scale, 0.0, std::f64::consts::PI * 2.0);
+    let _ = ctx.arc(head_x, head_y, 4.5 * scale, 0.0, std::f64::consts::PI * 2.0);
     ctx.stroke();
 
-    // Điểm nhấn mắt / kính ngắm Blueprint
-    ctx.set_fill_style_str("#ffffff");
-    ctx.begin_path();
-    let _ = ctx.arc(head_x + 2.5 * flip, head_y - 1.0, 1.2 * scale, 0.0, std::f64::consts::PI * 2.0);
-    ctx.fill();
-
-    // 4. CÁNH TAY & VŨ KHÍ & HOẠT ẢNH TẤN CÔNG
+    // 4. VŨ KHÍ CẦM TAY CHI TIẾT & TƯ THẾ (Pose)
     let shoulder_x = chest_x;
     let shoulder_y = chest_y + 1.5 * scale;
 
     match u.unit_type {
         UnitType::Engineer => {
-            // Tay sau vung nhẹ
-            ctx.set_line_width(1.8);
-            ctx.begin_path();
-            ctx.move_to(shoulder_x, shoulder_y);
-            ctx.line_to(shoulder_x - 4.0 * flip, shoulder_y + 6.0);
-            ctx.line_to(shoulder_x - 6.0 * flip, shoulder_y + 11.0);
-            ctx.stroke();
+            // Engineer: Máy hàn cầm tay chi tiết
+            if is_welding {
+                let hand_x = shoulder_x + 9.0 * flip;
+                let hand_y = shoulder_y + 4.0;
 
-            // Tay trước cầm cờ lê / máy hàn
-            let hand_x = shoulder_x + (10.0 + anim * 4.0) * flip;
-            let hand_y = shoulder_y + 3.0 - anim * 5.0;
-            let elbow_x = shoulder_x + 5.0 * flip;
-            let elbow_y = shoulder_y + 6.0;
+                // Hai tay giữ máy hàn
+                ctx.set_stroke_style_str(color);
+                ctx.set_line_width(1.8);
+                // Tay trước
+                ctx.begin_path();
+                ctx.move_to(shoulder_x, shoulder_y);
+                ctx.line_to(shoulder_x + 5.0 * flip, shoulder_y + 5.0);
+                ctx.line_to(hand_x, hand_y);
+                ctx.stroke();
+                // Tay sau đỡ dưới
+                ctx.begin_path();
+                ctx.move_to(shoulder_x, shoulder_y);
+                ctx.line_to(shoulder_x + 2.0 * flip, shoulder_y + 6.0);
+                ctx.line_to(hand_x - 1.0 * flip, hand_y + 3.0);
+                ctx.stroke();
 
-            ctx.begin_path();
-            ctx.move_to(shoulder_x, shoulder_y);
-            ctx.line_to(elbow_x, elbow_y);
-            ctx.line_to(hand_x, hand_y);
-            ctx.stroke();
+                // Thân máy hàn hình hộp
+                ctx.set_fill_style_str("#475569");
+                ctx.fill_rect(hand_x - 3.0 * flip, hand_y - 2.5, 7.0 * flip, 5.0);
 
-            // Cờ lê / đầu hàn
-            ctx.set_fill_style_str("#fbbf24");
-            ctx.fill_rect(hand_x - 1.0, hand_y - 4.0, 5.0 * flip, 8.0);
-        }
-        UnitType::ShockTrooper => {
-            // Kiếm sĩ Plasma: chém kiếm chém xuống (Slash animation)
-            let slash_ang = if anim > 0.0 { -0.8 + anim * 1.8 } else { -0.3 };
-            let arm_elbow_x = shoulder_x + 5.0 * flip;
-            let arm_elbow_y = shoulder_y - 4.0 + anim * 6.0;
-            let hand_x = arm_elbow_x + slash_ang.cos() * 8.0 * flip;
-            let hand_y = arm_elbow_y + slash_ang.sin() * 8.0;
-
-            // Tay trước vung kiếm
-            ctx.set_line_width(2.0);
-            ctx.begin_path();
-            ctx.move_to(shoulder_x, shoulder_y);
-            ctx.line_to(arm_elbow_x, arm_elbow_y);
-            ctx.line_to(hand_x, hand_y);
-            ctx.stroke();
-
-            // Lưỡi kiếm Plasma phát sáng
-            let tip_x = hand_x + slash_ang.cos() * 16.0 * flip;
-            let tip_y = hand_y + slash_ang.sin() * 16.0;
-            ctx.set_stroke_style_str("#38bdf8");
-            ctx.set_line_width(3.0);
-            ctx.begin_path();
-            ctx.move_to(hand_x, hand_y);
-            ctx.line_to(tip_x, tip_y);
-            ctx.stroke();
-
-            // Vệt chém hình cung khi ra đòn
-            if anim > 0.2 {
-                ctx.set_stroke_style_str("rgba(56, 189, 248, 0.45)");
+                // Đầu vòi khò hàn kim loại
+                let nozzle_x = hand_x + 9.0 * flip;
+                let nozzle_y = hand_y;
+                ctx.set_stroke_style_str("#cbd5e1");
                 ctx.set_line_width(2.0);
                 ctx.begin_path();
-                let _ = ctx.arc(hand_x, hand_y, 18.0, slash_ang - 0.7, slash_ang + 0.3);
+                ctx.move_to(hand_x + 4.0 * flip, hand_y);
+                ctx.line_to(nozzle_x, nozzle_y);
+                ctx.stroke();
+
+                // Dây cáp khí mềm nối từ đuôi máy hàn về thắt lưng
+                ctx.set_stroke_style_str("#f59e0b");
+                ctx.set_line_width(1.2);
+                ctx.begin_path();
+                ctx.move_to(hand_x - 3.0 * flip, hand_y + 1.5);
+                ctx.quadratic_curve_to(
+                    shoulder_x - 3.0 * flip,
+                    shoulder_y + 9.0,
+                    pelvis_x,
+                    pelvis_y,
+                );
+                ctx.stroke();
+
+                // Hiệu ứng tia lửa hàn lóe sáng tại đầu vòi hàn
+                let seed = (game_time * 25.0).floor();
+                ctx.set_stroke_style_str("#ffffff");
+                ctx.set_line_width(1.2);
+                for i in 0..4 {
+                    let ang = ((seed * 1.7 + (i as f64) * 1.6).sin() * 1.2) - 0.2;
+                    let len = 4.0 + ((seed * 2.3 + (i as f64)).cos().abs() * 5.0);
+                    let sp_x = nozzle_x + ang.cos() * len * flip;
+                    let sp_y = nozzle_y + ang.sin() * len;
+                    ctx.begin_path();
+                    ctx.move_to(nozzle_x, nozzle_y);
+                    ctx.line_to(sp_x, sp_y);
+                    ctx.stroke();
+                }
+                ctx.set_fill_style_str("#fef08a");
+                ctx.begin_path();
+                let _ = ctx.arc(nozzle_x, nozzle_y, 1.8, 0.0, std::f64::consts::PI * 2.0);
+                ctx.fill();
+            } else {
+                // Đứng hoặc di chuyển: Cầm máy hàn chúc xuống gọn gàng
+                let hand_x = shoulder_x + 6.0 * flip;
+                let hand_y = shoulder_y + 6.0;
+
+                ctx.set_stroke_style_str(color);
+                ctx.set_line_width(1.8);
+                // Tay trước cầm máy hàn
+                ctx.begin_path();
+                ctx.move_to(shoulder_x, shoulder_y);
+                ctx.line_to(shoulder_x + 3.0 * flip, shoulder_y + 5.0);
+                ctx.line_to(hand_x, hand_y);
+                ctx.stroke();
+                // Tay sau vung nhẹ
+                ctx.begin_path();
+                ctx.move_to(shoulder_x, shoulder_y);
+                ctx.line_to(shoulder_x - 3.0 * flip, shoulder_y + 6.0);
+                ctx.line_to(shoulder_x - 4.5 * flip, shoulder_y + 11.0);
+                ctx.stroke();
+
+                // Thân máy hàn chúc xuống
+                ctx.set_fill_style_str("#475569");
+                ctx.fill_rect(hand_x - 2.0 * flip, hand_y - 2.0, 5.0 * flip, 4.0);
+
+                // Đầu vòi hàn
+                ctx.set_stroke_style_str("#cbd5e1");
+                ctx.set_line_width(1.8);
+                ctx.begin_path();
+                ctx.move_to(hand_x + 3.0 * flip, hand_y);
+                ctx.line_to(hand_x + 7.0 * flip, hand_y + 2.5);
+                ctx.stroke();
+
+                // Dây cáp khí về thắt lưng
+                ctx.set_stroke_style_str("#f59e0b");
+                ctx.set_line_width(1.2);
+                ctx.begin_path();
+                ctx.move_to(hand_x - 2.0 * flip, hand_y + 1.0);
+                ctx.quadratic_curve_to(
+                    shoulder_x - 2.0 * flip,
+                    shoulder_y + 8.0,
+                    pelvis_x,
+                    pelvis_y,
+                );
                 ctx.stroke();
             }
         }
-        UnitType::Rifleman => {
-            // Xạ thủ: Giật nòng súng khi bắn
-            let recoil = anim * 4.0;
-            let elbow_x = shoulder_x + (5.0 - recoil * 0.5) * flip;
-            let elbow_y = shoulder_y + 4.0;
-            let hand_x = shoulder_x + (12.0 - recoil) * flip;
-            let hand_y = shoulder_y + 2.0;
+        UnitType::ShockTrooper => {
+            // ShockTrooper: Kiếm chi tiết. Dáng đi đơn giản. Tấn công là chém từ trên xuống!
+            let (ang, arm_x, arm_y) = if anim > 0.0 {
+                // Đang tấn công: Chém bổ từ trên đỉnh đầu xuống dưới
+                if anim > 0.55 {
+                    // Pha 1: Giơ cao kiếm qua đầu
+                    let p = (1.0 - anim) / 0.45;
+                    let a = -1.9 + p * 0.4;
+                    (a, shoulder_x + 2.0 * flip, shoulder_y - 7.0)
+                } else {
+                    // Pha 2: Bổ mạnh từ trên đỉnh đầu xuống dưới chân
+                    let p = (0.55 - anim) / 0.55;
+                    let a = -1.5 + p * 2.4; // -1.5 rad -> +0.9 rad
+                    (
+                        a,
+                        shoulder_x + (4.0 + p * 4.0) * flip,
+                        shoulder_y - 3.0 + p * 7.0,
+                    )
+                }
+            } else {
+                // Tư thế chuẩn bị: Cầm kiếm nghiêng góc trước người
+                (0.45, shoulder_x + 6.0 * flip, shoulder_y + 4.0)
+            };
 
+            // Tay cầm kiếm
+            ctx.set_stroke_style_str(color);
             ctx.set_line_width(2.0);
             ctx.begin_path();
             ctx.move_to(shoulder_x, shoulder_y);
-            ctx.line_to(elbow_x, elbow_y);
-            ctx.line_to(hand_x, hand_y);
+            ctx.line_to(arm_x, arm_y);
             ctx.stroke();
 
-            // Nòng súng trường
-            let gun_tip_x = hand_x + 10.0 * flip;
-            let gun_tip_y = hand_y - 1.0;
-            ctx.set_stroke_style_str("#94a3b8");
-            ctx.set_line_width(2.5);
-            ctx.begin_path();
-            ctx.move_to(hand_x - 4.0 * flip, hand_y);
-            ctx.line_to(gun_tip_x, gun_tip_y);
-            ctx.stroke();
-
-            // Tia lửa đầu nòng (Muzzle flash)
-            if anim > 0.4 {
-                ctx.set_fill_style_str("#facc15");
-                ctx.begin_path();
-                let _ = ctx.arc(gun_tip_x + 3.0 * flip, gun_tip_y, 3.0, 0.0, std::f64::consts::PI * 2.0);
-                ctx.fill();
-            }
-        }
-        UnitType::Vanguard => {
-            // Vệ binh: Tay trước đẩy khiên chắn bản to, tay sau đâm dùi cui
-            let shield_push = anim * 5.0;
-            let s_hand_x = shoulder_x + (10.0 + shield_push) * flip;
-            let s_hand_y = shoulder_y + 2.0;
-
-            // Cánh tay cầm khiên
-            ctx.set_line_width(2.2);
+            // Tay sau giương nhẹ giữ thăng bằng
             ctx.begin_path();
             ctx.move_to(shoulder_x, shoulder_y);
-            ctx.line_to(shoulder_x + 5.0 * flip, shoulder_y + 4.0);
+            ctx.line_to(shoulder_x - 4.0 * flip, shoulder_y + 4.0);
+            ctx.line_to(shoulder_x - 6.0 * flip, shoulder_y + 8.0);
+            ctx.stroke();
+
+            // VŨ KHÍ CHI TIẾT: Kiếm Plasma có chuôi, thanh chắn ngang và lưỡi vát
+            // 1. Chuôi kiếm & Quả táo chuôi (Pommel)
+            let pommel_x = arm_x - ang.cos() * 5.0 * flip;
+            let pommel_y = arm_y - ang.sin() * 5.0;
+            ctx.set_stroke_style_str("#64748b");
+            ctx.set_line_width(2.0);
+            ctx.begin_path();
+            ctx.move_to(pommel_x, pommel_y);
+            ctx.line_to(arm_x, arm_y);
+            ctx.stroke();
+
+            ctx.set_fill_style_str("#94a3b8");
+            ctx.begin_path();
+            let _ = ctx.arc(pommel_x, pommel_y, 1.5, 0.0, std::f64::consts::PI * 2.0);
+            ctx.fill();
+
+            // 2. Thanh chắn kiếm ngang (Crossguard)
+            let g1_x = arm_x + ang.sin() * 4.0;
+            let g1_y = arm_y - ang.cos() * 4.0 * flip;
+            let g2_x = arm_x - ang.sin() * 4.0;
+            let g2_y = arm_y + ang.cos() * 4.0 * flip;
+            ctx.set_stroke_style_str("#38bdf8");
+            ctx.set_line_width(2.2);
+            ctx.begin_path();
+            ctx.move_to(g1_x, g1_y);
+            ctx.line_to(g2_x, g2_y);
+            ctx.stroke();
+
+            // 3. Lưỡi kiếm Plasma thẳng và sắc bén (không vệt cung tròn arc)
+            let tip_x = arm_x + ang.cos() * 18.0 * flip;
+            let tip_y = arm_y + ang.sin() * 18.0;
+            ctx.set_stroke_style_str("#38bdf8");
+            ctx.set_line_width(2.8);
+            ctx.begin_path();
+            ctx.move_to(arm_x, arm_y);
+            ctx.line_to(tip_x, tip_y);
+            ctx.stroke();
+
+            // Sống kiếm sáng bóng
+            ctx.set_stroke_style_str("#ffffff");
+            ctx.set_line_width(1.0);
+            ctx.begin_path();
+            ctx.move_to(arm_x, arm_y);
+            ctx.line_to(tip_x, tip_y);
+            ctx.stroke();
+        }
+        UnitType::Rifleman => {
+            // Rifleman: Súng trường chi tiết hơn, tư thế 2 tay cầm súng
+            let recoil = if anim > 0.0 { anim * 2.5 } else { 0.0 };
+
+            let hand_rear_x = shoulder_x + (3.0 - recoil) * flip;
+            let hand_rear_y = shoulder_y + 3.0;
+            let hand_front_x = shoulder_x + (9.0 - recoil) * flip;
+            let hand_front_y = shoulder_y + 3.5;
+
+            // Tay sau cầm báng/cò
+            ctx.set_stroke_style_str(color);
+            ctx.set_line_width(1.8);
+            ctx.begin_path();
+            ctx.move_to(shoulder_x, shoulder_y);
+            ctx.line_to(hand_rear_x, hand_rear_y);
+            ctx.stroke();
+
+            // Tay trước đỡ ốp lót tay
+            ctx.begin_path();
+            ctx.move_to(shoulder_x, shoulder_y);
+            ctx.line_to(shoulder_x + 5.0 * flip, shoulder_y + 6.0);
+            ctx.line_to(hand_front_x, hand_front_y);
+            ctx.stroke();
+
+            // CHI TIẾT SÚNG TRƯỜNG:
+            // 1. Báng súng (Stock) tỳ vai
+            ctx.set_stroke_style_str("#475569");
+            ctx.set_line_width(2.5);
+            ctx.begin_path();
+            ctx.move_to(hand_rear_x - 5.0 * flip, hand_rear_y + 1.0);
+            ctx.line_to(hand_rear_x, hand_rear_y);
+            ctx.stroke();
+
+            // 2. Thân súng (Receiver)
+            ctx.set_fill_style_str("#334155");
+            ctx.fill_rect(
+                hand_rear_x - 1.0 * flip,
+                hand_rear_y - 2.0,
+                7.0 * flip,
+                3.5,
+            );
+
+            // 3. Ống ngắm / Thước ngắm (Scope) trên thân súng
+            ctx.set_stroke_style_str("#94a3b8");
+            ctx.set_line_width(1.5);
+            ctx.begin_path();
+            ctx.move_to(hand_rear_x + 1.0 * flip, hand_rear_y - 3.2);
+            ctx.line_to(hand_rear_x + 5.5 * flip, hand_rear_y - 3.2);
+            ctx.stroke();
+
+            // 4. Băng đạn cong (Curved Magazine)
+            ctx.set_stroke_style_str("#64748b");
+            ctx.set_line_width(2.0);
+            ctx.begin_path();
+            ctx.move_to(hand_rear_x + 2.5 * flip, hand_rear_y + 1.5);
+            ctx.line_to(hand_rear_x + 4.0 * flip, hand_rear_y + 6.0);
+            ctx.stroke();
+
+            // 5. Nòng súng & Đầu giảm giật (Barrel)
+            let barrel_tip_x = hand_front_x + 9.0 * flip;
+            let barrel_tip_y = hand_front_y - 1.0;
+            ctx.set_stroke_style_str("#94a3b8");
+            ctx.set_line_width(2.0);
+            ctx.begin_path();
+            ctx.move_to(hand_front_x - 1.0 * flip, hand_front_y - 1.0);
+            ctx.line_to(barrel_tip_x, barrel_tip_y);
+            ctx.stroke();
+        }
+        UnitType::Vanguard => {
+            // Vanguard: Khiên chiến thuật chi tiết & Thương xung kích
+            let shield_push = if anim > 0.0 { anim * 3.5 } else { 0.0 };
+            let s_hand_x = shoulder_x + (8.0 + shield_push) * flip;
+            let s_hand_y = shoulder_y + 1.0;
+
+            // Tay trước nâng khiên
+            ctx.set_stroke_style_str(color);
+            ctx.set_line_width(2.0);
+            ctx.begin_path();
+            ctx.move_to(shoulder_x, shoulder_y);
+            ctx.line_to(shoulder_x + 4.0 * flip, shoulder_y + 3.0);
             ctx.line_to(s_hand_x, s_hand_y);
             ctx.stroke();
 
-            // Khiên năng lượng bản rộng
-            ctx.set_stroke_style_str("#60a5fa");
-            ctx.set_fill_style_str("rgba(96, 165, 250, 0.25)");
-            ctx.set_line_width(3.0);
-            ctx.stroke_rect(s_hand_x - 2.0 * flip, s_hand_y - 14.0, 4.0 * flip, 26.0);
-            ctx.fill_rect(s_hand_x - 2.0 * flip, s_hand_y - 14.0, 4.0 * flip, 26.0);
+            // TẤM KHIÊN CHIẾN THUẬT CHI TIẾT:
+            // Thân khiên kim loại màu xanh
+            ctx.set_fill_style_str("rgba(56, 189, 248, 0.35)");
+            ctx.set_stroke_style_str("#38bdf8");
+            ctx.set_line_width(2.2);
+            ctx.stroke_rect(s_hand_x - 2.5 * flip, s_hand_y - 13.0, 5.0 * flip, 26.0);
+            ctx.fill_rect(s_hand_x - 2.5 * flip, s_hand_y - 13.0, 5.0 * flip, 26.0);
 
-            // Tay sau cầm dùi cui điện
-            ctx.set_stroke_style_str("#93c5fd");
-            ctx.set_line_width(2.0);
+            // Khe ngắm trên khiên (Vision slit)
+            ctx.set_stroke_style_str("#ffffff");
+            ctx.set_line_width(1.2);
+            ctx.begin_path();
+            ctx.move_to(s_hand_x - 2.0 * flip, s_hand_y - 4.0);
+            ctx.line_to(s_hand_x + 2.0 * flip, s_hand_y - 4.0);
+            ctx.stroke();
+
+            // Tay sau cầm thương/dùi cui xung kích
+            let spear_thrust = if anim > 0.0 { anim * 6.0 } else { 0.0 };
+            let spear_tip_x = s_hand_x + (6.0 + spear_thrust) * flip;
+            let spear_tip_y = s_hand_y + 7.0;
+
+            ctx.set_stroke_style_str(color);
+            ctx.set_line_width(1.8);
             ctx.begin_path();
             ctx.move_to(shoulder_x, shoulder_y);
-            ctx.line_to(shoulder_x - 4.0 * flip, shoulder_y + 7.0);
-            ctx.line_to(shoulder_x - 2.0 * flip, shoulder_y + 13.0);
+            ctx.line_to(shoulder_x - 3.0 * flip, shoulder_y + 5.0);
+            ctx.line_to(shoulder_x + 2.0 * flip, shoulder_y + 8.0);
             ctx.stroke();
+
+            // Thân thương & Mũi thương
+            ctx.set_stroke_style_str("#94a3b8");
+            ctx.set_line_width(2.0);
+            ctx.begin_path();
+            ctx.move_to(shoulder_x - 5.0 * flip, shoulder_y + 8.0);
+            ctx.line_to(spear_tip_x, spear_tip_y);
+            ctx.stroke();
+
+            // Mũi nhọn
+            ctx.set_fill_style_str("#38bdf8");
+            ctx.begin_path();
+            ctx.move_to(spear_tip_x + 3.0 * flip, spear_tip_y);
+            ctx.line_to(spear_tip_x, spear_tip_y - 2.0);
+            ctx.line_to(spear_tip_x, spear_tip_y + 2.0);
+            ctx.close_path();
+            ctx.fill();
         }
         UnitType::LaserMarksman => {
-            // Pháo thủ Laser: Cầm pháo laser lớn, bắn tia laser liên tục vào mục tiêu
-            let elbow_x = shoulder_x + 6.0 * flip;
-            let elbow_y = shoulder_y + 5.0;
-            let hand_x = shoulder_x + 13.0 * flip;
-            let hand_y = shoulder_y + 2.0;
+            // LaserMarksman: Pháo laser chi tiết
+            let hand_x = shoulder_x + 10.0 * flip;
+            let hand_y = shoulder_y + 2.5;
 
-            ctx.set_line_width(2.0);
+            // 2 tay nâng súng
+            ctx.set_stroke_style_str(color);
+            ctx.set_line_width(1.8);
             ctx.begin_path();
             ctx.move_to(shoulder_x, shoulder_y);
-            ctx.line_to(elbow_x, elbow_y);
+            ctx.line_to(shoulder_x + 4.0 * flip, shoulder_y + 4.0);
             ctx.line_to(hand_x, hand_y);
             ctx.stroke();
 
-            // Ống pháo Laser
-            let gun_tip_x = hand_x + 14.0 * flip;
-            let gun_tip_y = hand_y - 1.0;
+            // Thân súng hình hộp công nghệ cao
+            ctx.set_fill_style_str("#3b0764");
+            ctx.stroke_rect(hand_x - 5.0 * flip, hand_y - 3.0, 8.0 * flip, 6.0);
+            ctx.fill_rect(hand_x - 5.0 * flip, hand_y - 3.0, 8.0 * flip, 6.0);
+
+            // Nòng súng dài có 3 vòng cảm ứng năng lượng
+            let gun_tip_x = hand_x + 13.0 * flip;
+            let gun_tip_y = hand_y - 0.5;
             ctx.set_stroke_style_str("#c084fc");
-            ctx.set_line_width(3.2);
+            ctx.set_line_width(2.5);
             ctx.begin_path();
-            ctx.move_to(hand_x - 6.0 * flip, hand_y + 1.0);
+            ctx.move_to(hand_x + 3.0 * flip, gun_tip_y);
             ctx.line_to(gun_tip_x, gun_tip_y);
             ctx.stroke();
 
-            // TIA SÁNG LASER LIÊN TỤC CHIẾU VÀO MỤC TIÊU
+            // 3 vòng cảm ứng năng lượng
+            ctx.set_stroke_style_str("#e879f9");
+            ctx.set_line_width(1.5);
+            for i in 1..4 {
+                let rx = hand_x + (3.0 + (i as f64) * 2.5) * flip;
+                ctx.begin_path();
+                ctx.move_to(rx, gun_tip_y - 2.5);
+                ctx.line_to(rx, gun_tip_y + 2.5);
+                ctx.stroke();
+            }
+
+            // Tia sáng laser bắn thẳng sắc nét tới mục tiêu
             if let Some((target_x, target_y)) = u.last_attack_pos {
                 let tx = target_x as f64;
                 let ty = target_y as f64;
                 let stacks = u.laser_stacks.min(25) as f64;
-                let beam_width = 2.0 + stacks * 0.35;
+                let beam_width = 1.5 + stacks * 0.25;
 
-                // Lớp hào quang tím ngoài
-                ctx.set_stroke_style_str("rgba(192, 132, 252, 0.65)");
-                ctx.set_line_width(beam_width + 3.0);
+                ctx.set_stroke_style_str("#c084fc");
+                ctx.set_line_width(beam_width + 1.5);
                 ctx.begin_path();
                 ctx.move_to(gun_tip_x, gun_tip_y);
                 ctx.line_to(tx, ty);
                 ctx.stroke();
 
-                // Lõi laser sáng rực
                 ctx.set_stroke_style_str("#ffffff");
                 ctx.set_line_width(beam_width * 0.6);
                 ctx.begin_path();
                 ctx.move_to(gun_tip_x, gun_tip_y);
                 ctx.line_to(tx, ty);
                 ctx.stroke();
-
-                // Điểm tiếp xúc bốc cháy tia lửa
-                ctx.set_fill_style_str("#e879f9");
-                ctx.begin_path();
-                let _ = ctx.arc(tx, ty, 3.5 + stacks * 0.2, 0.0, std::f64::consts::PI * 2.0);
-                ctx.fill();
             }
         }
         UnitType::DarkRocketeer => {
-            // Ống phóng Rocket vác vai
-            let elbow_x = shoulder_x + 4.0 * flip;
-            let elbow_y = shoulder_y + 5.0;
-            let hand_x = shoulder_x + 10.0 * flip;
-            let hand_y = shoulder_y;
+            // DarkRocketeer: Súng phóng tên lửa vác vai RPG chi tiết
+            let hand_x = shoulder_x + 7.0 * flip;
+            let hand_y = shoulder_y + 2.0;
 
-            ctx.set_line_width(2.0);
+            // Hai tay nâng tay cầm dưới ống
+            ctx.set_stroke_style_str(color);
+            ctx.set_line_width(1.8);
             ctx.begin_path();
             ctx.move_to(shoulder_x, shoulder_y);
-            ctx.line_to(elbow_x, elbow_y);
             ctx.line_to(hand_x, hand_y);
             ctx.stroke();
 
-            // Nòng bệ phóng tên lửa
-            ctx.set_stroke_style_str("#fb923c");
-            ctx.set_line_width(4.5);
+            // Ống phóng vác vai
+            let launch_y = shoulder_y - 4.5;
+            let back_x = shoulder_x - 9.0 * flip;
+            let front_x = shoulder_x + 12.0 * flip;
+
+            // Thân ống phóng
+            ctx.set_stroke_style_str("#ea580c");
+            ctx.set_line_width(3.8);
             ctx.begin_path();
-            ctx.move_to(shoulder_x - 10.0 * flip, shoulder_y - 6.0);
-            ctx.line_to(shoulder_x + 14.0 * flip, shoulder_y - 3.0);
+            ctx.move_to(back_x, launch_y);
+            ctx.line_to(front_x, launch_y);
             ctx.stroke();
 
-            // Đầu đạn đỏ
-            ctx.set_fill_style_str("#ef4444");
-            ctx.fill_rect(shoulder_x + 13.0 * flip, shoulder_y - 5.0, 4.0 * flip, 4.0);
+            // Loa xả khí loe rộng ở đuôi (Exhaust cone)
+            ctx.set_stroke_style_str("#c2410c");
+            ctx.set_line_width(2.0);
+            ctx.begin_path();
+            ctx.move_to(back_x + 1.5 * flip, launch_y - 3.0);
+            ctx.line_to(back_x - 2.5 * flip, launch_y - 4.0);
+            ctx.line_to(back_x - 2.5 * flip, launch_y + 4.0);
+            ctx.line_to(back_x + 1.5 * flip, launch_y + 3.0);
+            ctx.stroke();
 
-            // Khói lửa đuôi rocket khi bắn
-            if anim > 0.4 {
-                ctx.set_fill_style_str("#fdba74");
-                ctx.begin_path();
-                let _ = ctx.arc(shoulder_x - 13.0 * flip, shoulder_y - 6.0, 4.0, 0.0, std::f64::consts::PI * 2.0);
-                ctx.fill();
-            }
+            // Đầu đạn rocket nhọn ở phía trước
+            ctx.set_fill_style_str("#ef4444");
+            ctx.begin_path();
+            ctx.move_to(front_x + 4.5 * flip, launch_y);
+            ctx.line_to(front_x, launch_y - 3.0);
+            ctx.line_to(front_x, launch_y + 3.0);
+            ctx.close_path();
+            ctx.fill();
         }
         UnitType::TaoistSwordmaster => {
-            // Tu tiên giả: Tay bắt kiếm quyết chỉ thẳng, tay sau chắp lưng
-            let anim_reach = anim * 5.0;
-            let hand_x = shoulder_x + (12.0 + anim_reach) * flip;
-            let hand_y = shoulder_y - 2.0;
+            // TaoistSwordmaster: Cổ kiếm chi tiết & Kiếm quyết
+            let hand_x = shoulder_x + 8.0 * flip;
+            let hand_y = shoulder_y + 2.0;
 
-            // Tay kết ấn chỉ kiếm
-            ctx.set_line_width(2.0);
+            // Tay trước cầm cổ kiếm
+            ctx.set_stroke_style_str(color);
+            ctx.set_line_width(1.8);
             ctx.begin_path();
             ctx.move_to(shoulder_x, shoulder_y);
-            ctx.line_to(shoulder_x + 6.0 * flip, shoulder_y);
             ctx.line_to(hand_x, hand_y);
             ctx.stroke();
 
-            // Tay sau chắp lưng phong thái đạo gia
+            // Lưỡi kiếm cầm tay
+            let sw_tip_x = hand_x + 14.0 * flip;
+            let sw_tip_y = hand_y - 6.0;
+            ctx.set_stroke_style_str("#38bdf8");
+            ctx.set_line_width(2.2);
             ctx.begin_path();
-            ctx.move_to(shoulder_x, shoulder_y);
-            ctx.line_to(shoulder_x - 5.0 * flip, shoulder_y + 4.0);
-            ctx.line_to(shoulder_x - 3.0 * flip, shoulder_y + 9.0);
+            ctx.move_to(hand_x, hand_y);
+            ctx.line_to(sw_tip_x, sw_tip_y);
             ctx.stroke();
 
-            // HIỂN THỊ CHÍNH XÁC SỐ PHI KIẾM LƠ LỬNG SAU LƯNG (0 ĐẾN 7 KIẾM)
+            // Chắn kiếm chữ thập nhỏ
+            ctx.set_stroke_style_str("#facc15");
+            ctx.set_line_width(2.0);
+            ctx.begin_path();
+            ctx.move_to(hand_x - 2.0 * flip, hand_y - 2.0);
+            ctx.line_to(hand_x + 2.0 * flip, hand_y + 2.0);
+            ctx.stroke();
+
+            // Tay sau kết kiếm quyết chỉ thẳng ra sau / nâng cao
+            ctx.set_stroke_style_str(color);
+            ctx.set_line_width(1.8);
+            ctx.begin_path();
+            ctx.move_to(shoulder_x, shoulder_y);
+            ctx.line_to(shoulder_x - 5.0 * flip, shoulder_y + 3.0);
+            ctx.line_to(shoulder_x - 8.0 * flip, shoulder_y - 2.0);
+            ctx.stroke();
+
+            // Các phi kiếm lơ lửng phía sau lưng (tĩnh, trang nhã, không rung lắc)
             let swords_count = u.flying_swords.min(7) as usize;
             for i in 0..swords_count {
                 let arc_offset = ((i as f64) - (swords_count as f64 - 1.0) * 0.5) * 5.0;
-                let float_bob = ((u.walk_cycle as f64 * 2.0) + (i as f64) * 0.8).sin() * 2.5;
+                let sw_x = shoulder_x - (9.0 + (i as f64) * 1.5) * flip;
+                let sw_y = shoulder_y - 12.0 + arc_offset;
 
-                let sw_x = shoulder_x - (10.0 + (i as f64) * 1.5) * flip;
-                let sw_y = shoulder_y - 12.0 + arc_offset + float_bob;
-
-                // Thân phi kiếm Arcane phát sáng xanh lam ngọc
+                // Thân phi kiếm
                 ctx.set_stroke_style_str("#38bdf8");
                 ctx.set_line_width(2.0);
                 ctx.begin_path();
                 ctx.move_to(sw_x, sw_y);
-                ctx.line_to(sw_x + 12.0 * flip, sw_y - 5.0);
+                ctx.line_to(sw_x + 11.0 * flip, sw_y - 4.5);
                 ctx.stroke();
 
-                // Chuôi kiếm
+                // Chuôi kiếm vàng
                 ctx.set_stroke_style_str("#facc15");
                 ctx.set_line_width(1.5);
                 ctx.begin_path();
@@ -1116,85 +1366,124 @@ fn draw_procedural_stickman(ctx: &CanvasRenderingContext2d, u: &Unit, color: &st
             }
         }
         UnitType::VoidWarlock => {
-            // Vu sư: Hai tay nâng quyền trượng hư không vươn cao
-            let staff_lift = anim * 5.0;
-            let hand_x = shoulder_x + 8.0 * flip;
-            let hand_y = shoulder_y - 4.0 - staff_lift;
+            // VoidWarlock: Quyền trượng Hư Không chi tiết
+            let staff_lift = if anim > 0.0 { anim * 4.0 } else { 0.0 };
+            let hand_x = shoulder_x + 7.0 * flip;
+            let hand_y = shoulder_y - 2.0 - staff_lift;
 
-            ctx.set_line_width(2.0);
+            // Tay nâng trượng
+            ctx.set_stroke_style_str(color);
+            ctx.set_line_width(1.8);
             ctx.begin_path();
             ctx.move_to(shoulder_x, shoulder_y);
-            ctx.line_to(shoulder_x + 4.0 * flip, shoulder_y);
             ctx.line_to(hand_x, hand_y);
             ctx.stroke();
 
-            // Thân quyền trượng
+            // Tay sau giương nhẹ
+            ctx.begin_path();
+            ctx.move_to(shoulder_x, shoulder_y);
+            ctx.line_to(shoulder_x - 4.0 * flip, shoulder_y + 5.0);
+            ctx.stroke();
+
+            // Cán trượng
             let staff_top_x = hand_x + 2.0 * flip;
             let staff_top_y = hand_y - 16.0;
-            let staff_bot_x = hand_x - 3.0 * flip;
-            let staff_bot_y = hand_y + 14.0;
-            ctx.set_stroke_style_str("#a855f7");
-            ctx.set_line_width(2.5);
+            let staff_bot_x = hand_x - 2.0 * flip;
+            let staff_bot_y = hand_y + 13.0;
+            ctx.set_stroke_style_str("#7e22ce");
+            ctx.set_line_width(2.2);
             ctx.begin_path();
             ctx.move_to(staff_bot_x, staff_bot_y);
             ctx.line_to(staff_top_x, staff_top_y);
             ctx.stroke();
 
-            // Quả cầu năng lượng tím hư không trên đỉnh trượng
-            let pulse = (u.walk_cycle as f64 * 3.0).sin() * 1.5;
-            ctx.set_fill_style_str("#c084fc");
+            // Đầu trượng hình trăng khuyết / đôi sừng
+            ctx.set_stroke_style_str("#c084fc");
+            ctx.set_line_width(1.8);
             ctx.begin_path();
-            let _ = ctx.arc(staff_top_x, staff_top_y, 4.5 + pulse, 0.0, std::f64::consts::PI * 2.0);
-            ctx.fill();
+            let _ = ctx.arc(
+                staff_top_x,
+                staff_top_y,
+                4.5,
+                -std::f64::consts::FRAC_PI_2,
+                std::f64::consts::FRAC_PI_2,
+            );
+            ctx.stroke();
 
-            // Sóng năng lượng tỏa ra khi triệu hồi
-            if anim > 0.3 {
-                ctx.set_stroke_style_str("rgba(232, 121, 249, 0.7)");
-                ctx.set_line_width(1.2);
-                ctx.begin_path();
-                let _ = ctx.arc(staff_top_x, staff_top_y, 9.0 * anim, 0.0, std::f64::consts::PI * 2.0);
-                ctx.stroke();
-            }
+            // Viên tinh thể hư không hình thoi ở giữa
+            ctx.set_fill_style_str("#e879f9");
+            ctx.begin_path();
+            ctx.move_to(staff_top_x, staff_top_y - 3.5);
+            ctx.line_to(staff_top_x + 2.5 * flip, staff_top_y);
+            ctx.line_to(staff_top_x, staff_top_y + 3.5);
+            ctx.line_to(staff_top_x - 2.5 * flip, staff_top_y);
+            ctx.close_path();
+            ctx.fill();
         }
         UnitType::BehemothTitan => {
-            // Cự thú Titan: Cầm chùy gai khổng lồ nện đất
-            let slam = anim * 1.5;
-            let arm_ang = if anim > 0.0 { -0.5 + slam } else { -0.2 };
-            let hand_x = shoulder_x + arm_ang.cos() * 14.0 * scale * flip;
-            let hand_y = shoulder_y + arm_ang.sin() * 14.0 * scale;
+            // BehemothTitan: Chiến búa / Chùy gai khổng lồ, bổ từ trên xuống
+            let (arm_ang, hand_x, hand_y) = if anim > 0.0 {
+                if anim > 0.5 {
+                    // Giơ búa lên đỉnh đầu
+                    let p = (1.0 - anim) / 0.5;
+                    (
+                        -1.8 + p * 0.3,
+                        shoulder_x + 3.0 * scale * flip,
+                        shoulder_y - 8.0 * scale,
+                    )
+                } else {
+                    // Bổ mạnh xuống đất
+                    let p = (0.5 - anim) / 0.5;
+                    (
+                        -1.5 + p * 2.3,
+                        shoulder_x + (5.0 + p * 5.0) * scale * flip,
+                        shoulder_y - 2.0 * scale + p * 8.0 * scale,
+                    )
+                }
+            } else {
+                (
+                    0.3,
+                    shoulder_x + 8.0 * scale * flip,
+                    shoulder_y + 4.0 * scale,
+                )
+            };
 
+            // Tay cầm búa
+            ctx.set_stroke_style_str(color);
             ctx.set_line_width(3.0 * scale);
             ctx.begin_path();
             ctx.move_to(shoulder_x, shoulder_y);
-            ctx.line_to(shoulder_x + 6.0 * scale * flip, shoulder_y + 5.0 * scale);
             ctx.line_to(hand_x, hand_y);
             ctx.stroke();
 
-            // Cán chùy to
+            // Cán búa dài
             let club_head_x = hand_x + arm_ang.cos() * 16.0 * scale * flip;
             let club_head_y = hand_y + arm_ang.sin() * 16.0 * scale;
-            ctx.set_stroke_style_str("#f59e0b");
-            ctx.set_line_width(4.5 * scale);
+            ctx.set_stroke_style_str("#92400e");
+            ctx.set_line_width(3.5 * scale);
             ctx.begin_path();
-            ctx.move_to(hand_x, hand_y);
+            ctx.move_to(hand_x - arm_ang.cos() * 5.0 * scale * flip, hand_y - arm_ang.sin() * 5.0 * scale);
             ctx.line_to(club_head_x, club_head_y);
             ctx.stroke();
 
-            // Đầu chùy gai sắt
-            ctx.set_fill_style_str("#d97706");
-            ctx.fill_rect(club_head_x - 5.0 * scale, club_head_y - 5.0 * scale, 10.0 * scale, 10.0 * scale);
+            // Đầu búa chiến bọc thép góc cạnh
+            ctx.set_fill_style_str("#f59e0b");
+            ctx.fill_rect(
+                club_head_x - 5.0 * scale,
+                club_head_y - 5.0 * scale,
+                10.0 * scale,
+                10.0 * scale,
+            );
 
-            // Hiệu ứng nứt đất khi đập
-            if anim > 0.5 {
-                ctx.set_stroke_style_str("#fbbf24");
-                ctx.set_line_width(1.5);
-                ctx.begin_path();
-                ctx.move_to(x - 12.0, y + 2.0);
-                ctx.line_to(x + 12.0, y + 2.0);
-                ctx.stroke();
-            }
+            // Gai nhọn 2 bên đầu búa
+            ctx.set_stroke_style_str("#d97706");
+            ctx.set_line_width(2.0 * scale);
+            ctx.begin_path();
+            ctx.move_to(club_head_x, club_head_y - 7.0 * scale);
+            ctx.line_to(club_head_x, club_head_y + 7.0 * scale);
+            ctx.stroke();
         }
-        _ => {}
+        UnitType::AcidBaneling => {}
     }
 
     ctx.restore();
