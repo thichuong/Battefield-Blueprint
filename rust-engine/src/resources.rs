@@ -81,6 +81,12 @@ pub struct GameSettings {
     pub camera_speed: f32,
     pub auto_pause_on_tech: bool,
     pub show_grid: bool,
+    #[serde(default = "default_fps_limit")]
+    pub fps_limit: String,
+}
+
+fn default_fps_limit() -> String {
+    "vsync".to_string()
 }
 
 impl Default for GameSettings {
@@ -90,6 +96,7 @@ impl Default for GameSettings {
             camera_speed: 1.0,
             auto_pause_on_tech: true,
             show_grid: true,
+            fps_limit: default_fps_limit(),
         }
     }
 }

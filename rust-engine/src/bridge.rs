@@ -19,6 +19,8 @@ pub enum ReactToEngineCommand {
         camera_speed: f32,
         auto_pause: bool,
         show_grid: bool,
+        #[serde(default)]
+        fps_limit: Option<String>,
     },
     RestartGame,
     UpdateAutoPlayConfig {

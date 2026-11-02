@@ -126,7 +126,8 @@ pub fn apply_strategic_action_for_team(
         .filter(|u| u.team == team && u.unit_type != UnitType::Engineer)
         .count();
     let tech = engine.team_tech(team);
-    let has_endgame_tech = tech.behemoth_mutation || tech.void_cataclysm || tech.dark_matter_rockets;
+    let has_endgame_tech =
+        tech.behemoth_mutation || tech.void_cataclysm || tech.dark_matter_rockets;
     let wave_assault_threshold = if has_endgame_tech { 20 } else { 24 };
 
     // Kiểm tra căn cứ có bị đe dọa trực tiếp không
@@ -747,7 +748,8 @@ pub fn maintain_continuous_ai_reflexes_for_team(engine: &mut GameEngine, team: T
 
     // 6.2. Tiến công: Chỉ phát động tấn công khi đã tập trung thành đợt lớn
     let tech = engine.team_tech(team);
-    let has_endgame_tech = tech.behemoth_mutation || tech.void_cataclysm || tech.dark_matter_rockets;
+    let has_endgame_tech =
+        tech.behemoth_mutation || tech.void_cataclysm || tech.dark_matter_rockets;
     let assault_threshold = if has_endgame_tech { 20 } else { 24 };
 
     // Chỉ khi đạt quân số đợt lớn mới xuất quân AllOutAssault

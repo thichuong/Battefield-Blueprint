@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { wasmBridge, EngineSyncState, AutoPlayConfig, PlayerSlotConfig } from './bridge/wasmBridge';
 import { MainMenu } from './components/MainMenu';
 import { TechTreeModal } from './components/TechTreeModal';
-import { SettingsModal } from './components/SettingsModal';
+import { SettingsModal, FpsLimit } from './components/SettingsModal';
 import { GameOverModal } from './components/GameOverModal';
 import { AutoPlayModal } from './components/AutoPlayModal';
 import { soundEngine } from './audio/soundEngine';
@@ -168,27 +168,34 @@ const initialGameState: EngineSyncState = {
 
 const SETTINGS_STORAGE_KEY = 'battlefield_blueprint_settings';
 
-function loadStoredSettings() {
+interface StoredSettings {
+  soundVolume: number;
+  cameraSpeed: number;
+  autoPause: boolean;
+  showGrid: boolean;
+  fpsLimit: FpsLimit;
+}
+
+function loadStoredSettings(): StoredSettings {
+  const defaults: StoredSettings = {
+    soundVolume: 0.7,
+    cameraSpeed: 1.0,
+    autoPause: true,
+    showGrid: true,
+    fpsLimit: 'vsync',
+  };
   try {
     const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
     if (raw) {
       return {
-        soundVolume: 0.7,
-        cameraSpeed: 1.0,
-        autoPause: true,
-        showGrid: true,
+        ...defaults,
         ...JSON.parse(raw),
       };
     }
   } catch (e) {
     // ignore
   }
-  return {
-    soundVolume: 0.7,
-    cameraSpeed: 1.0,
-    autoPause: true,
-    showGrid: true,
-  };
+  return defaults;
 }
 
 export const App: React.FC = () => {
@@ -203,12 +210,17 @@ export const App: React.FC = () => {
   }>({ isOpen: false, playerWon: false });
 
   const [gameState, setGameState] = useState<EngineSyncState>(initialGameState);
-  const [settings, setSettings] = useState(loadStoredSettings);
+  const [settings, setSettings] = useState<StoredSettings>(loadStoredSettings);
+  const fpsLimitRef = useRef<FpsLimit>(settings.fpsLimit);
+  fpsLimitRef.current = settings.fpsLimit;
 
   // Khởi tạo Wasm và Canvas
   useEffect(() => {
-    let animationFrameId: number;
+    let isRunning = true;
+    let animationFrameId: number | null = null;
+    let timerId: number | null = null;
     let lastTime = performance.now();
+    let lastRenderTime = performance.now();
 
     const initEngine = async () => {
       if (!canvasRef.current) return;
@@ -236,18 +248,43 @@ export const App: React.FC = () => {
         camera_speed: settings.cameraSpeed,
         auto_pause: settings.autoPause,
         show_grid: settings.showGrid,
+        fps_limit: String(settings.fpsLimit),
       });
 
       // Tách 2 vòng lặp:
       // Vòng lặp 1: Fixed Timestep Accumulator cho Logic Mô phỏng (60 Ticks/giây)
-      // Vòng lặp 2: Render theo tần số quét màn hình (requestAnimationFrame / VSync)
+      // Vòng lặp 2: Render theo tùy chọn FPS (V-Sync, 60, 90, 120, 240, Bỏ giới hạn)
       const FIXED_TIMESTEP = 1 / 60;
       const MAX_SUB_STEPS = 5;
       let accumulator = 0;
 
-      const loop = (time: number) => {
-        let frameTime = (time - lastTime) / 1000;
-        lastTime = time;
+      const scheduleNext = () => {
+        if (!isRunning) return;
+        const limit = fpsLimitRef.current;
+        if (limit === 'vsync') {
+          animationFrameId = requestAnimationFrame(loop);
+        } else if (limit === 'unlimited') {
+          timerId = window.setTimeout(loop, 0);
+        } else {
+          const interval = 1000 / limit;
+          const now = performance.now();
+          const elapsed = now - lastRenderTime;
+          const remaining = Math.max(0, interval - elapsed);
+
+          if (limit <= 60) {
+            animationFrameId = requestAnimationFrame(loop);
+          } else {
+            timerId = window.setTimeout(loop, Math.floor(remaining));
+          }
+        }
+      };
+
+      const loop = () => {
+        if (!isRunning) return;
+
+        const now = performance.now();
+        let frameTime = (now - lastTime) / 1000;
+        lastTime = now;
 
         // Giới hạn delta time tối đa 0.25s khi tab bị ẩn hoặc lag đột ngột (tránh Spiral of Death)
         if (frameTime > 0.25) {
@@ -264,19 +301,39 @@ export const App: React.FC = () => {
           subSteps++;
         }
 
-        // VÒNG LẶP 2: RENDER (Chạy theo tần số màn hình, kèm hệ số alpha nội suy)
-        const alpha = Math.min(Math.max(accumulator / FIXED_TIMESTEP, 0), 1);
-        wasmBridge.render(alpha);
+        // VÒNG LẶP 2: RENDER (Có kiểm tra giới hạn FPS)
+        const limit = fpsLimitRef.current;
+        let shouldRender = false;
 
-        animationFrameId = requestAnimationFrame(loop);
+        if (limit === 'vsync' || limit === 'unlimited') {
+          shouldRender = true;
+          lastRenderTime = now;
+        } else {
+          const interval = 1000 / limit;
+          // Bù sai số 1ms để khung hình không bị trôi chu kỳ
+          if (now - lastRenderTime >= interval - 1.0) {
+            shouldRender = true;
+            lastRenderTime = now;
+          }
+        }
+
+        if (shouldRender) {
+          const alpha = Math.min(Math.max(accumulator / FIXED_TIMESTEP, 0), 1);
+          wasmBridge.render(alpha);
+        }
+
+        scheduleNext();
       };
-      animationFrameId = requestAnimationFrame(loop);
+
+      scheduleNext();
     };
 
     initEngine();
 
     return () => {
-      cancelAnimationFrame(animationFrameId);
+      isRunning = false;
+      if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
+      if (timerId !== null) clearTimeout(timerId);
     };
   }, []);
 
@@ -435,8 +492,9 @@ export const App: React.FC = () => {
     });
   };
 
-  const handleUpdateSettings = useCallback((newSettings: typeof settings) => {
+  const handleUpdateSettings = useCallback((newSettings: StoredSettings) => {
     setSettings(newSettings);
+    fpsLimitRef.current = newSettings.fpsLimit;
     try {
       localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(newSettings));
     } catch (e) {
@@ -448,6 +506,7 @@ export const App: React.FC = () => {
       camera_speed: newSettings.cameraSpeed,
       auto_pause: newSettings.autoPause,
       show_grid: newSettings.showGrid,
+      fps_limit: String(newSettings.fpsLimit),
     });
   }, []);
 
@@ -562,6 +621,7 @@ export const App: React.FC = () => {
         cameraSpeed={settings.cameraSpeed}
         autoPause={settings.autoPause}
         showGrid={settings.showGrid}
+        fpsLimit={settings.fpsLimit}
         onUpdateSettings={handleUpdateSettings}
         onRestartGame={handleRestartGame}
         onBackToMenu={handleBackToMenu}

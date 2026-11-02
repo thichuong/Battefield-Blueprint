@@ -222,7 +222,12 @@ pub fn render_in_game_hud(engine: &GameEngine) {
             } else {
                 if current_vis == Visibility::Hidden {
                     ctx.set_fill_style_str("rgba(2, 6, 13, 0.72)");
-                    ctx.fill_rect(mm_x + (start_c as f64) * cell_mm, ry, (count as f64) * cell_mm + 0.3, cell_mm + 0.3);
+                    ctx.fill_rect(
+                        mm_x + (start_c as f64) * cell_mm,
+                        ry,
+                        (count as f64) * cell_mm + 0.3,
+                        cell_mm + 0.3,
+                    );
                 }
                 current_vis = vis;
                 start_c = c;
@@ -231,7 +236,12 @@ pub fn render_in_game_hud(engine: &GameEngine) {
         }
         if current_vis == Visibility::Hidden {
             ctx.set_fill_style_str("rgba(2, 6, 13, 0.72)");
-            ctx.fill_rect(mm_x + (start_c as f64) * cell_mm, ry, (count as f64) * cell_mm + 0.3, cell_mm + 0.3);
+            ctx.fill_rect(
+                mm_x + (start_c as f64) * cell_mm,
+                ry,
+                (count as f64) * cell_mm + 0.3,
+                cell_mm + 0.3,
+            );
         }
     }
 
@@ -723,20 +733,36 @@ pub fn render_debug_overlay(engine: &GameEngine) {
 
     ctx.set_font("bold 11px monospace");
     ctx.set_fill_style_str("#10b981");
+    let limit_tag = match engine.settings.fps_limit.as_str() {
+        "vsync" => "V-Sync",
+        "unlimited" => "Max",
+        other => other,
+    };
     let _ = ctx.fill_text(
-        &format!("⚡ FPS: {:.0} | Sim: {:.1}ms | Rnd: {:.1}ms", engine.fps, engine.sim_time_ms, engine.render_time_ms),
+        &format!(
+            "⚡ FPS: {:.0} [{}] | Sim: {:.1}ms | Rnd: {:.1}ms",
+            engine.fps, limit_tag, engine.sim_time_ms, engine.render_time_ms
+        ),
         px + 10.0,
         py + 20.0,
     );
     ctx.set_fill_style_str("#38bdf8");
     let _ = ctx.fill_text(
-        &format!("👤 Units: {} | 🏛 Buildings: {}", engine.units.len(), engine.buildings.len()),
+        &format!(
+            "👤 Units: {} | 🏛 Buildings: {}",
+            engine.units.len(),
+            engine.buildings.len()
+        ),
         px + 10.0,
         py + 40.0,
     );
     ctx.set_fill_style_str("#facc15");
     let _ = ctx.fill_text(
-        &format!("🚀 Projectiles: {} | ✨ Particles: {}", engine.projectiles.len(), engine.particles.len()),
+        &format!(
+            "🚀 Projectiles: {} | ✨ Particles: {}",
+            engine.projectiles.len(),
+            engine.particles.len()
+        ),
         px + 10.0,
         py + 60.0,
     );

@@ -34,11 +34,15 @@ pub fn process_commands(engine: &mut GameEngine) {
                 camera_speed,
                 auto_pause,
                 show_grid,
+                fps_limit,
             } => {
                 engine.settings.sound_volume = sound_volume;
                 engine.settings.camera_speed = camera_speed;
                 engine.settings.auto_pause_on_tech = auto_pause;
                 engine.settings.show_grid = show_grid;
+                if let Some(limit) = fps_limit {
+                    engine.settings.fps_limit = limit;
+                }
             }
             ReactToEngineCommand::RestartGame => {
                 // Dọn sạch toàn bộ thực thể & dữ liệu của màn cũ

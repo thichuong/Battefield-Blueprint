@@ -1,6 +1,17 @@
 import React from 'react';
-import { X, Volume2, Compass, Play, RotateCcw, Grid, Home } from 'lucide-react';
+import { X, Volume2, Compass, Play, RotateCcw, Grid, Home, Gauge } from 'lucide-react';
 import { soundEngine } from '../audio/soundEngine';
+
+export type FpsLimit = 'vsync' | 60 | 90 | 120 | 240 | 'unlimited';
+
+const FPS_OPTIONS: { label: string; value: FpsLimit }[] = [
+  { label: 'V-Sync', value: 'vsync' },
+  { label: '60 FPS', value: 60 },
+  { label: '90 FPS', value: 90 },
+  { label: '120 FPS', value: 120 },
+  { label: '240 FPS', value: 240 },
+  { label: 'Bỏ giới hạn', value: 'unlimited' },
+];
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -9,11 +20,13 @@ interface SettingsModalProps {
   cameraSpeed: number;
   autoPause: boolean;
   showGrid: boolean;
+  fpsLimit?: FpsLimit;
   onUpdateSettings: (settings: {
     soundVolume: number;
     cameraSpeed: number;
     autoPause: boolean;
     showGrid: boolean;
+    fpsLimit: FpsLimit;
   }) => void;
   onRestartGame: () => void;
   onBackToMenu?: () => void;
@@ -26,6 +39,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   cameraSpeed,
   autoPause,
   showGrid,
+  fpsLimit = 'vsync',
   onUpdateSettings,
   onRestartGame,
   onBackToMenu,
@@ -62,7 +76,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               onChange={(e) => {
                 const val = parseFloat(e.target.value);
                 soundEngine.volume = val;
-                onUpdateSettings({ soundVolume: val, cameraSpeed, autoPause, showGrid });
+                onUpdateSettings({ soundVolume: val, cameraSpeed, autoPause, showGrid, fpsLimit });
               }}
               className="w-full accent-cyan-400 cursor-pointer"
             />
@@ -88,10 +102,62 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   cameraSpeed: parseFloat(e.target.value),
                   autoPause,
                   showGrid,
+                  fpsLimit,
                 });
               }}
               className="w-full accent-cyan-400 cursor-pointer"
             />
+          </div>
+
+          {/* Giới hạn FPS */}
+          <div className="pt-2 border-t border-slate-800">
+            <div className="flex items-center justify-between mb-2">
+              <span className="flex items-center gap-2 text-slate-300">
+                <Gauge className="w-4 h-4 text-cyan-400" /> Giới hạn FPS:
+              </span>
+              <span className="text-cyan-400 font-bold text-xs uppercase">
+                {fpsLimit === 'vsync'
+                  ? 'V-Sync'
+                  : fpsLimit === 'unlimited'
+                  ? 'Bỏ giới hạn'
+                  : `${fpsLimit} FPS`}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6">
+              {FPS_OPTIONS.map((opt) => {
+                const isActive = fpsLimit === opt.value;
+                return (
+                  <button
+                    key={String(opt.value)}
+                    type="button"
+                    onClick={() => {
+                      onUpdateSettings({
+                        soundVolume,
+                        cameraSpeed,
+                        autoPause,
+                        showGrid,
+                        fpsLimit: opt.value,
+                      });
+                    }}
+                    className={`py-1.5 px-1 rounded text-[11px] font-bold transition-all border text-center ${
+                      isActive
+                        ? 'bg-cyan-500/25 border-cyan-400 text-cyan-300 shadow-[0_0_10px_rgba(6,182,212,0.35)]'
+                        : 'bg-slate-900/60 border-slate-700/80 text-slate-400 hover:text-slate-200 hover:border-slate-500'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1.5 leading-tight">
+              {fpsLimit === 'vsync' && 'Đồng bộ trực tiếp theo tần số quét màn hình, chống xé hình.'}
+              {fpsLimit === 60 && 'Khóa tối đa 60 FPS để tiết kiệm pin và giảm tải GPU.'}
+              {fpsLimit === 90 && 'Mức khung hình cân bằng, mượt mà cho màn hình 90Hz+.'}
+              {fpsLimit === 120 && 'Tốc độ khung hình cao, mượt mà dành cho màn hình 120Hz/144Hz.'}
+              {fpsLimit === 240 && 'Tối ưu cho màn hình gaming tần số quét siêu cao 240Hz+.'}
+              {fpsLimit === 'unlimited' && 'Không giới hạn FPS, dựng hình tối đa công suất phần cứng.'}
+            </p>
           </div>
 
           {/* Tự động tạm dừng khi xem Tech Tree */}
@@ -113,6 +179,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   cameraSpeed,
                   autoPause: e.target.checked,
                   showGrid,
+                  fpsLimit,
                 });
               }}
               className="w-4 h-4 accent-cyan-400 cursor-pointer shrink-0 ml-3"
@@ -133,6 +200,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   cameraSpeed,
                   autoPause,
                   showGrid: e.target.checked,
+                  fpsLimit,
                 });
               }}
               className="w-4 h-4 accent-cyan-400 cursor-pointer"

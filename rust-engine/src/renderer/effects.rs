@@ -331,11 +331,7 @@ pub fn render_build_ghost(engine: &GameEngine, b_type: BuildingType) {
     ctx.set_text_align("center");
     ctx.set_fill_style_str(&engine.config.render.player_color);
     let ghost_title = engine.config.get_building_short_name(b_type);
-    let _ = ctx.fill_text(
-        ghost_title,
-        wx as f64,
-        by + (h as f64) + 13.0,
-    );
+    let _ = ctx.fill_text(ghost_title, wx as f64, by + (h as f64) + 13.0);
     ctx.set_text_align("left");
 
     // Hiển thị vòng tròn tầm bắn của công trình khi đang đặt móng

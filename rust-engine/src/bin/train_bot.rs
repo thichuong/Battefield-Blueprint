@@ -370,7 +370,10 @@ fn main() {
 
     // Nạp trọng số sẵn có từ rl_model.json để huấn luyện liên tục
     let mut unified_brain = RlBrain::default();
-    println!("🧠 Đã nạp thành công bộ não AI gốc ({}) tham số.", unified_brain.total_parameters());
+    println!(
+        "🧠 Đã nạp thành công bộ não AI gốc ({}) tham số.",
+        unified_brain.total_parameters()
+    );
 
     // Huấn luyện xoay vòng qua các kịch bản để tích lũy kinh nghiệm vào 1 model duy nhất
     for (idx, &scenario) in target_scenarios.iter().enumerate() {
@@ -392,14 +395,18 @@ fn main() {
     println!("============================================================");
 
     let eval_matches = 5; // Số ván test mỗi chế độ
-    println!("{:<22} | {:<7} | {:<16} | {:<12}", "Chế độ (Mode)", "Tỉ lệ", "Thắng/Thua/Hòa", "Avg Game Time");
+    println!(
+        "{:<22} | {:<7} | {:<16} | {:<12}",
+        "Chế độ (Mode)", "Tỉ lệ", "Thắng/Thua/Hòa", "Avg Game Time"
+    );
     println!("------------------------------------------------------------");
 
     let mut total_eval_wins = 0;
     let mut total_eval_matches = 0;
 
     for &scenario in &target_scenarios {
-        let (wins, losses, draws, avg_time) = evaluate_model_on_scenario(scenario, &unified_brain, eval_matches, time_scale_dt);
+        let (wins, losses, draws, avg_time) =
+            evaluate_model_on_scenario(scenario, &unified_brain, eval_matches, time_scale_dt);
         let win_rate = (wins as f32 / eval_matches as f32) * 100.0;
         total_eval_wins += wins;
         total_eval_matches += eval_matches;
@@ -420,12 +427,13 @@ fn main() {
     } else {
         0.0
     };
-    println!("🏆 TỔNG KẾT TỈ LỆ THẮNG TOÀN DIỆN: {:>5.1}% ({}/{} ván thắng)", overall_winrate, total_eval_wins, total_eval_matches);
+    println!(
+        "🏆 TỔNG KẾT TỈ LỆ THẮNG TOÀN DIỆN: {:>5.1}% ({}/{} ván thắng)",
+        overall_winrate, total_eval_wins, total_eval_matches
+    );
 
     println!("============================================================");
-    println!(
-        "🎉 HOÀN THÀNH HUẤN LUYỆN TOÀN DIỆN CHO 1 MODEL AI DUY NHẤT!"
-    );
+    println!("🎉 HOÀN THÀNH HUẤN LUYỆN TOÀN DIỆN CHO 1 MODEL AI DUY NHẤT!");
     println!(
         "⏱️  Tổng thời gian: {:.2}s",
         start_wall_time.elapsed().as_secs_f32()
@@ -434,7 +442,11 @@ fn main() {
     println!("============================================================");
 }
 
-fn train_scenario_with_brain(scenario: Scenario, config: &TrainConfig, mut brain: RlBrain) -> RlBrain {
+fn train_scenario_with_brain(
+    scenario: Scenario,
+    config: &TrainConfig,
+    mut brain: RlBrain,
+) -> RlBrain {
     let mode = scenario.to_mode();
     let total_episodes = config.episodes_per_mode;
     let time_scale_dt = config.time_scale_dt;
@@ -706,7 +718,8 @@ fn evaluate_model_on_scenario(
                 let cfg = create_training_autoplay_config(team, arch);
                 engine.team_autoplay_mut(team).config = cfg;
             } else {
-                let cfg = create_training_autoplay_config(team, AutoTrainingArchetype::MacroFortress);
+                let cfg =
+                    create_training_autoplay_config(team, AutoTrainingArchetype::MacroFortress);
                 engine.team_autoplay_mut(team).config = cfg;
             }
         }

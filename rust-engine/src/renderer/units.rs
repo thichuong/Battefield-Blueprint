@@ -21,10 +21,14 @@ pub fn render_units(engine: &GameEngine) {
         .filter_map(|u| {
             let draw_x = (u.prev_x + (u.x - u.prev_x) * alpha) as f64;
             let draw_y = (u.prev_y + (u.y - u.prev_y) * alpha) as f64;
-            if !engine.camera.is_point_visible(draw_x as f32, draw_y as f32, 40.0) {
+            if !engine
+                .camera
+                .is_point_visible(draw_x as f32, draw_y as f32, 40.0)
+            {
                 return None;
             }
-            let is_visible = engine.are_allies(Team::Player, u.team) || engine.fog.is_visible(u.x, u.y);
+            let is_visible =
+                engine.are_allies(Team::Player, u.team) || engine.fog.is_visible(u.x, u.y);
             if !is_visible {
                 return None;
             }
@@ -81,7 +85,15 @@ pub fn render_units(engine: &GameEngine) {
         };
 
         // 2. Vẽ khung xương người que tối giản + vũ khí chi tiết & tư thế (sử dụng tọa độ nội suy)
-        draw_procedural_stickman(ctx, u, color, engine.game_time as f64, is_welding, draw_x, draw_y);
+        draw_procedural_stickman(
+            ctx,
+            u,
+            color,
+            engine.game_time as f64,
+            is_welding,
+            draw_x,
+            draw_y,
+        );
 
         // 3. Thanh máu và thanh khiên trên đầu
         let hp_pct = (u.hp / u.max_hp).clamp(0.0, 1.0) as f64;

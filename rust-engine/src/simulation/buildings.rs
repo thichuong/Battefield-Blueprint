@@ -173,7 +173,12 @@ pub fn update_buildings(engine: &mut GameEngine, dt: f32) {
             .buildings
             .iter()
             .filter(|b| b.hp < b.max_hp * 0.45 && b.build_progress >= 1.0)
-            .map(|b| (b.x + (fastrand::f32() - 0.5) * b.width * 0.5, b.y - b.height * 0.2))
+            .map(|b| {
+                (
+                    b.x + (fastrand::f32() - 0.5) * b.width * 0.5,
+                    b.y - b.height * 0.2,
+                )
+            })
             .collect();
         for (rx, ry) in damaged_pos {
             engine.spawn_particles(rx, ry, 1, "#f97316", 30.0, 2.2, 0.45);

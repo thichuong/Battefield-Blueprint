@@ -40,7 +40,11 @@ pub fn execute_team_continuous_recruitment(engine: &mut GameEngine, team: Team) 
         (0.0, 0.0)
     };
 
-    let max_queue = if total_unlocked < 12 && !base_threat { 1 } else { 2 };
+    let max_queue = if total_unlocked < 12 && !base_threat {
+        1
+    } else {
+        2
+    };
 
     let completed_barracks: Vec<u32> = engine
         .buildings
@@ -135,7 +139,8 @@ pub fn execute_team_continuous_recruitment(engine: &mut GameEngine, team: Team) 
             }
 
             let eco = engine.team_eco_mut(team);
-            if eco.minerals >= mineral_reserve + min_cost && eco.energy >= energy_reserve + en_cost {
+            if eco.minerals >= mineral_reserve + min_cost && eco.energy >= energy_reserve + en_cost
+            {
                 eco.minerals -= min_cost;
                 eco.energy -= en_cost;
                 if let Some(b) = engine.buildings.iter_mut().find(|b| b.id == bid) {
@@ -578,7 +583,11 @@ pub fn execute_team_training(engine: &mut GameEngine, team: Team, candidate_unit
         (0.0, 0.0)
     };
 
-    let max_queue = if total_unlocked < 12 && !base_threat { 1 } else { 2 };
+    let max_queue = if total_unlocked < 12 && !base_threat {
+        1
+    } else {
+        2
+    };
 
     let completed_barracks: Vec<u32> = engine
         .buildings
@@ -614,7 +623,8 @@ pub fn execute_team_training(engine: &mut GameEngine, team: Team, candidate_unit
             }
 
             let eco = engine.team_eco_mut(team);
-            if eco.minerals >= mineral_reserve + min_cost && eco.energy >= energy_reserve + en_cost {
+            if eco.minerals >= mineral_reserve + min_cost && eco.energy >= energy_reserve + en_cost
+            {
                 eco.minerals -= min_cost;
                 eco.energy -= en_cost;
                 if let Some(b) = engine.buildings.iter_mut().find(|b| b.id == bid) {

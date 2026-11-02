@@ -653,7 +653,10 @@ fn test_ranged_units_projectile_visuals() {
 
     // Test 1: Rifleman -> Bullet
     let mut rifleman = cfg.create_unit(1, Team::Player, UnitType::Rifleman, 100.0, 100.0);
-    rifleman.order = UnitOrder::AttackTarget { target_id: 99, is_building: false };
+    rifleman.order = UnitOrder::AttackTarget {
+        target_id: 99,
+        is_building: false,
+    };
     engine.units.push(rifleman);
     update_units(&mut engine, 0.05);
     assert_eq!(engine.projectiles.len(), 1);
@@ -664,7 +667,10 @@ fn test_ranged_units_projectile_visuals() {
 
     // Test 2: DarkRocketeer -> Rocket
     let mut rocketeer = cfg.create_unit(2, Team::Player, UnitType::DarkRocketeer, 100.0, 100.0);
-    rocketeer.order = UnitOrder::AttackTarget { target_id: 99, is_building: false };
+    rocketeer.order = UnitOrder::AttackTarget {
+        target_id: 99,
+        is_building: false,
+    };
     engine.units.push(rocketeer);
     update_units(&mut engine, 0.05);
     assert_eq!(engine.projectiles.len(), 1);
@@ -674,8 +680,12 @@ fn test_ranged_units_projectile_visuals() {
     engine.units.retain(|u| u.id == 99);
 
     // Test 3: TaoistSwordmaster -> FlyingSword
-    let mut swordmaster = cfg.create_unit(3, Team::Player, UnitType::TaoistSwordmaster, 100.0, 100.0);
-    swordmaster.order = UnitOrder::AttackTarget { target_id: 99, is_building: false };
+    let mut swordmaster =
+        cfg.create_unit(3, Team::Player, UnitType::TaoistSwordmaster, 100.0, 100.0);
+    swordmaster.order = UnitOrder::AttackTarget {
+        target_id: 99,
+        is_building: false,
+    };
     engine.units.push(swordmaster);
     update_units(&mut engine, 0.05);
     assert_eq!(engine.projectiles.len(), 1);

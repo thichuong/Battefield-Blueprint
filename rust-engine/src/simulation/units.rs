@@ -495,7 +495,9 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
                                     let visual = match unit.unit_type {
                                         UnitType::Rifleman => ProjectileVisual::Bullet,
                                         UnitType::DarkRocketeer => ProjectileVisual::Rocket,
-                                        UnitType::TaoistSwordmaster => ProjectileVisual::FlyingSword,
+                                        UnitType::TaoistSwordmaster => {
+                                            ProjectileVisual::FlyingSword
+                                        }
                                         UnitType::LaserMarksman => ProjectileVisual::Laser,
                                         _ => ProjectileVisual::Bullet,
                                     };

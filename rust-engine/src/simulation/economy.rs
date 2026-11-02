@@ -120,7 +120,8 @@ pub fn update_economy(engine: &mut GameEngine, dt: f32) {
         let bot_mult = engine.bot_resource_multiplier(team);
         let has_overcharged = engine.team_tech(team).overcharged_reactors;
         let mult = if has_overcharged { 1.5 } else { 1.0 };
-        let energy_rate = (base_energy + team_reactors[i] as f32 * reactor_energy) * mult * bot_mult;
+        let energy_rate =
+            (base_energy + team_reactors[i] as f32 * reactor_energy) * mult * bot_mult;
 
         let num_converters = team_converters[i];
         let eco = match team {

@@ -69,8 +69,8 @@ pub fn engine_render(alpha: Option<f32>) {
         if let Some(ref mut engine) = *state.borrow_mut() {
             let now = get_performance_now();
             if engine.last_render_time > 0.0 {
-                let dt_ms = (now - engine.last_render_time).max(1.0);
-                let instant_fps = (1000.0 / dt_ms).min(360.0) as f32;
+                let dt_ms = (now - engine.last_render_time).max(0.1);
+                let instant_fps = (1000.0 / dt_ms).min(2000.0) as f32;
                 engine.fps = engine.fps * 0.90 + instant_fps * 0.10;
             }
             engine.last_render_time = now;
