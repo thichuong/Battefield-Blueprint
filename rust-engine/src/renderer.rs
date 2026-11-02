@@ -2144,7 +2144,21 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
             } else if u.unit_type == UnitType::TaoistSwordmaster {
                 format!("⚔️ ATK: {:.0} [ARCANE]   🎯 RNG: {:.0}   🗡️ KIẾM: {}/7", u.attack_damage, u.attack_range, u.flying_swords)
             } else if u.unit_type == UnitType::VoidWarlock {
-                "⚔️ PHÁP TRẬN: 5% MaxHP/s   🎯 RNG: 175   ⚡ CD: 2.0s".to_string()
+                let dps_pct = if u.percent_max_hp_dps > 0.0 {
+                    u.percent_max_hp_dps * 100.0
+                } else {
+                    engine
+                        .config
+                        .get_unit(UnitType::VoidWarlock)
+                        .map(|cfg| cfg.percent_max_hp_dps)
+                        .filter(|&p| p > 0.0)
+                        .unwrap_or(crate::config::VOID_WARLOCK_DEFAULT_MAX_HP_DPS)
+                        * 100.0
+                };
+                format!(
+                    "⚔️ PHÁP TRẬN: {:.0}% MaxHP/s   🎯 RNG: {:.0}   ⚡ CD: {:.1}s",
+                    dps_pct, u.attack_range, u.attack_cooldown
+                )
             } else if u.unit_type == UnitType::AcidBaneling {
                 format!("⚔️ CẢM TỬ: {:.0} (x2 Nhà)   💥 AOE: {:.0}", u.attack_damage, u.aoe_radius)
             } else {

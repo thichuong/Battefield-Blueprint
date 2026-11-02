@@ -367,6 +367,8 @@ pub struct Unit {
     pub attack_anim_timer: f32,
     #[serde(default)]
     pub last_attack_pos: Option<(f32, f32)>,
+    #[serde(default)]
+    pub percent_max_hp_dps: f32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -425,6 +427,10 @@ fn default_mult_one() -> f32 {
     1.0
 }
 
+fn default_arcane() -> DamageType {
+    DamageType::Arcane
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MagicCircle {
     pub id: u32,
@@ -435,6 +441,10 @@ pub struct MagicCircle {
     pub lifetime: f32,
     pub max_lifetime: f32,
     pub tick_timer: f32,
+    #[serde(default)]
+    pub damage_pct_per_sec: f32,
+    #[serde(default = "default_arcane")]
+    pub damage_type: DamageType,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

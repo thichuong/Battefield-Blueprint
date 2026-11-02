@@ -20,6 +20,8 @@ pub struct UnitStatsConfig {
     pub cost_minerals: f32,
     pub cost_energy: f32,
     pub training_time: f32,
+    #[serde(default)]
+    pub percent_max_hp_dps: f32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -116,6 +118,11 @@ pub const BUILDING_UNDER_ATTACK_SPEED_MULTIPLIER: f32 = 0.20; // Giảm còn 30%
 pub const MAX_CONCURRENT_RESEARCH_PER_BRANCH: usize = 1; // 1 công nghệ mỗi nhánh cùng lúc
 pub const MAX_TOTAL_CONCURRENT_RESEARCH: usize = 4; // Tối đa 4 nhánh chạy đồng thời
 
+// === KỸ NĂNG ĐƠN VỊ ĐẶC BIỆT (SPECIAL UNIT ABILITIES) ===
+pub const VOID_WARLOCK_DEFAULT_MAX_HP_DPS: f32 = 0.10; // 10% máu tối đa mỗi giây
+pub const VOID_WARLOCK_CIRCLE_LIFETIME: f32 = 5.0;     // Thời gian duy trì vòng ma thuật (5s)
+pub const VOID_WARLOCK_CIRCLE_RADIUS: f32 = 55.0;      // Bán kính vòng ma thuật (55px)
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct TechItemConfig {
     pub name: String,
@@ -210,6 +217,7 @@ impl Default for GameConfig {
                 cost_minerals: 50.0,
                 cost_energy: 0.0,
                 training_time: 5.0,
+                percent_max_hp_dps: 0.0,
             },
         );
 
@@ -235,6 +243,7 @@ impl Default for GameConfig {
                 cost_minerals: 75.0,
                 cost_energy: 0.0,
                 training_time: 7.0,
+                percent_max_hp_dps: 0.0,
             },
         );
 
@@ -260,6 +269,7 @@ impl Default for GameConfig {
                 cost_minerals: 100.0,
                 cost_energy: 20.0,
                 training_time: 8.0,
+                percent_max_hp_dps: 0.0,
             },
         );
 
@@ -285,6 +295,7 @@ impl Default for GameConfig {
                 cost_minerals: 150.0,
                 cost_energy: 50.0,
                 training_time: 12.0,
+                percent_max_hp_dps: 0.0,
             },
         );
 
@@ -310,6 +321,7 @@ impl Default for GameConfig {
                 cost_minerals: 175.0,
                 cost_energy: 100.0,
                 training_time: 15.0,
+                percent_max_hp_dps: 0.0,
             },
         );
 
@@ -335,6 +347,7 @@ impl Default for GameConfig {
                 cost_minerals: 160.0,
                 cost_energy: 80.0,
                 training_time: 14.0,
+                percent_max_hp_dps: 0.0,
             },
         );
 
@@ -360,6 +373,7 @@ impl Default for GameConfig {
                 cost_minerals: 180.0,
                 cost_energy: 90.0,
                 training_time: 15.0,
+                percent_max_hp_dps: 0.0,
             },
         );
 
@@ -368,14 +382,14 @@ impl Default for GameConfig {
             UnitStatsConfig {
                 name: "VOID // SHADOW WARLOCK".to_string(),
                 short_name: "WARLOCK".to_string(),
-                description: "Mỗi 2s triệu hồi vòng ma thuật tồn tại 5s, đốt 5% HP tối đa mỗi giây.".to_string(),
+                description: "Mỗi 2s triệu hồi vòng ma thuật tồn tại 5s, đốt 10% HP tối đa mỗi giây.".to_string(),
                 hp: 135.0,
                 speed: 100.0,
                 attack_range: 175.0,
                 attack_damage: 0.0,
                 attack_cooldown: 2.0,
                 damage_type: DamageType::Arcane,
-                aoe_radius: 55.0,
+                aoe_radius: 75.0,
                 resistances: Resistances {
                     physical: 0.10,
                     energy: 0.25,
@@ -385,6 +399,7 @@ impl Default for GameConfig {
                 cost_minerals: 200.0,
                 cost_energy: 120.0,
                 training_time: 16.0,
+                percent_max_hp_dps: VOID_WARLOCK_DEFAULT_MAX_HP_DPS,
             },
         );
 
@@ -410,6 +425,7 @@ impl Default for GameConfig {
                 cost_minerals: 250.0,
                 cost_energy: 100.0,
                 training_time: 20.0,
+                percent_max_hp_dps: 0.0,
             },
         );
 
@@ -435,6 +451,7 @@ impl Default for GameConfig {
                 cost_minerals: 60.0,
                 cost_energy: 30.0,
                 training_time: 6.0,
+                percent_max_hp_dps: 0.0,
             },
         );
 
@@ -981,6 +998,7 @@ impl GameConfig {
             cost_minerals: 50.0,
             cost_energy: 0.0,
             training_time: 5.0,
+            percent_max_hp_dps: 0.0,
         };
         let cfg = self.get_unit(u_type).unwrap_or(&default_cfg);
 
@@ -1027,6 +1045,7 @@ impl GameConfig {
             sword_regen_timer: 0.0,
             attack_anim_timer: 0.0,
             last_attack_pos: None,
+            percent_max_hp_dps: cfg.percent_max_hp_dps,
         }
     }
 

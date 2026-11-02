@@ -683,6 +683,12 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
     let has_drills: [bool; 8] = std::array::from_fn(|i| {
         engine.team_tech(Team::from_index(i)).optical_drills
     });
+    let warlock_cfg_dps = engine
+        .config
+        .get_unit(UnitType::VoidWarlock)
+        .map(|u| u.percent_max_hp_dps)
+        .filter(|&p| p > 0.0)
+        .unwrap_or(crate::config::VOID_WARLOCK_DEFAULT_MAX_HP_DPS);
 
     engine
         .spatial_grid
@@ -1027,15 +1033,22 @@ fn update_units(engine: &mut GameEngine, dt: f32) {
                                 // VoidWarlock không tấn công thường, mỗi 2s triệu hồi 1 vòng ma thuật duy trì 5s
                                 unit.current_cooldown = unit.attack_cooldown;
                                 unit.attack_anim_timer = 1.0;
+                                let dps_pct = if unit.percent_max_hp_dps > 0.0 {
+                                    unit.percent_max_hp_dps
+                                } else {
+                                    warlock_cfg_dps
+                                };
                                 new_magic_circles.push(MagicCircle {
                                     id: 0,
                                     team: unit.team,
                                     x: tx,
                                     y: ty,
-                                    radius: 55.0,
-                                    lifetime: 5.0,
-                                    max_lifetime: 5.0,
+                                    radius: crate::config::VOID_WARLOCK_CIRCLE_RADIUS,
+                                    lifetime: crate::config::VOID_WARLOCK_CIRCLE_LIFETIME,
+                                    max_lifetime: crate::config::VOID_WARLOCK_CIRCLE_LIFETIME,
                                     tick_timer: 0.0,
+                                    damage_pct_per_sec: dps_pct,
+                                    damage_type: unit.damage_type,
                                 });
                             } else if unit.unit_type == UnitType::TaoistSwordmaster && unit.flying_swords == 0 {
                                 // Hết phi kiếm -> chờ tích lũy kiếm
@@ -1547,7 +1560,16 @@ pub fn apply_damage_to_unit(unit: &mut Unit, taken: f32) -> f32 {
 
 pub fn update_magic_circles(engine: &mut GameEngine, dt: f32) {
     let factions = engine.team_factions();
+    let has_corrosive: [bool; 8] = std::array::from_fn(|i| {
+        engine.team_tech(Team::from_index(i)).corrosive_curse
+    });
     let mut new_texts = Vec::new();
+    let default_dps = engine
+        .config
+        .get_unit(UnitType::VoidWarlock)
+        .map(|u| u.percent_max_hp_dps)
+        .filter(|&p| p > 0.0)
+        .unwrap_or(crate::config::VOID_WARLOCK_DEFAULT_MAX_HP_DPS);
 
     for circle in engine.magic_circles.iter_mut() {
         circle.lifetime -= dt;
@@ -1560,24 +1582,72 @@ pub fn update_magic_circles(engine: &mut GameEngine, dt: f32) {
 
         let c_team_idx = circle.team.index() % 8;
         let c_faction = factions[c_team_idx];
+        let circle_dps = if circle.damage_pct_per_sec > 0.0 {
+            circle.damage_pct_per_sec
+        } else {
+            default_dps
+        };
+        let dmg_type = circle.damage_type;
 
+        // 1. Sát thương lên lính địch (áp dụng hệ thống kháng đòn & hiệu ứng công nghệ)
         for u in engine.units.iter_mut() {
             if factions[u.team.index() % 8] != c_faction {
                 let dist = ((u.x - circle.x).powi(2) + (u.y - circle.y).powi(2)).sqrt();
                 if dist <= circle.radius {
-                    // 5% máu tối đa mỗi giây = 0.05 * u.max_hp * dt
-                    let dmg = 0.05 * u.max_hp * dt;
-                    apply_damage_to_unit(u, dmg);
+                    // Sát thương theo % máu tối đa mỗi giây từ config (mặc định 10% max HP/s)
+                    let raw_dmg = circle_dps * u.max_hp * dt;
+                    // Sát thương tính qua hệ số Kháng sát thương như các đòn đánh thường
+                    let taken = calculate_effective_damage(raw_dmg, dmg_type, &u.resistances);
+                    apply_damage_to_unit(u, taken);
+
+                    // Hiệu ứng đòn đánh: Lời nguyền ăn mòn (Corrosive Curse) bào mòn kháng kẻ địch khi dính sát thương
+                    if has_corrosive[c_team_idx] && should_tick_text {
+                        u.resistances.physical = (u.resistances.physical - 0.04).max(0.0);
+                        u.resistances.energy = (u.resistances.energy - 0.04).max(0.0);
+                        u.resistances.explosive = (u.resistances.explosive - 0.04).max(0.0);
+                        u.resistances.arcane = (u.resistances.arcane - 0.04).max(0.0);
+                    }
 
                     if should_tick_text && !engine.is_headless {
+                        let tick_raw = circle_dps * u.max_hp * 0.5;
+                        let tick_taken = calculate_effective_damage(tick_raw, dmg_type, &u.resistances);
                         new_texts.push(FloatingText {
                             id: 0,
-                            text: format!("-{:.0}", (0.05 * u.max_hp * 0.5).max(1.0)),
+                            text: format!("-{:.0}", tick_taken),
                             x: u.x,
                             y: u.y - 12.0,
-                            color: DamageType::Arcane.color_code().to_string(),
+                            color: dmg_type.color_code().to_string(),
                             lifetime: 0.6,
                             max_lifetime: 0.6,
+                        });
+                    }
+                }
+            }
+        }
+
+        // 2. Sát thương lên công trình địch (áp dụng kháng, kích hoạt hiệu ứng bị tấn công)
+        for b in engine.buildings.iter_mut() {
+            if factions[b.team.index() % 8] != c_faction {
+                let b_rad = b.width.max(b.height) * 0.5;
+                let dist_to_b = ((b.x - circle.x).powi(2) + (b.y - circle.y).powi(2)).sqrt();
+                if dist_to_b <= b_rad + circle.radius {
+                    let raw_dmg = circle_dps * b.max_hp * dt;
+                    let taken = calculate_effective_damage(raw_dmg, dmg_type, &b.resistances);
+                    b.hp -= taken;
+                    // Hiệu ứng bị tấn công như các đơn vị khác (làm chậm xây dựng, báo động đỏ)
+                    b.under_attack_timer = crate::config::BUILDING_UNDER_ATTACK_DURATION;
+
+                    if should_tick_text && !engine.is_headless {
+                        let tick_raw = circle_dps * b.max_hp * 0.5;
+                        let tick_taken = calculate_effective_damage(tick_raw, dmg_type, &b.resistances);
+                        new_texts.push(FloatingText {
+                            id: 0,
+                            text: format!("-{:.0}", tick_taken),
+                            x: b.x,
+                            y: b.y - b_rad,
+                            color: dmg_type.color_code().to_string(),
+                            lifetime: 0.7,
+                            max_lifetime: 0.7,
                         });
                     }
                 }
@@ -3028,6 +3098,7 @@ mod tests {
         let target = cfg.create_unit(2, Team::Enemy, UnitType::Vanguard, 200.0, 100.0);
         let initial_target_total = target.hp + target.shield;
         let target_max_hp = target.max_hp;
+        let target_resistances = target.resistances;
 
         warlock.order = UnitOrder::AttackTarget { target_id: 2, is_building: false };
         engine.units.push(warlock);
@@ -3045,13 +3116,105 @@ mod tests {
         engine.units.retain(|u| u.id == 2);
         assert_eq!(engine.units.len(), 1);
 
-        // Vòng ma thuật vẫn tồn tại và thiêu đốt 5% max HP mỗi giây trong 1s
+        // Vòng ma thuật vẫn tồn tại và thiêu đốt 10% max HP mỗi giây trong 1s (tính qua kháng Arcane)
         update_magic_circles(&mut engine, 1.0);
         assert_eq!(engine.magic_circles.len(), 1);
-        let expected_dmg = target_max_hp * 0.05; // 5% HP tối đa
+        let expected_dmg = calculate_effective_damage(
+            target_max_hp * 0.10,
+            DamageType::Arcane,
+            &target_resistances,
+        );
         let current_target_total = engine.units[0].hp + engine.units[0].shield;
         let actual_dmg = initial_target_total - current_target_total;
         assert!((actual_dmg - expected_dmg).abs() < 1.0);
+    }
+
+    #[test]
+    fn test_void_warlock_custom_config_percent_damage() {
+        let mut cfg = crate::config::GameConfig::default();
+        if let Some(u) = cfg.units.get_mut("VoidWarlock") {
+            u.percent_max_hp_dps = 0.25; // Tùy chỉnh lên 25% max HP mỗi giây
+        }
+        let mut engine = crate::GameEngine::new_headless();
+        engine.config = cfg.clone();
+        engine.units.clear();
+        engine.buildings.clear();
+        engine.projectiles.clear();
+        engine.magic_circles.clear();
+
+        let mut warlock = cfg.create_unit(1, Team::Player, UnitType::VoidWarlock, 100.0, 100.0);
+        let target = cfg.create_unit(2, Team::Enemy, UnitType::Vanguard, 200.0, 100.0);
+        let initial_target_total = target.hp + target.shield;
+        let target_max_hp = target.max_hp;
+        let target_resistances = target.resistances;
+
+        warlock.order = UnitOrder::AttackTarget { target_id: 2, is_building: false };
+        engine.units.push(warlock);
+        engine.units.push(target);
+
+        update_units(&mut engine, 0.05);
+        assert_eq!(engine.magic_circles.len(), 1);
+        assert_eq!(engine.magic_circles[0].damage_pct_per_sec, 0.25);
+
+        // Tiêu diệt VoidWarlock (chỉ còn target ở index 0)
+        engine.units.retain(|u| u.id == 2);
+        update_magic_circles(&mut engine, 1.0);
+
+        let expected_dmg = calculate_effective_damage(
+            target_max_hp * 0.25,
+            DamageType::Arcane,
+            &target_resistances,
+        );
+        let current_target_total = engine.units[0].hp + engine.units[0].shield;
+        let actual_dmg = initial_target_total - current_target_total;
+        assert!((actual_dmg - expected_dmg).abs() < 1.0);
+    }
+
+    #[test]
+    fn test_void_warlock_magic_circle_corrosive_and_building_effects() {
+        let cfg = crate::config::GameConfig::default();
+        let mut engine = crate::GameEngine::new_headless();
+        engine.units.clear();
+        engine.buildings.clear();
+        engine.projectiles.clear();
+        engine.magic_circles.clear();
+
+        // Kích hoạt Lời nguyền ăn mòn cho Team Player
+        engine.player_tech.corrosive_curse = true;
+
+        let target_unit = cfg.create_unit(1, Team::Enemy, UnitType::Rifleman, 200.0, 200.0);
+        let init_arcane_res = target_unit.resistances.arcane;
+        engine.units.push(target_unit);
+
+        let target_building = cfg.create_building(2, Team::Enemy, BuildingType::SupplyDepot, 210.0, 200.0, true);
+        let b_init_hp = target_building.hp;
+        engine.buildings.push(target_building);
+
+        // Đặt 1 vòng ma thuật của Player tại (200, 200)
+        engine.magic_circles.push(crate::components::MagicCircle {
+            id: 1,
+            team: Team::Player,
+            x: 200.0,
+            y: 200.0,
+            radius: 60.0,
+            lifetime: 5.0,
+            max_lifetime: 5.0,
+            tick_timer: 0.0,
+            damage_pct_per_sec: 0.10,
+            damage_type: DamageType::Arcane,
+        });
+
+        // Chạy 0.6s để kích hoạt tick text và hiệu ứng đòn đánh
+        update_magic_circles(&mut engine, 0.6);
+
+        // 1. Kiểm tra Lời nguyền ăn mòn (Corrosive Curse) làm giảm chỉ số kháng
+        assert!(engine.units[0].resistances.arcane < init_arcane_res);
+
+        // 2. Kiểm tra công trình bị trừ máu
+        assert!(engine.buildings[0].hp < b_init_hp);
+
+        // 3. Kiểm tra công trình kích hoạt hiệu ứng bị tấn công (under_attack_timer)
+        assert_eq!(engine.buildings[0].under_attack_timer, crate::config::BUILDING_UNDER_ATTACK_DURATION);
     }
 
     #[test]
