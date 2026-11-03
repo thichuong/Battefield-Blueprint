@@ -368,16 +368,98 @@ fn test_laser_marksman_ramping_damage_and_reset() {
     assert_eq!(engine.units[0].laser_stacks, 2);
     engine.projectiles.clear();
 
-    // Đổi mục tiêu sang target 3 -> reset sát thương về 1
+    // Đổi mục tiêu sang target 3 -> kích hoạt làm nguội 1s, chưa bắn ngay
     engine.units[0].order = UnitOrder::AttackTarget {
         target_id: 3,
         is_building: false,
     };
-    engine.units[0].current_cooldown = 0.0;
     update_units(&mut engine, 0.05);
+    // Trong thời gian làm nguội 1s, chưa bắn ra đạn và không vẽ tia laser
+    assert_eq!(engine.projectiles.len(), 0);
+    assert!(engine.units[0].current_cooldown > 0.0);
+    assert_eq!(engine.units[0].laser_stacks, 0);
+    assert_eq!(engine.units[0].last_attack_pos, None);
+
+    // Chờ hết 1s làm nguội (khoảng 20 ticks 0.05s)
+    for _ in 0..20 {
+        update_units(&mut engine, 0.05);
+        if !engine.projectiles.is_empty() {
+            break;
+        }
+    }
+
+    // Đã bắn phát đầu tiên vào target 3 sau 1s làm nguội: sát thương reset về 1, stack = 0
     assert_eq!(engine.projectiles.len(), 1);
     assert_eq!(engine.projectiles[0].damage, 1.0);
     assert_eq!(engine.units[0].laser_stacks, 0);
+    assert!(engine.units[0].last_attack_pos.is_some());
+    engine.projectiles.clear();
+
+    // Phát bắn tiếp theo vào target 3: tăng sát thương lên 3, stack = 1
+    engine.units[0].current_cooldown = 0.0;
+    update_units(&mut engine, 0.05);
+    assert_eq!(engine.projectiles.len(), 1);
+    assert_eq!(engine.projectiles[0].damage, 3.0);
+    assert_eq!(engine.units[0].laser_stacks, 1);
+    engine.projectiles.clear();
+
+    // KIỂM TRA KHÓA MỤC TIÊU: AI/hệ thống gán AttackMove, nhưng target 3 còn sống & trong tầm
+    // LaserMarksman vẫn giữ nguyên khóa mục tiêu target 3 và không bị reset stack!
+    engine.units[0].order = UnitOrder::AttackMove { x: 500.0, y: 500.0 };
+    update_units(&mut engine, 0.05);
+    assert_eq!(
+        engine.units[0].order,
+        UnitOrder::AttackTarget {
+            target_id: 3,
+            is_building: false
+        }
+    );
+    assert_eq!(engine.units[0].laser_stacks, 1);
+
+    // KIỂM TRA MỤC TIÊU BỊ TIÊU DIỆT: khi target 3 chết, khóa mục tiêu bị hủy và làm nguội 1s
+    if let Some(t3) = engine.units.iter_mut().find(|u| u.id == 3) {
+        t3.hp = 0.0;
+    }
+    update_units(&mut engine, 0.05);
+    assert_eq!(engine.units[0].laser_target_id, None);
+    assert_eq!(engine.units[0].laser_stacks, 0);
+    assert_eq!(engine.units[0].last_attack_pos, None);
+    assert!(engine.units[0].current_cooldown >= 0.9);
+}
+
+#[test]
+fn test_laser_marksman_out_of_range_unlocks_and_cooldown() {
+    let cfg = crate::config::GameConfig::default();
+    let mut engine = crate::GameEngine::new_headless();
+    engine.units.clear();
+    engine.buildings.clear();
+    engine.projectiles.clear();
+
+    let mut laser = cfg.create_unit(1, Team::Player, UnitType::LaserMarksman, 100.0, 100.0);
+    let target = cfg.create_unit(2, Team::Enemy, UnitType::Engineer, 150.0, 100.0);
+
+    laser.order = UnitOrder::AttackTarget {
+        target_id: 2,
+        is_building: false,
+    };
+    engine.units.push(laser);
+    engine.units.push(target);
+
+    // Bắn 1 phát vào target -> khóa mục tiêu
+    update_units(&mut engine, 0.05);
+    assert_eq!(engine.units[0].laser_target_id, Some((2, false)));
+    assert!(engine.units[0].last_attack_pos.is_some());
+    engine.projectiles.clear();
+
+    // Di chuyển target ra xa ngoài tầm bắn (attack_range của Laser là 220, chuyển x ra 500)
+    engine.units[1].x = 500.0;
+    update_units(&mut engine, 0.05);
+
+    // Khóa mục tiêu bị hủy vì mục tiêu đã ra ngoài tầm bắn
+    assert_eq!(engine.units[0].laser_target_id, None);
+    assert_eq!(engine.units[0].laser_stacks, 0);
+    assert_eq!(engine.units[0].last_attack_pos, None);
+    assert!(engine.units[0].current_cooldown >= 0.9);
 }
 
 #[test]

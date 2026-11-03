@@ -43,33 +43,34 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
 
     let num_units = engine.units.len();
     for u_idx in 0..num_units {
-        let (u_team, u_order) = {
+        let (u_team, mut u_order, u_type, mut u_laser_target, u_range, u_x, u_y, mut u_laser_stacks, mut u_cooldown, mut u_last_attack_pos) = {
             let u = &engine.units[u_idx];
-            (u.team, u.order)
+            (
+                u.team,
+                u.order,
+                u.unit_type,
+                u.laser_target_id,
+                u.attack_range,
+                u.x,
+                u.y,
+                u.laser_stacks,
+                u.current_cooldown,
+                u.last_attack_pos,
+            )
         };
         let u_team_idx = u_team.index() % 8;
         let my_faction = factions[u_team_idx];
 
-        // Lấy thông tin mục tiêu AttackTarget hoặc Build nhanh O(1) qua spatial_grid
-        let attack_target_info = if let UnitOrder::AttackTarget {
-            target_id,
-            is_building,
-        } = u_order
-        {
+        // Hàm tra cứu mục tiêu O(1) qua spatial_grid
+        let get_target_info = |target_id: u32, is_building: bool| -> Option<(f32, f32, f32)> {
             if is_building {
                 if let Some(&b_idx) = spatial_grid.building_id_to_index.get(&target_id) {
                     if b_idx < engine.buildings.len() {
                         let b = &engine.buildings[b_idx];
-                        if b.id == target_id && factions[b.team.index() % 8] != my_faction {
-                            Some((b.x, b.y, b.width.max(b.height) * 0.5))
-                        } else {
-                            None
+                        if b.id == target_id && factions[b.team.index() % 8] != my_faction && b.hp > 0.0 {
+                            return Some((b.x, b.y, b.width.max(b.height) * 0.5));
                         }
-                    } else {
-                        None
                     }
-                } else {
-                    None
                 }
             } else {
                 if let Some(&t_idx) = spatial_grid.unit_id_to_index.get(&target_id) {
@@ -77,18 +78,79 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
                         let target_u = &engine.units[t_idx];
                         if target_u.id == target_id
                             && factions[target_u.team.index() % 8] != my_faction
+                            && target_u.hp > 0.0
                         {
-                            Some((target_u.x, target_u.y, 10.0))
-                        } else {
-                            None
+                            return Some((target_u.x, target_u.y, 10.0));
                         }
-                    } else {
-                        None
                     }
-                } else {
-                    None
                 }
             }
+            None
+        };
+
+        if u_type == UnitType::LaserMarksman {
+            // LaserMarksman: Quản lý khóa mục tiêu (Target Lock)
+            let mut lock_valid = false;
+            if let Some((lid, lis_b)) = u_laser_target {
+                if let Some((tx, ty, tr)) = get_target_info(lid, lis_b) {
+                    let dx = tx - u_x;
+                    let dy = ty - u_y;
+                    let dist = (dx * dx + dy * dy).sqrt();
+                    let effective_dist = (dist - tr).max(0.0);
+                    if effective_dist <= u_range {
+                        lock_valid = true;
+                    }
+                }
+            }
+
+            if lock_valid {
+                let (lid, lis_b) = u_laser_target.unwrap();
+                match u_order {
+                    UnitOrder::MoveTo { .. } => {
+                        // Người chơi chủ động ra lệnh di chuyển (rút lui), tạm ngắt tia laser
+                        u_last_attack_pos = None;
+                    }
+                    UnitOrder::AttackTarget {
+                        target_id,
+                        is_building,
+                    } if (target_id, is_building) != (lid, lis_b) => {
+                        // Người chơi chủ động đổi sang tấn công mục tiêu khác: làm nguội 1s mới bắn được
+                        u_laser_target = Some((target_id, is_building));
+                        u_laser_stacks = 0;
+                        u_last_attack_pos = None;
+                        u_cooldown = u_cooldown.max(1.0);
+                        u_order = UnitOrder::AttackTarget {
+                            target_id,
+                            is_building,
+                        };
+                    }
+                    _ => {
+                        // Mục tiêu còn sống và trong tầm bắn: KHÔNG đổi mục tiêu!
+                        // Khóa chặt trạng thái AttackTarget vào mục tiêu này để tối ưu sát thương
+                        u_order = UnitOrder::AttackTarget {
+                            target_id: lid,
+                            is_building: lis_b,
+                        };
+                    }
+                }
+            } else {
+                // Mục tiêu cũ bị tiêu diệt hoặc ra khỏi tầm bắn -> Hủy khóa mục tiêu, làm nguội 1s khi đổi mục tiêu
+                if u_laser_target.is_some() {
+                    u_laser_target = None;
+                    u_laser_stacks = 0;
+                    u_last_attack_pos = None;
+                    u_cooldown = u_cooldown.max(1.0);
+                }
+            }
+        }
+
+        // Lấy thông tin mục tiêu AttackTarget hoặc Build nhanh O(1) qua spatial_grid
+        let attack_target_info = if let UnitOrder::AttackTarget {
+            target_id,
+            is_building,
+        } = u_order
+        {
+            get_target_info(target_id, is_building)
         } else {
             None
         };
@@ -113,6 +175,12 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
         };
 
         let unit = &mut engine.units[u_idx];
+        unit.order = u_order;
+        unit.laser_target_id = u_laser_target;
+        unit.laser_stacks = u_laser_stacks;
+        unit.current_cooldown = u_cooldown;
+        unit.last_attack_pos = u_last_attack_pos;
+
         if unit.current_cooldown > 0.0 {
             unit.current_cooldown -= dt;
         }
@@ -141,8 +209,10 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
         // Nếu không trong trạng thái AttackTarget, dọn dẹp trạng thái ngắm/laser
         if !matches!(unit.order, UnitOrder::AttackTarget { .. }) {
             unit.last_attack_pos = None;
-            unit.laser_target_id = None;
-            unit.laser_stacks = 0;
+            if unit.unit_type != UnitType::LaserMarksman {
+                unit.laser_target_id = None;
+                unit.laser_stacks = 0;
+            }
         }
 
         let u_team_idx = unit.team.index() % 8;
@@ -389,6 +459,9 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
                         unit.x += (dx / dist) * move_dist;
                         unit.y += (dy / dist) * move_dist;
                         unit.walk_cycle += dt * 10.0;
+                        if unit.unit_type == UnitType::LaserMarksman {
+                            unit.last_attack_pos = None;
+                        }
                     } else {
                         // Điểm va chạm nằm ở mép mục tiêu
                         let hit_dist = dist.min(unit.attack_range + target_radius);
@@ -403,7 +476,13 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
                             ty
                         };
 
-                        unit.last_attack_pos = Some((hit_x, hit_y));
+                        if unit.unit_type == UnitType::LaserMarksman {
+                            if unit.last_attack_pos.is_some() {
+                                unit.last_attack_pos = Some((hit_x, hit_y));
+                            }
+                        } else {
+                            unit.last_attack_pos = Some((hit_x, hit_y));
+                        }
 
                         // TẤN CÔNG ĐÍCH XÁC
                         if unit.current_cooldown <= 0.0 {
@@ -448,14 +527,17 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
                                 if unit.unit_type == UnitType::LaserMarksman {
                                     // LaserMarksman: Tăng sát thương theo thời gian trên cùng mục tiêu
                                     // Sát thương khởi đầu là 1, mỗi lần tăng 2
-                                    let current_target = Some((target_id, is_building));
-                                    if unit.laser_target_id == current_target {
+                                    let current_target = (target_id, is_building);
+                                    let is_same_target = unit.laser_target_id == Some(current_target);
+
+                                    if is_same_target && unit.last_attack_pos.is_some() {
                                         unit.laser_stacks += 1;
                                     } else {
-                                        unit.laser_target_id = current_target;
+                                        unit.laser_target_id = Some(current_target);
                                         unit.laser_stacks = 0;
                                     }
                                     dmg = 1.0 + (unit.laser_stacks as f32) * 2.0;
+                                    unit.last_attack_pos = Some((hit_x, hit_y));
                                 } else if unit.unit_type == UnitType::TaoistSwordmaster {
                                     // Tiêu hao 1 phi kiếm
                                     unit.flying_swords = unit.flying_swords.saturating_sub(1);

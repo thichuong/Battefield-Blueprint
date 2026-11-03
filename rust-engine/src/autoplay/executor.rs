@@ -551,6 +551,9 @@ pub fn execute_action_for_team(
 
                 for (uid, tx, ty, off_x, off_y) in form_positions {
                     if let Some(u) = engine.units.iter_mut().find(|u| u.id == uid) {
+                        if matches!(u.order, UnitOrder::AttackTarget { .. }) {
+                            continue;
+                        }
                         u.formation_offset = (off_x, off_y);
                         u.order = UnitOrder::AttackMove { x: tx, y: ty };
                     }
