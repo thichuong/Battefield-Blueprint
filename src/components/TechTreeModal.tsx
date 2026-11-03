@@ -8,8 +8,6 @@ import {
   Atom,
   Sparkles,
   Bug,
-  Pause,
-  Play,
 } from 'lucide-react';
 import { TechState } from '../bridge/wasmBridge';
 
@@ -23,7 +21,6 @@ interface TechTreeModalProps {
   priorityTechs?: string[];
   onTogglePriorityTech?: (techId: string) => void;
   autoPause?: boolean;
-  onToggleAutoPause?: (val: boolean) => void;
 }
 
 export type MajorBranch = 'science' | 'magic' | 'monster' | 'logistics';
@@ -56,7 +53,7 @@ export const TECH_NODES: TechNode[] = [
     energy: 200,
     time: 20,
     damageTypeBadge: { label: '⚡ NĂNG LƯỢNG', color: 'bg-sky-950 text-sky-400 border-sky-600' },
-    desc: 'Mở khóa đơn vị Laser Marksman và tăng +25% Sát thương Năng lượng xuyên thấu cho toàn quân.',
+    desc: 'Mở khóa SIEGE // LASER MARKSMAN & tăng +25% sát thương Energy toàn quân.',
   },
   {
     id: 'energy_shielding',
@@ -68,7 +65,7 @@ export const TECH_NODES: TechNode[] = [
     time: 16,
     requires: 'focused_laser',
     resistanceBadge: { label: '🛡️ +40% KHÁNG NĂNG LƯỢNG', color: 'bg-cyan-950 text-cyan-400 border-cyan-600' },
-    desc: 'Mở khóa Vệ Binh Khiên Chắn (Vanguard) và cường hóa +40% Kháng Năng Lượng cho toàn bộ đơn vị.',
+    desc: 'Mở khóa VANGUARD // SHIELDER & tăng +40% Kháng Năng Lượng toàn quân.',
   },
   // Tiểu nhánh: Hắc khoa kỹ
   {
@@ -80,7 +77,7 @@ export const TECH_NODES: TechNode[] = [
     energy: 160,
     time: 18,
     damageTypeBadge: { label: '💥 NỔ DIỆN RỘNG (AOE)', color: 'bg-orange-950 text-orange-400 border-orange-600' },
-    desc: 'Mở khóa Lính Bệ Phóng Tên Lửa (Dark Rocketeer). Đòn bắn của Tháp Pháo chuyển sang Sát thương Nổ AoE 40px.',
+    desc: 'Mở khóa DARK TECH // ROCKETEER & đòn bắn TURRET TOWER chuyển sang Nổ AoE 40px.',
   },
   {
     id: 'titan_alloy_plating',
@@ -92,7 +89,7 @@ export const TECH_NODES: TechNode[] = [
     time: 22,
     requires: 'dark_matter_rockets',
     resistanceBadge: { label: '🛡️ +35% KHÁNG VẬT LÝ', color: 'bg-amber-950 text-amber-400 border-amber-600' },
-    desc: 'Cường hóa hợp kim siêu bền: +35% Kháng Vật lý cho toàn quân và tăng +30% Lượng Máu tối đa của tất cả Công trình.',
+    desc: 'Tăng +35% Kháng Vật Lý toàn quân và +30% Máu toàn bộ Công Trình.',
   },
 
   // ==========================================
@@ -108,7 +105,7 @@ export const TECH_NODES: TechNode[] = [
     energy: 160,
     time: 18,
     damageTypeBadge: { label: '✨ MA THUẬT (ARCANE)', color: 'bg-purple-950 text-purple-400 border-purple-600' },
-    desc: 'Mở khóa Tu Tiên Giả (Taoist Swordmaster), phi kiếm chân khí tầm xa gây sát thương Ma thuật bỏ qua 50% kháng vật lý.',
+    desc: 'Mở khóa CELESTIAL // SWORDMASTER (7 phi kiếm Arcane xuyên giáp).',
   },
   {
     id: 'golden_bell_shield',
@@ -120,7 +117,7 @@ export const TECH_NODES: TechNode[] = [
     time: 22,
     requires: 'celestial_flying_swords',
     resistanceBadge: { label: '🛡️ +40% KHÁNG PHÉP & HỒI MÁU', color: 'bg-emerald-950 text-emerald-400 border-emerald-600' },
-    desc: 'Bảo hộ linh khí: Tăng +40% Kháng Năng lượng & Ma thuật, đồng thời toàn quân tự hồi phục +3.0 HP/s.',
+    desc: 'Tăng +40% Kháng Ma Thuật/Năng Lượng và tự hồi phục +3 HP/giây.',
   },
   // Tiểu nhánh: Pháp thuật bóng tối
   {
@@ -131,7 +128,7 @@ export const TECH_NODES: TechNode[] = [
     minerals: 190,
     energy: 150,
     time: 16,
-    desc: 'Đòn đánh của toàn quân găm chú ấn hắc ám lên mục tiêu, làm tan chảy vĩnh viễn mọi chỉ số kháng của kẻ địch khi trúng đòn.',
+    desc: 'Đòn đánh toàn quân làm tan chảy vĩnh viễn mọi chỉ số Kháng của kẻ địch.',
   },
   {
     id: 'void_cataclysm',
@@ -143,7 +140,7 @@ export const TECH_NODES: TechNode[] = [
     time: 25,
     requires: 'corrosive_curse',
     damageTypeBadge: { label: '🔮 NỔ BÓNG TỐI (AOE)', color: 'bg-fuchsia-950 text-fuchsia-400 border-fuchsia-600' },
-    desc: 'Mở khóa Vu Sư Hư Không (Void Warlock) bắn cầu ma thuật bộc phá bóng tối gây sát thương Ma thuật nổ diện rộng 35px.',
+    desc: 'Mở khóa VOID // SHADOW WARLOCK (Triệu hồi pháp trận đốt 10% Max HP/giây).',
   },
 
   // ==========================================
@@ -158,12 +155,12 @@ export const TECH_NODES: TechNode[] = [
     minerals: 220,
     energy: 120,
     time: 18,
-    resistanceBadge: { label: '🛡️ +50% VẬT LÝ & +40% NỔ', color: 'bg-amber-950 text-amber-400 border-amber-600' },
-    desc: 'Lớp da vảy titan cổ đại giúp binh chủng cận chiến nhận thêm +50% Kháng Vật lý và +40% Kháng Nổ.',
+    resistanceBadge: { label: '🛡️ +35% VẬT LÝ & +20% HP', color: 'bg-amber-950 text-amber-400 border-amber-600' },
+    desc: 'Tăng +35% Kháng Vật Lý và +20% Lượng Máu tối đa của toàn quân.',
   },
   {
     id: 'behemoth_mutation',
-    name: 'Đột Biến Cự Thú Titan',
+    name: 'Biến Dị Khổng Lồ',
     subBranch: 'KHỔNG LỒ',
     majorBranch: 'monster',
     minerals: 320,
@@ -171,30 +168,30 @@ export const TECH_NODES: TechNode[] = [
     time: 26,
     requires: 'primeval_scales',
     damageTypeBadge: { label: '🔨 DẬM CHẤN ĐỘNG (AOE)', color: 'bg-yellow-950 text-yellow-400 border-yellow-600' },
-    desc: 'Mở khóa Chiến Thú Khổng Lồ (Behemoth Titan) 650 HP, đòn chùy dậm đất gây chấn động nứt toác diện rộng 45px.',
+    desc: 'Mở khóa BEHEMOTH // TITAN (650 HP, dậm chấn động diện rộng).',
   },
   // Tiểu nhánh: Bọ bầy đàn
   {
     id: 'acid_banelings',
-    name: 'Tuyến Dịch Axit Cảm Tử',
+    name: 'Bọ Độc Axit',
     subBranch: 'BỌ BẦY ĐÀN',
     majorBranch: 'monster',
     minerals: 160,
     energy: 90,
     time: 14,
     damageTypeBadge: { label: '💥 NỔ AXIT SIÊU CẤP (AOE)', color: 'bg-lime-950 text-lime-400 border-lime-600' },
-    desc: 'Mở khóa Bọ Nổ Cảm Tử (Acid Baneling). Tốc độ 160 lao thẳng vào đội hình địch tự kích nổ sát thương Nổ 65px cực mạnh.',
+    desc: 'Mở khóa SWARM // ACID BANELING (Tự nổ AoE 70px x2 sát thương công trình).',
   },
   {
     id: 'hive_proliferation',
-    name: 'Sinh Sôi Siêu Tốc',
+    name: 'Bầy Đàn Phân Hạch',
     subBranch: 'BỌ BẦY ĐÀN',
     majorBranch: 'monster',
     minerals: 260,
     energy: 160,
     time: 20,
     requires: 'acid_banelings',
-    desc: 'Tế bào bầy đàn sinh sôi chóng mặt: Giảm 35% chi phí và thời gian huấn luyện toàn quân, tăng +25% tốc độ di chuyển.',
+    desc: 'Giảm -35% Chi Phí và Thời Gian sản xuất toàn bộ binh chủng!',
   },
 
   // ==========================================
@@ -202,67 +199,68 @@ export const TECH_NODES: TechNode[] = [
   // ==========================================
   {
     id: 'optical_drills',
-    name: 'Mũi Khoan Quang Học',
+    name: 'Khoan Quang Học',
     subBranch: 'KINH TẾ',
     majorBranch: 'logistics',
     minerals: 100,
     energy: 50,
     time: 10,
-    desc: 'Kỹ sư khai thác khoáng sản nhanh hơn +30%, mang thêm +5 khoáng sản mỗi chuyến.',
+    desc: 'ENGINEER // WORKER đào nhanh hơn và tăng sức chứa quặng (10 ➔ 15).',
   },
   {
     id: 'overcharged_reactors',
-    name: 'Lò Phản Ứng Quá Tải',
+    name: 'Lò Phản Ứng Siêu Nạp',
     subBranch: 'KINH TẾ',
     majorBranch: 'logistics',
     minerals: 150,
     energy: 100,
     time: 15,
     requires: 'optical_drills',
-    desc: 'Tăng tốc độ sản sinh Năng Lượng từ trạm Power Reactor thêm +50%.',
+    desc: 'Tăng +50% sản lượng năng lượng của POWER REACTOR.',
   },
   {
     id: 'fortified_blueprints',
-    name: 'Bản Vẽ Gia Cố Kiến Trúc',
+    name: 'Bản Vẽ Gia Cố',
     subBranch: 'KIẾN TRÚC',
     majorBranch: 'logistics',
     minerals: 200,
     energy: 150,
     time: 20,
     requires: 'overcharged_reactors',
-    desc: 'Tăng +30% lượng Máu tối đa và độ bền cho toàn bộ Công trình & Tháp pháo.',
+    desc: 'Tăng +30% Máu công trình và tốc độ thi công.',
+  },
+  {
+    id: 'overload_strike',
+    name: 'Kích Nạp Quá Tải',
+    subBranch: 'KIẾN TRÚC',
+    majorBranch: 'logistics',
+    minerals: 400,
+    energy: 350,
+    time: 35,
+    requires: 'fortified_blueprints',
+    desc: 'Tăng +66% tốc độ bắn cho TURRET TOWER & HQ COMMAND CENTER.',
   },
   {
     id: 'magnetic_rounds',
-    name: 'Đạn Gia Tốc Từ Trường',
+    name: 'Đạn Từ Tính',
     subBranch: 'VŨ TRANG',
     majorBranch: 'logistics',
     minerals: 200,
     energy: 150,
     time: 15,
     damageTypeBadge: { label: '⚔️ VẬT LÝ CAO CẤP', color: 'bg-slate-900 text-slate-300 border-slate-600' },
-    desc: 'Tăng +25% Sát thương Vật lý và mở rộng tầm bắn cho Xạ Thủ Súng Trường.',
+    desc: 'Tăng tầm bắn cho MARKSMAN // RIFLEMAN và TURRET TOWER.',
   },
   {
     id: 'exo_boosters',
-    name: 'Bộ Phản Lực Chân Exo-Boost',
+    name: 'Động Cơ Tăng Tốc',
     subBranch: 'VŨ TRANG',
     majorBranch: 'logistics',
     minerals: 250,
     energy: 200,
     time: 20,
     requires: 'magnetic_rounds',
-    desc: 'Tăng +20% Tốc độ di chuyển chiến thuật cho toàn bộ Binh chủng Người que.',
-  },
-  {
-    id: 'overload_strike',
-    name: 'Tụ Điện Quá Tải Hủy Diệt',
-    subBranch: 'VŨ TRANG',
-    majorBranch: 'logistics',
-    minerals: 400,
-    energy: 350,
-    time: 35,
-    desc: 'Tăng +40% tốc độ bắn cho Tháp Pháo Phòng Thủ và Pháo Thủ Laser.',
+    desc: 'Toàn quân di chuyển nhanh hơn +20%.',
   },
 ];
 
@@ -277,9 +275,9 @@ interface ResourceBadgeProps {
 const ResourceBadge = React.memo<ResourceBadgeProps>(
   ({ minerals, energy }) => {
     return (
-      <div className="flex items-center gap-3 bg-slate-950 px-3.5 py-1.5 rounded-lg border border-cyan-900/70 font-mono text-xs">
-        <span className="text-cyan-400 font-bold">💎 {minerals.toFixed(0)}</span>
-        <span className="text-purple-400 font-bold">⚡ {energy.toFixed(0)}</span>
+      <div className="flex items-center gap-3.5 bg-slate-950 px-4 py-2 rounded-xl border border-cyan-500/50 font-mono text-sm shadow-inner">
+        <span className="text-cyan-400 font-black">💎 {minerals.toFixed(0)}</span>
+        <span className="text-purple-400 font-black">⚡ {energy.toFixed(0)}</span>
       </div>
     );
   },
@@ -327,7 +325,7 @@ const TechCard = React.memo<TechCardProps>(
 
     return (
       <div
-        className={`p-3.5 rounded-lg border transition-all ${
+        className={`w-full min-w-0 box-border p-4 rounded-xl border transition-all ${
           isUnlocked
             ? 'bg-cyan-950/40 border-cyan-500/70 shadow-[0_0_14px_rgba(0,229,255,0.25)]'
             : isResearching
@@ -339,24 +337,24 @@ const TechCard = React.memo<TechCardProps>(
             : 'bg-slate-800/40 border-slate-700 hover:border-cyan-400/60'
         }`}
       >
-        <div className="flex items-start justify-between">
-          <div className="font-semibold text-sm text-slate-100 flex items-center gap-1.5 font-mono">
+        <div className="flex items-start justify-between gap-2 min-w-0">
+          <div className="font-bold text-sm md:text-base text-slate-100 flex items-center gap-2 font-mono min-w-0 flex-1">
             {isUnlocked ? (
-              <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" />
+              <CheckCircle2 className="w-5 h-5 text-cyan-400 shrink-0" />
             ) : isResearching ? (
-              <Loader2 className="w-4 h-4 text-amber-400 animate-spin shrink-0" />
+              <Loader2 className="w-5 h-5 text-amber-400 animate-spin shrink-0" />
             ) : isPriority ? (
-              <span className="text-amber-400 shrink-0 text-sm">⭐</span>
+              <span className="text-amber-400 shrink-0 text-base">⭐</span>
             ) : isLocked ? (
-              <Lock className="w-4 h-4 text-slate-500 shrink-0" />
+              <Lock className="w-5 h-5 text-slate-500 shrink-0" />
             ) : null}
-            <span>{node.name}</span>
+            <span className="break-words leading-snug">{node.name}</span>
           </div>
 
           {!isUnlocked && onTogglePriority && (
             <button
               onClick={() => onTogglePriority(node.id)}
-              className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
+              className={`shrink-0 px-2 py-0.5 rounded text-[11px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
                 isPriority
                   ? 'bg-amber-500 text-slate-950 shadow-[0_0_8px_rgba(245,158,11,0.5)]'
                   : 'bg-slate-900/80 border border-slate-700 text-slate-400 hover:text-amber-300 hover:border-amber-400'
@@ -369,40 +367,40 @@ const TechCard = React.memo<TechCardProps>(
         </div>
 
         {/* Badges Phân loại Sát thương & Kháng */}
-        <div className="flex flex-wrap gap-1.5 mt-2">
+        <div className="flex flex-wrap gap-1.5 mt-2.5">
           {node.damageTypeBadge && (
             <span
-              className={`text-[9px] font-mono px-2 py-0.5 rounded border ${node.damageTypeBadge.color}`}
+              className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded border leading-tight ${node.damageTypeBadge.color}`}
             >
               {node.damageTypeBadge.label}
             </span>
           )}
           {node.resistanceBadge && (
             <span
-              className={`text-[9px] font-mono px-2 py-0.5 rounded border ${node.resistanceBadge.color}`}
+              className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded border leading-tight ${node.resistanceBadge.color}`}
             >
               {node.resistanceBadge.label}
             </span>
           )}
         </div>
 
-        <p className="text-xs text-slate-300 mt-2 leading-relaxed">{node.desc}</p>
+        <p className="text-xs md:text-sm text-slate-200 mt-2.5 leading-relaxed break-words">{node.desc}</p>
 
         {isLocked && prerequisiteName && (
-          <div className="mt-2 text-[10px] text-amber-400/90 font-mono flex items-center gap-1">
-            <Lock className="w-3 h-3" />
+          <div className="mt-2.5 text-xs text-amber-400 font-mono flex items-center gap-1.5 break-words">
+            <Lock className="w-3.5 h-3.5 shrink-0" />
             <span>Yêu cầu trước: {prerequisiteName}</span>
           </div>
         )}
 
         {/* Thanh tiến trình nghiên cứu thời gian thực */}
         {isResearching && (
-          <div className="mt-2.5">
-            <div className="flex justify-between items-center text-[10px] font-mono text-amber-400 font-bold mb-1">
+          <div className="mt-3">
+            <div className="flex justify-between items-center text-xs font-mono text-amber-400 font-bold mb-1">
               <span>ĐANG TIẾN HÀNH</span>
               <span>{(progress * 100).toFixed(0)}%</span>
             </div>
-            <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-amber-500/40">
+            <div className="w-full bg-slate-900 rounded-full h-2.5 overflow-hidden border border-amber-500/40">
               <div
                 className="bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-300 h-full transition-all duration-150 ease-linear rounded-full"
                 style={{ width: `${Math.min(100, Math.max(0, progress * 100))}%` }}
@@ -411,8 +409,8 @@ const TechCard = React.memo<TechCardProps>(
           </div>
         )}
 
-        <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-slate-700/60 text-xs">
-          <div className="flex items-center gap-2.5 font-mono text-xs">
+        <div className="flex flex-wrap items-center justify-between gap-2.5 mt-3.5 pt-2.5 border-t border-slate-700/60 text-xs md:text-sm">
+          <div className="flex items-center gap-2.5 font-mono text-xs md:text-sm flex-wrap">
             <span className={`font-bold ${canAfford ? 'text-cyan-400' : 'text-rose-400'}`}>
               💎 {node.minerals}
             </span>
@@ -423,29 +421,29 @@ const TechCard = React.memo<TechCardProps>(
           </div>
 
           {isUnlocked ? (
-            <span className="text-xs font-mono text-cyan-400 font-bold tracking-wider flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> ĐÃ MỞ KHÓA
+            <span className="text-xs md:text-sm font-mono text-cyan-400 font-bold tracking-wider flex items-center gap-1.5 shrink-0">
+              <CheckCircle2 className="w-4 h-4" /> ĐÃ MỞ KHÓA
             </span>
           ) : isResearching ? (
-            <div className="flex items-center gap-1 text-xs text-amber-400 font-mono font-bold">
+            <div className="flex items-center gap-1 text-xs md:text-sm text-amber-400 font-mono font-bold shrink-0">
               <span>{(progress * 100).toFixed(0)}%</span>
             </div>
           ) : (
             <button
               onClick={() => onResearch(node.id)}
               disabled={!isAvailable}
-              className={`px-3 py-1 rounded text-xs font-mono font-bold transition-all ${
+              className={`px-3 py-1.5 rounded text-xs font-mono font-bold transition-all shrink-0 ${
                 isAvailable
                   ? 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-md cursor-pointer active:scale-95'
                   : 'bg-slate-800 text-slate-500 cursor-not-allowed'
               }`}
             >
               {isLocked
-                ? 'CHƯA ĐỦ ĐIỀU KIỆN'
+                ? 'CHƯA ĐỦ Đ/K'
                 : isOtherResearching
-                ? 'NHÁNH ĐANG BẬN'
+                ? 'NHÁNH BẬN'
                 : !canAfford
-                ? 'THIẾU TÀI NGUYÊN'
+                ? 'THIẾU T/N'
                 : 'NGHIÊN CỨU'}
             </button>
           )}
@@ -486,7 +484,6 @@ export const TechTreeModal: React.FC<TechTreeModalProps> = ({
   priorityTechs = [],
   onTogglePriorityTech,
   autoPause = true,
-  onToggleAutoPause,
 }) => {
   const [activeTab, setActiveTab] = useState<MajorBranch>('science');
 
@@ -573,144 +570,128 @@ export const TechTreeModal: React.FC<TechTreeModalProps> = ({
   const headerInfo = getTabHeader();
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 select-none">
-      <div className="bg-[#030d1a] border-2 border-cyan-500/80 rounded-xl w-full max-w-5xl shadow-[0_0_50px_rgba(0,229,255,0.3)] flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-3 md:p-6 select-none">
+      <div className="bg-[#030d1a] border-2 border-cyan-500/80 rounded-2xl w-[96vw] max-w-6xl h-[88vh] min-h-[640px] max-h-[920px] shadow-[0_0_50px_rgba(0,229,255,0.3)] flex flex-col overflow-hidden">
         {/* Header Modal */}
-        <div className="flex items-center justify-between px-6 py-3.5 border-b border-cyan-900/60 bg-slate-900/50">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-cyan-900/60 bg-slate-900/50 shrink-0">
           <div className="flex items-center gap-3">
-            <Atom className="w-6 h-6 text-cyan-400 animate-spin-slow" />
+            <Atom className="w-7 h-7 text-cyan-400 animate-spin-slow shrink-0" />
             <div>
-              <h2 className="text-base font-bold font-mono text-cyan-300 tracking-wider">
+              <h2 className="text-base md:text-lg font-black font-mono text-cyan-300 tracking-wider">
                 TACTICAL EVOLUTION & COMBAT TECH // CÂY TIẾN HÓA CHIẾN THUẬT
               </h2>
               <p className="text-xs text-slate-400">Chọn nhánh tiến hóa và nghiên cứu nâng cấp (Phím tắt: T / ESC)</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
-            {/* Tùy chọn Tạm dừng Trận đấu Ngay trong Header */}
-            {onToggleAutoPause && (
-              <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] font-mono text-slate-300 hover:text-cyan-300 transition-colors bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-700/80">
-                <input
-                  type="checkbox"
-                  checked={autoPause}
-                  onChange={(e) => onToggleAutoPause(e.target.checked)}
-                  className="w-3.5 h-3.5 accent-cyan-400 cursor-pointer"
-                />
-                <span className="flex items-center gap-1">
-                  {autoPause ? <Pause className="w-3 h-3 text-cyan-400" /> : <Play className="w-3 h-3 text-emerald-400" />}
-                  {autoPause ? 'Dừng thời gian khi mở' : 'Thời gian tiếp tục chạy'}
-                </span>
-              </label>
-            )}
-
             <ResourceBadge minerals={minerals} energy={energy} />
 
             <button
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+              className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
             >
-              <X className="w-5 h-5" />
+              <X className="w-6 h-6" />
             </button>
           </div>
         </div>
 
         {/* 4 Tabs Chuyển Nhánh Tiến Hóa */}
-        <div className="grid grid-cols-4 border-b border-cyan-900/60 bg-slate-950/60 font-mono text-xs font-bold">
+        <div className="grid grid-cols-4 border-b border-cyan-900/60 bg-slate-950/60 font-mono text-sm font-bold shrink-0">
           <button
             onClick={() => setActiveTab('science')}
-            className={`py-3 px-4 flex items-center justify-center gap-2 border-b-2 transition-all ${
+            className={`py-3.5 px-4 flex items-center justify-center gap-2 border-b-2 transition-all cursor-pointer ${
               activeTab === 'science'
                 ? 'border-cyan-400 text-cyan-300 bg-cyan-950/40 shadow-[inset_0_-2px_10px_rgba(0,229,255,0.2)]'
                 : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
             }`}
           >
-            <Atom className="w-4 h-4 text-cyan-400" />
+            <Atom className="w-5 h-5 text-cyan-400" />
             <span>🔬 KHOA HỌC (SCIENCE)</span>
           </button>
 
           <button
             onClick={() => setActiveTab('magic')}
-            className={`py-3 px-4 flex items-center justify-center gap-2 border-b-2 transition-all ${
+            className={`py-3.5 px-4 flex items-center justify-center gap-2 border-b-2 transition-all cursor-pointer ${
               activeTab === 'magic'
                 ? 'border-purple-400 text-purple-300 bg-purple-950/40 shadow-[inset_0_-2px_10px_rgba(168,85,247,0.2)]'
                 : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
             }`}
           >
-            <Sparkles className="w-4 h-4 text-purple-400" />
+            <Sparkles className="w-5 h-5 text-purple-400" />
             <span>🔮 MA THUẬT (MAGIC)</span>
           </button>
 
           <button
             onClick={() => setActiveTab('monster')}
-            className={`py-3 px-4 flex items-center justify-center gap-2 border-b-2 transition-all ${
+            className={`py-3.5 px-4 flex items-center justify-center gap-2 border-b-2 transition-all cursor-pointer ${
               activeTab === 'monster'
                 ? 'border-amber-400 text-amber-300 bg-amber-950/40 shadow-[inset_0_-2px_10px_rgba(245,158,11,0.2)]'
                 : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
             }`}
           >
-            <Bug className="w-4 h-4 text-amber-400" />
+            <Bug className="w-5 h-5 text-amber-400" />
             <span>🧬 QUÁI VẬT (MONSTERS)</span>
           </button>
 
           <button
             onClick={() => setActiveTab('logistics')}
-            className={`py-3 px-4 flex items-center justify-center gap-2 border-b-2 transition-all ${
+            className={`py-3.5 px-4 flex items-center justify-center gap-2 border-b-2 transition-all cursor-pointer ${
               activeTab === 'logistics'
                 ? 'border-emerald-400 text-emerald-300 bg-emerald-950/40 shadow-[inset_0_-2px_10px_rgba(16,185,129,0.2)]'
                 : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
             }`}
           >
-            <Zap className="w-4 h-4 text-emerald-400" />
+            <Zap className="w-5 h-5 text-emerald-400" />
             <span>⚙️ HẬU CẦN CƠ BẢN</span>
           </button>
         </div>
 
         {/* Banner Miêu Tả Nhánh Đang Chọn */}
-        <div className="px-6 py-2.5 bg-slate-900/40 border-b border-cyan-900/30 flex items-center justify-between">
+        <div className="px-6 py-3 bg-slate-900/40 border-b border-cyan-900/30 flex items-center justify-between shrink-0">
           <div>
-            <div className={`text-xs font-mono font-bold ${headerInfo.accent}`}>
+            <div className={`text-sm font-mono font-bold ${headerInfo.accent}`}>
               {headerInfo.title}
             </div>
-            <div className="text-[11px] text-slate-400 mt-0.5">{headerInfo.desc}</div>
+            <div className="text-xs text-slate-300 mt-0.5">{headerInfo.desc}</div>
           </div>
-          <div className="flex items-center gap-3 text-[10px] font-mono">
+          <div className="flex items-center gap-4 text-xs font-mono">
             {priorityTechs.length > 0 && (
-              <span className="text-amber-400 bg-amber-950/60 border border-amber-500/50 px-2 py-0.5 rounded font-bold">
+              <span className="text-amber-400 bg-amber-950/60 border border-amber-500/50 px-2.5 py-1 rounded font-bold">
                 ⭐ {priorityTechs.length} Tech Ưu Tiên Tự Động
               </span>
             )}
-            <div className="flex items-center gap-2 text-slate-400">
+            <div className="flex items-center gap-2.5 text-slate-400">
               <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-slate-200 inline-block"></span> Vật lý
+                <span className="w-2.5 h-2.5 rounded-full bg-slate-200 inline-block"></span> Vật lý
               </span>
               <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-cyan-400 inline-block"></span> Năng lượng
+                <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 inline-block"></span> Năng lượng
               </span>
               <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-orange-400 inline-block"></span> Nổ AoE
+                <span className="w-2.5 h-2.5 rounded-full bg-orange-400 inline-block"></span> Nổ AoE
               </span>
               <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-purple-400 inline-block"></span> Ma thuật
+                <span className="w-2.5 h-2.5 rounded-full bg-purple-400 inline-block"></span> Ma thuật
               </span>
             </div>
           </div>
         </div>
 
         {/* Danh Sách Các Tiểu Nhánh & Node Công Nghệ */}
-        <div className="flex-1 overflow-y-auto p-6 flex flex-col md:flex-row gap-5">
+        <div className="flex-1 overflow-y-auto p-5 md:p-6 flex flex-col md:flex-row gap-5 min-h-0 items-start">
           {subBranches.map((subName) => {
             const nodes = currentNodes.filter((n) => n.subBranch === subName);
             return (
               <div
                 key={subName}
-                className="flex-1 flex flex-col gap-4 bg-slate-900/50 p-4 rounded-xl border border-slate-700/60 shadow-inner"
+                className="w-full flex-1 min-w-0 flex flex-col gap-4 bg-slate-900/60 p-4 rounded-xl border border-slate-700/70 shadow-inner h-fit"
               >
-                <div className="flex items-center justify-between pb-2 border-b border-slate-700/80 font-mono text-xs font-bold text-cyan-300">
+                <div className="flex items-center justify-between pb-2.5 border-b border-slate-700/80 font-mono text-sm font-bold text-cyan-300">
                   <span>{subName}</span>
-                  <span className="text-[10px] text-slate-400">{nodes.length} Nâng Cấp</span>
+                  <span className="text-xs text-slate-400">{nodes.length} Nâng Cấp</span>
                 </div>
 
-                <div className="flex flex-col gap-3.5">
+                <div className="flex flex-col gap-3.5 w-full min-w-0">
                   {nodes.map((node) => {
                     const unlocked = isUnlocked(node.id);
                     const researchItem = getResearchItem(node.id);
@@ -759,11 +740,11 @@ export const TechTreeModal: React.FC<TechTreeModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3 border-t border-cyan-900/40 bg-slate-950/80 flex justify-between items-center text-xs text-slate-400 font-mono">
+        <div className="px-6 py-3.5 border-t border-cyan-900/40 bg-slate-950/80 flex justify-between items-center text-xs md:text-sm text-slate-400 font-mono shrink-0">
           <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1.5">
+            <span className="flex items-center gap-2">
               <span
-                className={`w-2 h-2 rounded-full ${
+                className={`w-2.5 h-2.5 rounded-full ${
                   autoPause ? 'bg-cyan-400 animate-pulse' : 'bg-emerald-400 animate-ping'
                 }`}
               />
@@ -776,7 +757,7 @@ export const TechTreeModal: React.FC<TechTreeModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-bold transition-all"
+            className="px-5 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-bold transition-all cursor-pointer text-sm"
           >
             TIẾP TỤC TRẬN ĐẤU [ESC]
           </button>

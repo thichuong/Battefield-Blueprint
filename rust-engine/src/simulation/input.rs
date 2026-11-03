@@ -262,7 +262,7 @@ pub fn handle_hotkeys(engine: &mut GameEngine, key: &str) {
             });
             send_sync_event(engine);
         }
-        "KeyC" | "KeyH" => {
+        "KeyC" => {
             // Xây Nhà Chính CommandCenter nếu đang chọn Engineer
             let has_worker = engine.selected_unit_ids.iter().any(|uid| {
                 engine.units.iter().any(|u| {
@@ -275,6 +275,12 @@ pub fn handle_hotkeys(engine: &mut GameEngine, key: &str) {
                     sound: "click".to_string(),
                 });
             }
+        }
+        "KeyH" => {
+            // Mở Bảng Hướng Dẫn Chơi Game (Guide)
+            engine
+                .outgoing_events
+                .push(EngineToReactEvent::OpenGuideModal);
         }
         "Escape" => {
             if engine.is_attack_move_mode {

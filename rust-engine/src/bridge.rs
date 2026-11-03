@@ -51,6 +51,7 @@ pub enum EngineToReactEvent {
     OpenTechTreeModal,
     OpenSettingsModal,
     OpenAutoPlayModal,
+    OpenGuideModal,
     PlaySound {
         sound: String,
     },

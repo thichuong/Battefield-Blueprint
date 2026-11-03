@@ -324,6 +324,17 @@ pub fn send_command_to_engine(cmd_json: &str) {
 }
 
 #[wasm_bindgen]
+pub fn get_game_config_json() -> String {
+    ENGINE_STATE.with(|state| {
+        if let Some(ref engine) = *state.borrow() {
+            engine.config.to_json()
+        } else {
+            crate::config::GameConfig::default().to_json()
+        }
+    })
+}
+
+#[wasm_bindgen]
 pub fn poll_events_from_engine() -> String {
     ENGINE_STATE.with(|state| {
         if let Some(ref mut engine) = *state.borrow_mut() {

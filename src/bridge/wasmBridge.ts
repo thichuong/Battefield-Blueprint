@@ -13,8 +13,84 @@ import init, {
   handle_mouse_wheel,
   handle_key_down,
   handle_key_up,
+  get_game_config_json,
 } from '../wasm-pkg/rust_engine.js';
 import { soundEngine } from '../audio/soundEngine';
+
+export interface ResistancesConfig {
+  physical: number;
+  energy: number;
+  explosive: number;
+  arcane: number;
+}
+
+export interface UnitStatsConfig {
+  name: string;
+  short_name: string;
+  description: string;
+  hp: number;
+  speed: number;
+  attack_range: number;
+  attack_damage: number;
+  attack_cooldown: number;
+  damage_type: 'Physical' | 'Energy' | 'Explosive' | 'Arcane';
+  aoe_radius: number;
+  resistances: ResistancesConfig;
+  cost_minerals: number;
+  cost_energy: number;
+  training_time: number;
+  percent_max_hp_dps?: number;
+}
+
+export interface BuildingStatsConfig {
+  name: string;
+  short_name: string;
+  description: string;
+  hp: number;
+  cost_minerals: number;
+  cost_energy: number;
+  width: number;
+  height: number;
+  build_time: number;
+  resistances: ResistancesConfig;
+  supply_bonus: number;
+  energy_per_sec: number;
+  turret_range: number;
+  turret_damage: number;
+  turret_cooldown: number;
+  turret_damage_type: 'Physical' | 'Energy' | 'Explosive' | 'Arcane';
+  turret_projectile_speed: number;
+}
+
+export interface EconomyConfig {
+  starting_minerals: number;
+  starting_energy: number;
+  starting_supply: number;
+  base_max_supply: number;
+  base_energy_per_sec: number;
+  worker_carry_capacity: number;
+  worker_mining_time: number;
+  worker_carry_capacity_upgraded: number;
+  worker_mining_time_upgraded: number;
+  converter_threshold: number;
+  converter_energy_per_sec: number;
+  converter_minerals_per_100_energy: number;
+}
+
+export interface TechItemConfig {
+  name: string;
+  branch: string;
+  cost_minerals: number;
+  cost_energy: number;
+  research_time: number;
+}
+
+export interface GameConfigData {
+  units: Record<string, UnitStatsConfig>;
+  buildings: Record<string, BuildingStatsConfig>;
+  economy: EconomyConfig;
+  techs: Record<string, TechItemConfig>;
+}
 
 export interface TechState {
   // Khoa học
@@ -237,6 +313,19 @@ class WasmBridge {
   public sendCommand(cmd: any) {
     if (!this.isInitialized) return;
     send_command_to_engine(JSON.stringify(cmd));
+  }
+
+  public getGameConfig(): GameConfigData | null {
+    if (!this.isInitialized) return null;
+    try {
+      const raw = get_game_config_json();
+      if (raw) {
+        return JSON.parse(raw);
+      }
+    } catch (e) {
+      console.error('Failed to get game config:', e);
+    }
+    return null;
   }
 
   public setFormation(formation: FormationType | string) {

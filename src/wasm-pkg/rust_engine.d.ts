@@ -75,6 +75,8 @@ export function engine_step(dt: number): void;
  */
 export function engine_tick(dt: number): void;
 
+export function get_game_config_json(): string;
+
 export function handle_key_down(key: string): void;
 
 export function handle_key_up(key: string): void;
@@ -104,6 +106,7 @@ export interface InitOutput {
     readonly engine_frame: (a: number, b: number, c: number, d: number) => number;
     readonly engine_render: (a: number) => void;
     readonly engine_tick: (a: number) => void;
+    readonly get_game_config_json: () => [number, number];
     readonly handle_key_down: (a: number, b: number) => void;
     readonly handle_key_up: (a: number, b: number) => void;
     readonly init_engine: (a: any) => [number, number];
@@ -124,8 +127,8 @@ export interface InitOutput {
     readonly __externref_table_alloc: () => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_destroy_closure: (a: number, b: number) => void;
-    readonly __externref_table_dealloc: (a: number) => void;
     readonly __wbindgen_free: (a: number, b: number, c: number) => void;
+    readonly __externref_table_dealloc: (a: number) => void;
     readonly __wbindgen_start: () => void;
 }
 

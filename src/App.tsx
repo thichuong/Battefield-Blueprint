@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { wasmBridge, EngineSyncState, AutoPlayConfig, PlayerSlotConfig } from './bridge/wasmBridge';
+import { wasmBridge, EngineSyncState, AutoPlayConfig, PlayerSlotConfig, GameConfigData } from './bridge/wasmBridge';
 import { MainMenu } from './components/MainMenu';
 import { TechTreeModal } from './components/TechTreeModal';
 import { SettingsModal, FpsLimit } from './components/SettingsModal';
 import { GameOverModal } from './components/GameOverModal';
 import { AutoPlayModal } from './components/AutoPlayModal';
+import { GuideModal } from './components/GuideModal';
 import { soundEngine } from './audio/soundEngine';
 import { Bot } from 'lucide-react';
 
@@ -217,6 +218,8 @@ export const App: React.FC = () => {
   const [isTechTreeOpen, setIsTechTreeOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isAutoPlayOpen, setIsAutoPlayOpen] = useState<boolean>(false);
+  const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);
+  const [gameConfig, setGameConfig] = useState<GameConfigData | null>(null);
   const [gameOverState, setGameOverState] = useState<{
     isOpen: boolean;
     playerWon: boolean;
@@ -309,6 +312,11 @@ export const App: React.FC = () => {
         show_grid: settings.showGrid,
         fps_limit: String(settings.fpsLimit),
       });
+
+      const cfg = wasmBridge.getGameConfig();
+      if (cfg) {
+        setGameConfig(cfg);
+      }
 
       // Vòng lặp tối ưu hóa: 1 lệnh gọi Wasm duy nhất mỗi frame (Zero JS-Wasm boundary overhead)
       // Dùng MessageChannel thay vì setTimeout(..., 0) để không bị HTML5 4ms clamping khóa cứng ở ~200 FPS!
@@ -431,6 +439,10 @@ export const App: React.FC = () => {
           setIsAutoPlayOpen(true);
           break;
         }
+        case 'OpenGuideModal': {
+          setIsGuideOpen(true);
+          break;
+        }
         case 'GameOver': {
           setGameOverState({
             isOpen: true,
@@ -467,35 +479,52 @@ export const App: React.FC = () => {
     e.preventDefault(); // Ngăn menu chuột phải mặc định của trình duyệt
   }, []);
 
-  const handleOpenTechTree = useCallback(() => {
-    setIsTechTreeOpen(true);
-    if (settings.autoPause) {
-      wasmBridge.sendCommand({ type: 'SetPaused', paused: true });
-    }
-  }, [settings.autoPause]);
-
   const handleCloseTechTree = useCallback(() => {
     setIsTechTreeOpen(false);
-    if (settings.autoPause) {
-      wasmBridge.sendCommand({ type: 'SetPaused', paused: false });
+  }, []);
+
+  // Tự động tạm dừng game khi mở bất kỳ bảng nào (TechTree, Guide, Settings) theo cài đặt autoPause
+  const isAnyPauseModalOpen = isTechTreeOpen || isGuideOpen || isSettingsOpen;
+  const wasAutoPausedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isInGame) return;
+
+    if (isAnyPauseModalOpen) {
+      if (settings.autoPause) {
+        wasmBridge.sendCommand({ type: 'SetPaused', paused: true });
+        wasAutoPausedRef.current = true;
+      } else if (wasAutoPausedRef.current) {
+        // Tắt autoPause trong khi modal vẫn mở -> tiếp tục trận đấu
+        wasmBridge.sendCommand({ type: 'SetPaused', paused: false });
+        wasAutoPausedRef.current = false;
+      }
+    } else {
+      // Khi tất cả bảng đóng -> bỏ tạm dừng nếu trước đó do autoPause kích hoạt
+      if (wasAutoPausedRef.current) {
+        wasmBridge.sendCommand({ type: 'SetPaused', paused: false });
+        wasAutoPausedRef.current = false;
+      }
     }
-  }, [settings.autoPause]);
+  }, [isInGame, isAnyPauseModalOpen, settings.autoPause]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'KeyT') {
-        if (isTechTreeOpen) {
-          handleCloseTechTree();
-        } else {
-          handleOpenTechTree();
-        }
+        setIsTechTreeOpen((prev) => !prev);
         return;
       } else if (e.code === 'KeyB') {
         setIsAutoPlayOpen((prev) => !prev);
         return;
+      } else if (e.code === 'KeyH') {
+        setIsGuideOpen((prev) => !prev);
+        return;
       } else if (e.code === 'Escape') {
-        if (isTechTreeOpen) {
-          handleCloseTechTree();
+        if (isGuideOpen) {
+          setIsGuideOpen(false);
+          return;
+        } else if (isTechTreeOpen) {
+          setIsTechTreeOpen(false);
           return;
         } else if (isAutoPlayOpen) {
           setIsAutoPlayOpen(false);
@@ -519,13 +548,15 @@ export const App: React.FC = () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [isTechTreeOpen, handleCloseTechTree, handleOpenTechTree]);
+  }, [isTechTreeOpen, isGuideOpen, isSettingsOpen, isAutoPlayOpen]);
 
   const handleStartGame = (difficulty: string, slots?: PlayerSlotConfig[]) => {
     setIsInGame(true);
     setGameOverState({ isOpen: false, playerWon: false });
     setIsTechTreeOpen(false);
     setIsSettingsOpen(false);
+    setIsGuideOpen(false);
+    wasAutoPausedRef.current = false;
     setGameState(initialGameState);
     wasmBridge.sendCommand({
       type: 'StartGame',
@@ -565,6 +596,8 @@ export const App: React.FC = () => {
     setGameOverState({ isOpen: false, playerWon: false });
     setIsTechTreeOpen(false);
     setIsSettingsOpen(false);
+    setIsGuideOpen(false);
+    wasAutoPausedRef.current = false;
     setGameState(initialGameState);
     wasmBridge.sendCommand({ type: 'RestartGame' });
     soundEngine.playSound('order');
@@ -575,6 +608,8 @@ export const App: React.FC = () => {
     setGameOverState({ isOpen: false, playerWon: false });
     setIsTechTreeOpen(false);
     setIsSettingsOpen(false);
+    setIsGuideOpen(false);
+    wasAutoPausedRef.current = false;
     wasmBridge.sendCommand({ type: 'SetPaused', paused: true });
   };
 
@@ -641,7 +676,13 @@ export const App: React.FC = () => {
       />
 
       {/* UI Ngoài vòng lặp do React quản lý */}
-      {!isInGame && <MainMenu onStartGame={handleStartGame} />}
+      {!isInGame && (
+        <MainMenu
+          onStartGame={handleStartGame}
+          onOpenGuide={() => setIsGuideOpen(true)}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+        />
+      )}
 
       <TechTreeModal
         isOpen={isTechTreeOpen}
@@ -653,13 +694,6 @@ export const App: React.FC = () => {
         priorityTechs={gameState.autoplay_state.priority_techs}
         onTogglePriorityTech={handleTogglePriorityTech}
         autoPause={settings.autoPause}
-        onToggleAutoPause={(val) => {
-          const newSettings = { ...settings, autoPause: val };
-          handleUpdateSettings(newSettings);
-          if (isTechTreeOpen) {
-            wasmBridge.sendCommand({ type: 'SetPaused', paused: val });
-          }
-        }}
       />
 
       <AutoPlayModal
@@ -703,9 +737,18 @@ export const App: React.FC = () => {
         autoPause={settings.autoPause}
         showGrid={settings.showGrid}
         fpsLimit={settings.fpsLimit}
+        isInGame={isInGame}
         onUpdateSettings={handleUpdateSettings}
         onRestartGame={handleRestartGame}
         onBackToMenu={handleBackToMenu}
+      />
+
+      <GuideModal
+        isOpen={isGuideOpen}
+        onClose={() => setIsGuideOpen(false)}
+        gameConfig={gameConfig}
+        autoPause={settings.autoPause}
+        isInGame={isInGame}
       />
 
       <GameOverModal

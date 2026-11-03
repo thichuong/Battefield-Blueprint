@@ -21,6 +21,7 @@ interface SettingsModalProps {
   autoPause: boolean;
   showGrid: boolean;
   fpsLimit?: FpsLimit;
+  isInGame?: boolean;
   onUpdateSettings: (settings: {
     soundVolume: number;
     cameraSpeed: number;
@@ -40,6 +41,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   autoPause,
   showGrid,
   fpsLimit = 'vsync',
+  isInGame = true,
   onUpdateSettings,
   onRestartGame,
   onBackToMenu,
@@ -160,14 +162,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </p>
           </div>
 
-          {/* Tự động tạm dừng khi xem Tech Tree */}
+          {/* Tự động tạm dừng khi mở bảng */}
           <div className="flex items-center justify-between pt-2 border-t border-slate-800">
             <div>
-              <span className="text-slate-300 block">Tạm dừng trận đấu khi xem Cây Công Nghệ [T]:</span>
+              <span className="text-slate-200 font-medium block">Tạm dừng game khi mở bảng</span>
               <span className="text-[11px] text-slate-500">
                 {autoPause
-                  ? 'Đang bật: Trận đấu đóng băng để suy nghĩ chiến thuật.'
-                  : 'Đang tắt: Trận đấu & nghiên cứu cập nhật liên tục thời gian thực.'}
+                  ? 'Tự động đóng băng trận đấu khi mở Cây công nghệ, Cài đặt hoặc Hướng dẫn.'
+                  : 'Trận đấu tiếp tục diễn ra theo thời gian thực.'}
               </span>
             </div>
             <input
@@ -222,18 +224,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* Footer */}
         <div className="px-6 py-4 border-t border-slate-800 bg-slate-950 flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                if (confirm('Bạn có chắc muốn chơi lại từ đầu trận này?')) {
-                  onRestartGame();
-                  onClose();
-                }
-              }}
-              className="flex items-center gap-1.5 px-3 py-2 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded text-xs font-bold transition-colors cursor-pointer"
-            >
-              <RotateCcw className="w-4 h-4" /> CHƠI LẠI TRẬN
-            </button>
-            {onBackToMenu && (
+            {isInGame && (
+              <span className="flex items-center gap-2 mr-3 font-mono text-xs">
+                <span
+                  className={`w-2.5 h-2.5 rounded-full ${
+                    autoPause ? 'bg-cyan-400 animate-pulse' : 'bg-emerald-400 animate-ping'
+                  }`}
+                />
+                <span className={autoPause ? 'text-cyan-300 font-semibold' : 'text-emerald-300 font-semibold'}>
+                  {autoPause ? 'Trận đấu đang tạm dừng' : 'Thời gian đang chạy'}
+                </span>
+              </span>
+            )}
+            {isInGame && onRestartGame && (
+              <button
+                onClick={() => {
+                  if (confirm('Bạn có chắc muốn chơi lại từ đầu trận này?')) {
+                    onRestartGame();
+                    onClose();
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded text-xs font-bold transition-colors cursor-pointer"
+              >
+                <RotateCcw className="w-4 h-4" /> CHƠI LẠI TRẬN
+              </button>
+            )}
+            {isInGame && onBackToMenu && (
               <button
                 onClick={() => {
                   if (confirm('Bạn có muốn thoát về Menu chính không?')) {
@@ -251,7 +267,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             onClick={onClose}
             className="flex items-center gap-1.5 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded text-xs font-bold transition-colors cursor-pointer"
           >
-            <Play className="w-4 h-4" /> TIẾP TỤC
+            {isInGame ? (
+              <>
+                <Play className="w-4 h-4" /> TIẾP TỤC
+              </>
+            ) : (
+              'ĐÓNG'
+            )}
           </button>
         </div>
       </div>

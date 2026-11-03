@@ -93,7 +93,7 @@ pub fn render_top_bar_hud(engine: &GameEngine, ctx: &CanvasRenderingContext2d) {
     }
 
     // Huy hiệu đo FPS thời gian thực trên Top Bar
-    let fps_btn_x = vw - 380.0;
+    let fps_btn_x = vw - 475.0;
     let fps_val = engine.fps.round();
     let (fps_color, fps_bg) = if fps_val >= 50.0 {
         ("#10b981", "rgba(6, 78, 59, 0.45)")
@@ -103,15 +103,26 @@ pub fn render_top_bar_hud(engine: &GameEngine, ctx: &CanvasRenderingContext2d) {
         ("#ef4444", "rgba(127, 29, 29, 0.45)")
     };
     ctx.set_fill_style_str(fps_bg);
-    ctx.fill_rect(fps_btn_x, 10.0, 78.0, 28.0);
+    ctx.fill_rect(fps_btn_x, 10.0, 75.0, 28.0);
     ctx.set_stroke_style_str(fps_color);
     ctx.set_line_width(1.0);
-    ctx.stroke_rect(fps_btn_x, 10.0, 78.0, 28.0);
+    ctx.stroke_rect(fps_btn_x, 10.0, 75.0, 28.0);
     ctx.set_fill_style_str(fps_color);
     ctx.set_font("bold 12px monospace");
     ctx.set_text_align("center");
-    let _ = ctx.fill_text(&format!("{:.0} FPS", fps_val), fps_btn_x + 39.0, 28.0);
+    let _ = ctx.fill_text(&format!("{:.0} FPS", fps_val), fps_btn_x + 37.5, 28.0);
     ctx.set_text_align("left");
+
+    // Nút mở Hướng Dẫn Chơi [H]
+    let guide_btn_x = vw - 390.0;
+    ctx.set_fill_style_str("#1e1b4b");
+    ctx.fill_rect(guide_btn_x, 10.0, 85.0, 28.0);
+    ctx.set_stroke_style_str("#818cf8");
+    ctx.set_line_width(1.2);
+    ctx.stroke_rect(guide_btn_x, 10.0, 85.0, 28.0);
+    ctx.set_fill_style_str("#c7d2fe");
+    ctx.set_font("bold 12px monospace");
+    let _ = ctx.fill_text("GUIDE [H]", guide_btn_x + 10.0, 28.0);
 
     // Nút mở Chế độ Tự Động [B]
     let auto_btn_x = vw - 295.0;

@@ -16,8 +16,16 @@ pub fn check_bevy_hud_click(engine: &mut GameEngine, sx: f32, sy: f32) -> bool {
     let vh = engine.camera.viewport_h;
 
     // -1. Nút đo FPS ở thanh trên cùng (click để bật/tắt bảng chi tiết hiệu năng)
-    if (vw - 380.0..=vw - 302.0).contains(&sx) && (10.0..=42.0).contains(&sy) {
+    if (vw - 475.0..=vw - 400.0).contains(&sx) && (10.0..=42.0).contains(&sy) {
         engine.show_debug_overlay = !engine.show_debug_overlay;
+        return true;
+    }
+
+    // -0.5. Nút mở Hướng Dẫn Chơi [H] (x ~ vw - 390, y: 10..42, w: 85)
+    if (vw - 390.0..=vw - 305.0).contains(&sx) && (10.0..=42.0).contains(&sy) {
+        engine
+            .outgoing_events
+            .push(EngineToReactEvent::OpenGuideModal);
         return true;
     }
 

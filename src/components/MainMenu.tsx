@@ -1,9 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { Play, Users, Crosshair, ChevronDown, Check, Swords } from 'lucide-react';
+import { Play, Users, Crosshair, ChevronDown, Check, Swords, BookOpen, Settings } from 'lucide-react';
 import { PlayerSlotConfig } from '../bridge/wasmBridge';
 
 interface MainMenuProps {
   onStartGame: (difficulty: string, slots: PlayerSlotConfig[]) => void;
+  onOpenGuide: () => void;
+  onOpenSettings: () => void;
 }
 
 type MatchPreset = '1v1' | '2v2' | '3v3' | '4v4' | '3factions' | 'ffa8' | 'custom';
@@ -51,7 +53,7 @@ export const PLAYER_COLOR_NAMES = [
   'Vàng Gold',
 ];
 
-export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
+export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, onOpenSettings }) => {
   const [difficulty, setDifficulty] = useState<string>('normal');
   const [preset, setPreset] = useState<MatchPreset>('4v4');
 
@@ -355,6 +357,25 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Hàng nút chức năng phụ: Hướng Dẫn & Cài Đặt */}
+        <div className="grid grid-cols-2 gap-3 w-full mb-3">
+          <button
+            type="button"
+            onClick={onOpenGuide}
+            className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-slate-900/90 hover:bg-cyan-950/80 border border-slate-700 hover:border-cyan-400 text-cyan-300 font-bold text-xs uppercase tracking-wider transition-all cursor-pointer shadow-sm hover:shadow-[0_0_15px_rgba(0,229,255,0.25)]"
+          >
+            <BookOpen className="w-4 h-4 text-cyan-400" /> HƯỚNG DẪN CHƠI [GUIDE]
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 hover:border-slate-500 text-slate-300 hover:text-white font-bold text-xs uppercase tracking-wider transition-all cursor-pointer shadow-sm"
+          >
+            <Settings className="w-4 h-4 text-slate-400" /> CÀI ĐẶT GAME [SETTINGS]
+          </button>
         </div>
 
         {/* Nút Bắt đầu trận đấu */}
