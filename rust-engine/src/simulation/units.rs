@@ -689,5 +689,13 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
     engine.minerals.retain(|m| m.amount > 0.0);
 
     // Xóa lính tử trận
+    let pre_selected = engine.selected_unit_ids.len();
     engine.units.retain(|u| u.hp > 0.0);
+    if pre_selected > 0 {
+        engine.selected_unit_ids.retain(|id| engine.units.iter().any(|u| u.id == *id));
+        if engine.selected_unit_ids.len() != pre_selected {
+            engine.selection_dirty = true;
+            engine.command_card_dirty = true;
+        }
+    }
 }

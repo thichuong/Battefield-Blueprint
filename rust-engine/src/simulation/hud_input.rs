@@ -1,5 +1,10 @@
 use crate::bridge::EngineToReactEvent;
 use crate::components::*;
+use crate::config::{
+    COMMAND_CARD_BTN_HEIGHT, COMMAND_CARD_BTN_WIDTH, COMMAND_CARD_GAP, COMMAND_CARD_HEIGHT,
+    COMMAND_CARD_PADDING, COMMAND_CARD_WIDTH, HUD_MARGIN, MINIMAP_SIZE, SELECTION_PANEL_HEIGHT,
+    SELECTION_PANEL_WIDTH,
+};
 use crate::map::{MAP_HEIGHT, MAP_WIDTH};
 use crate::simulation::commands::set_player_formation_and_reform;
 use crate::simulation::economy::send_sync_event;
@@ -47,27 +52,50 @@ pub fn check_bevy_hud_click(engine: &mut GameEngine, sx: f32, sy: f32) -> bool {
         return true;
     }
 
-    // 3. Minimap góc dưới trái (x: 10..170, y: vh - 170..vh - 10)
-    if (10.0..=170.0).contains(&sx) && (vh - 170.0..=vh - 10.0).contains(&sy) {
-        let norm_x = (sx - 10.0) / 160.0;
-        let norm_y = (sy - (vh - 170.0)) / 160.0;
+    // 3. Minimap góc dưới trái
+    let mm_min_x = HUD_MARGIN;
+    let mm_max_x = HUD_MARGIN + MINIMAP_SIZE;
+    let mm_min_y = vh - (HUD_MARGIN + MINIMAP_SIZE);
+    let mm_max_y = vh - HUD_MARGIN;
+    if (mm_min_x..=mm_max_x).contains(&sx) && (mm_min_y..=mm_max_y).contains(&sy) {
+        let norm_x = (sx - mm_min_x) / MINIMAP_SIZE;
+        let norm_y = (sy - mm_min_y) / MINIMAP_SIZE;
         engine.camera.x = norm_x * MAP_WIDTH;
         engine.camera.y = norm_y * MAP_HEIGHT;
         return true;
     }
 
-    // 4. Command Card góc dưới phải (x: vw - 225..vw - 10, y: vh - 150..vh - 10)
-    if (vw - 225.0..=vw - 10.0).contains(&sx) && (vh - 150.0..=vh - 10.0).contains(&sy) {
-        handle_command_card_click(engine, sx - (vw - 225.0), sy - (vh - 150.0));
-        return true;
+    // 4. Selection Info Panel Canvas (đáy giữa màn hình): chặn click xuyên qua bản đồ nếu đang hiển thị
+    if engine.has_selection_info_content() {
+        let sel_min_x = (vw - SELECTION_PANEL_WIDTH) * 0.5;
+        let sel_max_x = (vw + SELECTION_PANEL_WIDTH) * 0.5;
+        let sel_min_y = vh - (HUD_MARGIN + SELECTION_PANEL_HEIGHT);
+        let sel_max_y = vh - HUD_MARGIN;
+        if (sel_min_x..=sel_max_x).contains(&sx) && (sel_min_y..=sel_max_y).contains(&sy) {
+            return true;
+        }
+    }
+
+    // 5. Command Card góc dưới phải: chỉ nhận click nếu đang hiển thị
+    if engine.has_command_card_content() {
+        let cc_min_x = vw - (HUD_MARGIN + COMMAND_CARD_WIDTH);
+        let cc_max_x = vw - HUD_MARGIN;
+        let cc_min_y = vh - (HUD_MARGIN + COMMAND_CARD_HEIGHT);
+        let cc_max_y = vh - HUD_MARGIN;
+        if (cc_min_x..=cc_max_x).contains(&sx) && (cc_min_y..=cc_max_y).contains(&sy) {
+            handle_command_card_click(engine, sx - cc_min_x, sy - cc_min_y);
+            return true;
+        }
     }
 
     false
 }
 
 pub fn handle_command_card_click(engine: &mut GameEngine, rel_x: f32, rel_y: f32) {
-    let col = ((rel_x - 5.0).max(0.0) / 67.0).min(2.0) as usize;
-    let row = ((rel_y - 6.0).max(0.0) / 44.0).min(2.0) as usize;
+    let col_step = COMMAND_CARD_BTN_WIDTH + COMMAND_CARD_GAP;
+    let row_step = COMMAND_CARD_BTN_HEIGHT + COMMAND_CARD_GAP;
+    let col = ((rel_x - COMMAND_CARD_PADDING).max(0.0) / col_step).min(2.0) as usize;
+    let row = ((rel_y - COMMAND_CARD_PADDING).max(0.0) / row_step).min(2.0) as usize;
     let btn_idx = row * 3 + col;
 
     // Nếu đang chọn Worker -> Nút xây nhà
@@ -157,8 +185,10 @@ pub fn handle_command_card_click(engine: &mut GameEngine, rel_x: f32, rel_y: f32
 }
 
 pub fn handle_command_card_right_click(engine: &mut GameEngine, rel_x: f32, rel_y: f32) {
-    let col = ((rel_x - 5.0).max(0.0) / 67.0).min(2.0) as usize;
-    let row = ((rel_y - 6.0).max(0.0) / 44.0).min(2.0) as usize;
+    let col_step = COMMAND_CARD_BTN_WIDTH + COMMAND_CARD_GAP;
+    let row_step = COMMAND_CARD_BTN_HEIGHT + COMMAND_CARD_GAP;
+    let col = ((rel_x - COMMAND_CARD_PADDING).max(0.0) / col_step).min(2.0) as usize;
+    let row = ((rel_y - COMMAND_CARD_PADDING).max(0.0) / row_step).min(2.0) as usize;
     let btn_idx = row * 3 + col;
 
     if let Some(bid) = engine.selected_building_id {

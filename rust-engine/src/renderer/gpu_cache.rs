@@ -2,7 +2,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 use crate::components::{BuildingType, Team, UnitType};
-use crate::config::{GameConfig, DEFAULT_PLAYER_COLORS};
+use crate::config::{GameConfig, DEFAULT_PLAYER_COLORS, MINIMAP_SIZE};
 use crate::fog::{FOG_COLS, FOG_ROWS};
 
 // Helper tạo offscreen HTML canvas element
@@ -463,7 +463,8 @@ impl GpuCacheManager {
 
         // --- 8. Fog Texture Canvas & Minimap Canvas ---
         let (fog_canvas, fog_ctx) = create_offscreen_canvas(FOG_COLS as u32, FOG_ROWS as u32)?;
-        let (minimap_base_canvas, minimap_base_ctx) = create_offscreen_canvas(160, 160)?;
+        let (minimap_base_canvas, minimap_base_ctx) =
+            create_offscreen_canvas(MINIMAP_SIZE as u32, MINIMAP_SIZE as u32)?;
 
         Some(Self {
             grid_canvas,

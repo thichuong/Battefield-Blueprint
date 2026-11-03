@@ -1,13 +1,30 @@
 use crate::components::{Building, BuildingType, FormationType, Team, UnitType};
+use crate::config::{
+    COMMAND_CARD_BTN_HEIGHT, COMMAND_CARD_BTN_WIDTH, COMMAND_CARD_FORMATION_BTN_WIDTH,
+    COMMAND_CARD_GAP, COMMAND_CARD_HEIGHT, COMMAND_CARD_PADDING, COMMAND_CARD_WIDTH,
+};
 use crate::GameEngine;
 use web_sys::CanvasRenderingContext2d;
 
 pub fn render_command_card(engine: &GameEngine, ctx: &CanvasRenderingContext2d, x: f64, y: f64) {
+    if !engine.has_command_card_content() {
+        return;
+    }
+
+    let card_w = COMMAND_CARD_WIDTH as f64;
+    let card_h = COMMAND_CARD_HEIGHT as f64;
     ctx.set_fill_style_str("rgba(3, 13, 26, 0.94)");
-    ctx.fill_rect(x, y, 215.0, 140.0);
+    ctx.fill_rect(x, y, card_w, card_h);
     ctx.set_stroke_style_str("#0284c7");
     ctx.set_line_width(1.5);
-    ctx.stroke_rect(x, y, 215.0, 140.0);
+    ctx.stroke_rect(x, y, card_w, card_h);
+
+    let pad = COMMAND_CARD_PADDING as f64;
+    let col_step = (COMMAND_CARD_BTN_WIDTH + COMMAND_CARD_GAP) as f64;
+    let row_step = (COMMAND_CARD_BTN_HEIGHT + COMMAND_CARD_GAP) as f64;
+    let btn_w = COMMAND_CARD_BTN_WIDTH as f64;
+    let btn_h = COMMAND_CARD_BTN_HEIGHT as f64;
+    let form_btn_w = COMMAND_CARD_FORMATION_BTN_WIDTH as f64;
 
     let has_worker = engine.selected_unit_ids.iter().any(|uid| {
         engine
@@ -57,37 +74,61 @@ pub fn render_command_card(engine: &GameEngine, ctx: &CanvasRenderingContext2d, 
             .config
             .get_building_short_name(BuildingType::EnergyConverter);
 
-        draw_hud_button(ctx, x + 5.0, y + 6.0, 62.0, 40.0, supply_lbl, &supply_cost);
+        draw_hud_button(ctx, x + pad, y + pad, btn_w, btn_h, supply_lbl, &supply_cost);
         draw_hud_button(
             ctx,
-            x + 72.0,
-            y + 6.0,
-            62.0,
-            40.0,
+            x + pad + col_step,
+            y + pad,
+            btn_w,
+            btn_h,
             reactor_lbl,
             &reactor_cost,
         );
         draw_hud_button(
             ctx,
-            x + 139.0,
-            y + 6.0,
-            62.0,
-            40.0,
+            x + pad + 2.0 * col_step,
+            y + pad,
+            btn_w,
+            btn_h,
             barracks_lbl,
             &barracks_cost,
         );
-        draw_hud_button(ctx, x + 5.0, y + 50.0, 62.0, 40.0, turret_lbl, &turret_cost);
-        draw_hud_button(ctx, x + 72.0, y + 50.0, 62.0, 40.0, cc_lbl, &cc_cost);
-        draw_hud_button(ctx, x + 139.0, y + 50.0, 62.0, 40.0, conv_lbl, &conv_cost);
+        draw_hud_button(
+            ctx,
+            x + pad,
+            y + pad + row_step,
+            btn_w,
+            btn_h,
+            turret_lbl,
+            &turret_cost,
+        );
+        draw_hud_button(
+            ctx,
+            x + pad + col_step,
+            y + pad + row_step,
+            btn_w,
+            btn_h,
+            cc_lbl,
+            &cc_cost,
+        );
+        draw_hud_button(
+            ctx,
+            x + pad + 2.0 * col_step,
+            y + pad + row_step,
+            btn_w,
+            btn_h,
+            conv_lbl,
+            &conv_cost,
+        );
 
         // Hàng 3: Nút đổi đội hình kế tiếp (phím F)
         let cur_form = engine.team_formation(Team::Player);
         draw_hud_button(
             ctx,
-            x + 5.0,
-            y + 94.0,
-            200.0,
-            38.0,
+            x + pad,
+            y + pad + 2.0 * row_step,
+            form_btn_w,
+            btn_h,
             &format!("ĐỘI HÌNH [F]: {}", cur_form.button_label()),
             "Bấm để đổi kiểu đội hình",
         );
@@ -173,8 +214,8 @@ pub fn render_command_card(engine: &GameEngine, ctx: &CanvasRenderingContext2d, 
         for (idx, &form) in forms.iter().enumerate() {
             let row = idx / 3;
             let col = idx % 3;
-            let bx = x + 5.0 + (col as f64) * 67.0;
-            let by = y + 6.0 + (row as f64) * 44.0;
+            let bx = x + pad + (col as f64) * col_step;
+            let by = y + pad + (row as f64) * row_step;
             let is_active = form == active_form;
             let is_hovered = engine.hovered_command_button == Some(idx);
 
@@ -186,7 +227,7 @@ pub fn render_command_card(engine: &GameEngine, ctx: &CanvasRenderingContext2d, 
             } else {
                 "#0a1c2e"
             });
-            ctx.fill_rect(bx, by, 62.0, 40.0);
+            ctx.fill_rect(bx, by, btn_w, btn_h);
 
             // Viền nút
             ctx.set_stroke_style_str(if is_active {
@@ -197,19 +238,19 @@ pub fn render_command_card(engine: &GameEngine, ctx: &CanvasRenderingContext2d, 
                 "#1e3a5f"
             });
             ctx.set_line_width(if is_active { 2.0 } else { 1.0 });
-            ctx.stroke_rect(bx, by, 62.0, 40.0);
+            ctx.stroke_rect(bx, by, btn_w, btn_h);
 
             // Icon / Sơ đồ chấm đội hình nhỏ
-            draw_formation_mini_icon(ctx, bx + 31.0, by + 12.0, form, is_active);
+            draw_formation_mini_icon(ctx, bx + btn_w * 0.5, by + 16.0, form, is_active);
 
             // Nhãn nút
             ctx.set_font(if is_active {
-                "bold 10px monospace"
+                "bold 11px monospace"
             } else {
-                "9px monospace"
+                "10px monospace"
             });
             ctx.set_fill_style_str(if is_active { "#00e5ff" } else { "#94a3b8" });
-            let _ = ctx.fill_text(form.button_label(), bx + 6.0, by + 34.0);
+            let _ = ctx.fill_text(form.button_label(), bx + 8.0, by + 42.0);
         }
 
         if let Some(hover_idx) = engine.hovered_command_button {
@@ -245,10 +286,10 @@ pub fn render_command_card(engine: &GameEngine, ctx: &CanvasRenderingContext2d, 
                     let u_lbl = engine.config.get_unit_short_name(u_type);
                     draw_unit_purchase_button(
                         ctx,
-                        x + 5.0,
-                        y + 6.0,
-                        62.0,
-                        40.0,
+                        x + pad,
+                        y + pad,
+                        btn_w,
+                        btn_h,
                         u_lbl,
                         &cost_lbl,
                         count,
@@ -284,9 +325,11 @@ pub fn render_command_card(engine: &GameEngine, ctx: &CanvasRenderingContext2d, 
                         engine,
                         b,
                         UnitType::ShockTrooper,
-                        x + 5.0,
-                        y + 6.0,
+                        x + pad,
+                        y + pad,
                         0,
+                        btn_w,
+                        btn_h,
                     );
                     // 1: Rifle
                     let s1 = draw_barracks_slot(
@@ -294,9 +337,11 @@ pub fn render_command_card(engine: &GameEngine, ctx: &CanvasRenderingContext2d, 
                         engine,
                         b,
                         UnitType::Rifleman,
-                        x + 72.0,
-                        y + 6.0,
+                        x + pad + col_step,
+                        y + pad,
                         1,
+                        btn_w,
+                        btn_h,
                     );
                     // 2: Vanguard
                     let s2 = if engine.player_tech.energy_shielding {
@@ -305,9 +350,11 @@ pub fn render_command_card(engine: &GameEngine, ctx: &CanvasRenderingContext2d, 
                             engine,
                             b,
                             UnitType::Vanguard,
-                            x + 139.0,
-                            y + 6.0,
+                            x + pad + 2.0 * col_step,
+                            y + pad,
                             2,
+                            btn_w,
+                            btn_h,
                         ))
                     } else {
                         None
@@ -319,9 +366,11 @@ pub fn render_command_card(engine: &GameEngine, ctx: &CanvasRenderingContext2d, 
                             engine,
                             b,
                             UnitType::LaserMarksman,
-                            x + 5.0,
-                            y + 50.0,
+                            x + pad,
+                            y + pad + row_step,
                             3,
+                            btn_w,
+                            btn_h,
                         ))
                     } else {
                         None
@@ -333,9 +382,11 @@ pub fn render_command_card(engine: &GameEngine, ctx: &CanvasRenderingContext2d, 
                             engine,
                             b,
                             UnitType::DarkRocketeer,
-                            x + 72.0,
-                            y + 50.0,
+                            x + pad + col_step,
+                            y + pad + row_step,
                             4,
+                            btn_w,
+                            btn_h,
                         ))
                     } else {
                         None
@@ -347,9 +398,11 @@ pub fn render_command_card(engine: &GameEngine, ctx: &CanvasRenderingContext2d, 
                             engine,
                             b,
                             UnitType::TaoistSwordmaster,
-                            x + 139.0,
-                            y + 50.0,
+                            x + pad + 2.0 * col_step,
+                            y + pad + row_step,
                             5,
+                            btn_w,
+                            btn_h,
                         ))
                     } else {
                         None
@@ -361,9 +414,11 @@ pub fn render_command_card(engine: &GameEngine, ctx: &CanvasRenderingContext2d, 
                             engine,
                             b,
                             UnitType::VoidWarlock,
-                            x + 5.0,
-                            y + 94.0,
+                            x + pad,
+                            y + pad + 2.0 * row_step,
                             6,
+                            btn_w,
+                            btn_h,
                         ))
                     } else {
                         None
@@ -375,9 +430,11 @@ pub fn render_command_card(engine: &GameEngine, ctx: &CanvasRenderingContext2d, 
                             engine,
                             b,
                             UnitType::BehemothTitan,
-                            x + 72.0,
-                            y + 94.0,
+                            x + pad + col_step,
+                            y + pad + 2.0 * row_step,
                             7,
+                            btn_w,
+                            btn_h,
                         ))
                     } else {
                         None
@@ -389,9 +446,11 @@ pub fn render_command_card(engine: &GameEngine, ctx: &CanvasRenderingContext2d, 
                             engine,
                             b,
                             UnitType::AcidBaneling,
-                            x + 139.0,
-                            y + 94.0,
+                            x + pad + 2.0 * col_step,
+                            y + pad + 2.0 * row_step,
                             8,
+                            btn_w,
+                            btn_h,
                         ))
                     } else {
                         None
@@ -477,6 +536,8 @@ fn draw_barracks_slot(
     slot_x: f64,
     slot_y: f64,
     btn_idx: usize,
+    btn_w: f64,
+    btn_h: f64,
 ) -> (usize, bool, f32) {
     let count = b.training_queue.iter().filter(|&&t| t == u_type).count();
     let is_training = b.training_queue.first() == Some(&u_type);
@@ -506,8 +567,8 @@ fn draw_barracks_slot(
         ctx,
         slot_x,
         slot_y,
-        62.0,
-        40.0,
+        btn_w,
+        btn_h,
         label,
         &cost_lbl,
         count,
@@ -532,59 +593,59 @@ fn draw_formation_mini_icon(
 
     let draw_dot = |x: f64, y: f64| {
         ctx.begin_path();
-        let _ = ctx.arc(x, y, 1.8, 0.0, std::f64::consts::PI * 2.0);
+        let _ = ctx.arc(x, y, 2.2, 0.0, std::f64::consts::PI * 2.0);
         ctx.fill();
     };
 
     match form {
         FormationType::Line => {
             // 2 hàng ngang
-            draw_dot(cx - 10.0, cy - 3.0);
-            draw_dot(cx, cy - 3.0);
-            draw_dot(cx + 10.0, cy - 3.0);
-            draw_dot(cx - 6.0, cy + 4.0);
-            draw_dot(cx + 6.0, cy + 4.0);
+            draw_dot(cx - 12.0, cy - 4.0);
+            draw_dot(cx, cy - 4.0);
+            draw_dot(cx + 12.0, cy - 4.0);
+            draw_dot(cx - 7.0, cy + 5.0);
+            draw_dot(cx + 7.0, cy + 5.0);
         }
         FormationType::Wedge => {
             // Mũi tên chữ V
-            draw_dot(cx, cy - 5.0);
-            draw_dot(cx - 6.0, cy);
-            draw_dot(cx + 6.0, cy);
-            draw_dot(cx - 12.0, cy + 5.0);
-            draw_dot(cx + 12.0, cy + 5.0);
+            draw_dot(cx, cy - 6.0);
+            draw_dot(cx - 7.0, cy);
+            draw_dot(cx + 7.0, cy);
+            draw_dot(cx - 14.0, cy + 6.0);
+            draw_dot(cx + 14.0, cy + 6.0);
         }
         FormationType::Box => {
             // Ô vuông viền
-            draw_dot(cx - 8.0, cy - 5.0);
-            draw_dot(cx + 8.0, cy - 5.0);
-            draw_dot(cx - 8.0, cy + 5.0);
-            draw_dot(cx + 8.0, cy + 5.0);
+            draw_dot(cx - 10.0, cy - 6.0);
+            draw_dot(cx + 10.0, cy - 6.0);
+            draw_dot(cx - 10.0, cy + 6.0);
+            draw_dot(cx + 10.0, cy + 6.0);
             draw_dot(cx, cy); // Lõi
         }
         FormationType::Scatter => {
             // So le tản rộng
-            draw_dot(cx - 10.0, cy - 5.0);
-            draw_dot(cx + 4.0, cy - 5.0);
-            draw_dot(cx - 3.0, cy);
-            draw_dot(cx + 10.0, cy + 4.0);
-            draw_dot(cx - 9.0, cy + 5.0);
+            draw_dot(cx - 12.0, cy - 6.0);
+            draw_dot(cx + 5.0, cy - 6.0);
+            draw_dot(cx - 4.0, cy);
+            draw_dot(cx + 12.0, cy + 5.0);
+            draw_dot(cx - 11.0, cy + 6.0);
         }
         FormationType::Circle => {
             // Cung bán nguyệt
-            draw_dot(cx - 11.0, cy + 4.0);
-            draw_dot(cx - 6.0, cy - 2.0);
-            draw_dot(cx, cy - 5.0);
-            draw_dot(cx + 6.0, cy - 2.0);
-            draw_dot(cx + 11.0, cy + 4.0);
+            draw_dot(cx - 13.0, cy + 5.0);
+            draw_dot(cx - 7.0, cy - 2.0);
+            draw_dot(cx, cy - 6.0);
+            draw_dot(cx + 7.0, cy - 2.0);
+            draw_dot(cx + 13.0, cy + 5.0);
         }
         FormationType::Column => {
             // 2 hàng dọc
-            draw_dot(cx - 4.0, cy - 5.0);
-            draw_dot(cx + 4.0, cy - 5.0);
-            draw_dot(cx - 4.0, cy);
-            draw_dot(cx + 4.0, cy);
-            draw_dot(cx - 4.0, cy + 5.0);
-            draw_dot(cx + 4.0, cy + 5.0);
+            draw_dot(cx - 5.0, cy - 6.0);
+            draw_dot(cx + 5.0, cy - 6.0);
+            draw_dot(cx - 5.0, cy);
+            draw_dot(cx + 5.0, cy);
+            draw_dot(cx - 5.0, cy + 6.0);
+            draw_dot(cx + 5.0, cy + 6.0);
         }
     }
 }
@@ -604,13 +665,13 @@ fn draw_hud_button(
     ctx.set_line_width(1.0);
     ctx.stroke_rect(x, y, w, h);
 
-    ctx.set_font("bold 10px monospace");
+    ctx.set_font("bold 12px monospace");
     ctx.set_fill_style_str("#e2e8f0");
-    let _ = ctx.fill_text(label, x + 4.0, y + 20.0);
+    let _ = ctx.fill_text(label, x + 6.0, y + 22.0);
 
-    ctx.set_font("9px monospace");
+    ctx.set_font("11px monospace");
     ctx.set_fill_style_str("#38bdf8");
-    let _ = ctx.fill_text(cost, x + 4.0, y + 38.0);
+    let _ = ctx.fill_text(cost, x + 6.0, y + 42.0);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -658,7 +719,7 @@ fn draw_unit_purchase_button(
     ctx.stroke_rect(x, y, w, h);
 
     // 3. Tên đơn vị
-    ctx.set_font("bold 10px monospace");
+    ctx.set_font("bold 12px monospace");
     let label_color = if is_actively_training {
         "#00e5ff"
     } else if can_afford {
@@ -667,20 +728,20 @@ fn draw_unit_purchase_button(
         "#94a3b8"
     };
     ctx.set_fill_style_str(label_color);
-    let _ = ctx.fill_text(label, x + 4.0, y + 16.0);
+    let _ = ctx.fill_text(label, x + 6.0, y + 18.0);
 
     // 4. Giá tài nguyên
-    ctx.set_font("9px monospace");
+    ctx.set_font("11px monospace");
     let cost_color = if can_afford { "#38bdf8" } else { "#f87171" };
     ctx.set_fill_style_str(cost_color);
-    let _ = ctx.fill_text(cost, x + 4.0, y + 27.0);
+    let _ = ctx.fill_text(cost, x + 6.0, y + 32.0);
 
     // 5. Huy hiệu số lượng đang chờ (Queue Badge góc trên phải)
     if queue_count > 0 {
-        let badge_w = 18.0;
-        let badge_h = 13.0;
-        let bx = x + w - badge_w - 2.0;
-        let by = y + 2.0;
+        let badge_w = 20.0;
+        let badge_h = 14.0;
+        let bx = x + w - badge_w - 3.0;
+        let by = y + 3.0;
 
         let badge_bg = if is_actively_training {
             "#0284c7"
@@ -693,17 +754,17 @@ fn draw_unit_purchase_button(
         ctx.set_line_width(0.8);
         ctx.stroke_rect(bx, by, badge_w, badge_h);
 
-        ctx.set_font("bold 9px monospace");
+        ctx.set_font("bold 10px monospace");
         ctx.set_fill_style_str("#ffffff");
         let count_str = format!("x{}", queue_count);
-        let _ = ctx.fill_text(&count_str, bx + 2.0, by + 10.0);
+        let _ = ctx.fill_text(&count_str, bx + 3.0, by + 11.0);
     }
 
     // 6. Thanh tiến độ tạo đơn vị ở đáy nút
-    let pb_x = x + 3.0;
-    let pb_y = y + 32.0;
-    let pb_w = w - 6.0;
-    let pb_h = 14.0;
+    let pb_x = x + 4.0;
+    let pb_y = y + 36.0;
+    let pb_w = w - 8.0;
+    let pb_h = 13.0;
 
     if is_actively_training {
         // Khung nền thanh tiến độ
@@ -720,10 +781,10 @@ fn draw_unit_purchase_button(
         ctx.fill_rect(pb_x, pb_y, fill_w, pb_h);
 
         // Chữ phần trăm %
-        ctx.set_font("bold 9px monospace");
+        ctx.set_font("bold 10px monospace");
         ctx.set_fill_style_str("#ffffff");
         let pct_str = format!("{:.0}%", prog_norm * 100.0);
-        let _ = ctx.fill_text(&pct_str, pb_x + 13.0, pb_y + 10.5);
+        let _ = ctx.fill_text(&pct_str, pb_x + 18.0, pb_y + 10.0);
     } else if queue_count > 0 {
         // Đang chờ trong hàng đợi sau đơn vị khác
         ctx.set_fill_style_str("#051322");
@@ -732,8 +793,8 @@ fn draw_unit_purchase_button(
         ctx.set_line_width(0.8);
         ctx.stroke_rect(pb_x, pb_y, pb_w, pb_h);
 
-        ctx.set_font("bold 8px monospace");
+        ctx.set_font("bold 9px monospace");
         ctx.set_fill_style_str("#94a3b8");
-        let _ = ctx.fill_text("QUEUED", pb_x + 9.0, pb_y + 10.5);
+        let _ = ctx.fill_text("QUEUED", pb_x + 14.0, pb_y + 10.0);
     }
 }

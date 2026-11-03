@@ -645,6 +645,31 @@ impl GameEngine {
         self.buildings.iter_mut().find(|b| b.id == id)
     }
 
+    #[inline]
+    pub fn has_selection_info_content(&self) -> bool {
+        !self.selected_unit_ids.is_empty() || self.selected_building_id.is_some()
+    }
+
+    #[inline]
+    pub fn has_command_card_content(&self) -> bool {
+        let has_player_units = self
+            .selected_unit_ids
+            .iter()
+            .any(|uid| self.get_unit_by_id(*uid).map(|u| u.team == Team::Player).unwrap_or(false));
+        if has_player_units {
+            return true;
+        }
+        if let Some(bid) = self.selected_building_id {
+            if let Some(b) = self.get_building_by_id(bid).filter(|b| b.team == Team::Player) {
+                return matches!(
+                    b.building_type,
+                    BuildingType::CommandCenter | BuildingType::Barracks
+                );
+            }
+        }
+        false
+    }
+
     /// Dọn sạch toàn bộ thực thể và tài nguyên của màn chơi cũ, chuẩn bị cho màn chơi mới
     pub fn reset_game(&mut self) {
         // 1. Khởi tạo lại tài nguyên khoáng sản & chướng ngại vật mới tinh

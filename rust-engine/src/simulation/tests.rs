@@ -845,3 +845,50 @@ fn test_high_load_8_teams_simulation_performance() {
         threshold_ms
     );
 }
+
+#[test]
+fn test_hud_canvas_content_visibility() {
+    let mut engine = GameEngine::new_headless();
+    let cfg = GameConfig::default();
+
+    // 1. Khi chưa chọn gì -> Cả hai canvas đều ẩn
+    assert!(!engine.has_selection_info_content());
+    assert!(!engine.has_command_card_content());
+
+    // 2. Chọn lính Player -> Cả hai canvas đều hiện
+    let player_unit_id = engine.units.iter().find(|u| u.team == Team::Player).unwrap().id;
+    engine.selected_unit_ids = vec![player_unit_id];
+    assert!(engine.has_selection_info_content());
+    assert!(engine.has_command_card_content());
+
+    // 3. Chọn lính Địch -> Selection Info hiện, Command Card ẩn
+    let enemy_unit_id = engine.units.iter().find(|u| u.team == Team::Enemy).unwrap().id;
+    engine.selected_unit_ids = vec![enemy_unit_id];
+    assert!(engine.has_selection_info_content());
+    assert!(!engine.has_command_card_content());
+
+    // 4. Chọn nhà chính Player (CommandCenter) -> Cả hai canvas đều hiện
+    engine.selected_unit_ids.clear();
+    let player_cc_id = engine
+        .buildings
+        .iter()
+        .find(|b| b.team == Team::Player && b.building_type == BuildingType::CommandCenter)
+        .unwrap()
+        .id;
+    engine.selected_building_id = Some(player_cc_id);
+    assert!(engine.has_selection_info_content());
+    assert!(engine.has_command_card_content());
+
+    // 5. Chọn Trụ thủ Player (TurretTower) -> Selection Info hiện, Command Card ẩn
+    let turret_id = engine.alloc_id();
+    let b_turret = cfg.create_building(turret_id, Team::Player, BuildingType::TurretTower, 400.0, 400.0, true);
+    engine.buildings.push(b_turret);
+    engine.selected_building_id = Some(turret_id);
+    assert!(engine.has_selection_info_content());
+    assert!(!engine.has_command_card_content());
+
+    // 6. Xóa chọn -> Cả hai canvas lại ẩn
+    engine.selected_building_id = None;
+    assert!(!engine.has_selection_info_content());
+    assert!(!engine.has_command_card_content());
+}

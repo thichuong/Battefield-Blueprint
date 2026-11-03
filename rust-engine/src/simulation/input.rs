@@ -1,5 +1,9 @@
 use crate::bridge::EngineToReactEvent;
 use crate::components::*;
+use crate::config::{
+    COMMAND_CARD_BTN_HEIGHT, COMMAND_CARD_BTN_WIDTH, COMMAND_CARD_GAP, COMMAND_CARD_HEIGHT,
+    COMMAND_CARD_PADDING, COMMAND_CARD_WIDTH, HUD_MARGIN, MINIMAP_SIZE,
+};
 use crate::map::{MAP_HEIGHT, MAP_WIDTH};
 use crate::simulation::commands::set_player_formation_and_reform;
 use crate::simulation::economy::send_sync_event;
@@ -9,11 +13,16 @@ use crate::GameEngine;
 pub fn handle_mouse_down(engine: &mut GameEngine, button: i32, cx: f32, cy: f32) {
     let vh = engine.camera.viewport_h;
 
+    let mm_min_x = HUD_MARGIN;
+    let mm_max_x = HUD_MARGIN + MINIMAP_SIZE;
+    let mm_min_y = vh - (HUD_MARGIN + MINIMAP_SIZE);
+    let mm_max_y = vh - HUD_MARGIN;
+
     // Kiểm tra bấm vào Minimap để kéo thả camera
-    if (10.0..=170.0).contains(&cx) && (vh - 170.0..=vh - 10.0).contains(&cy) {
+    if (mm_min_x..=mm_max_x).contains(&cx) && (mm_min_y..=mm_max_y).contains(&cy) {
         engine.is_minimap_dragging = true;
-        let norm_x = ((cx - 10.0) / 160.0).clamp(0.0, 1.0);
-        let norm_y = ((cy - (vh - 170.0)) / 160.0).clamp(0.0, 1.0);
+        let norm_x = ((cx - mm_min_x) / MINIMAP_SIZE).clamp(0.0, 1.0);
+        let norm_y = ((cy - mm_min_y) / MINIMAP_SIZE).clamp(0.0, 1.0);
         engine.camera.x = norm_x * MAP_WIDTH;
         engine.camera.y = norm_y * MAP_HEIGHT;
         return;
@@ -98,9 +107,19 @@ pub fn handle_mouse_down(engine: &mut GameEngine, button: i32, cx: f32, cy: f32)
         let vw = engine.camera.viewport_w;
         let vh = engine.camera.viewport_h;
 
-        // Bấm chuột phải trên Command Card để hủy bớt lính trong hàng đợi và hoàn tiền
-        if cx >= vw - 220.0 && cx <= vw - 10.0 && cy >= vh - 140.0 && cy <= vh - 10.0 {
-            handle_command_card_right_click(engine, cx - (vw - 220.0), cy - (vh - 140.0));
+        let cc_min_x = vw - (HUD_MARGIN + COMMAND_CARD_WIDTH);
+        let cc_max_x = vw - HUD_MARGIN;
+        let cc_min_y = vh - (HUD_MARGIN + COMMAND_CARD_HEIGHT);
+        let cc_max_y = vh - HUD_MARGIN;
+
+        // Bấm chuột phải trên Command Card để hủy bớt lính trong hàng đợi và hoàn tiền (nếu đang hiển thị)
+        if engine.has_command_card_content()
+            && cx >= cc_min_x
+            && cx <= cc_max_x
+            && cy >= cc_min_y
+            && cy <= cc_max_y
+        {
+            handle_command_card_right_click(engine, cx - cc_min_x, cy - cc_min_y);
             return;
         }
 
@@ -166,9 +185,12 @@ pub fn handle_mouse_move(engine: &mut GameEngine, cx: f32, cy: f32) {
     let vh = engine.camera.viewport_h;
     let vw = engine.camera.viewport_w;
 
+    let mm_min_x = HUD_MARGIN;
+    let mm_min_y = vh - (HUD_MARGIN + MINIMAP_SIZE);
+
     if engine.is_minimap_dragging {
-        let norm_x = ((cx - 10.0) / 160.0).clamp(0.0, 1.0);
-        let norm_y = ((cy - (vh - 170.0)) / 160.0).clamp(0.0, 1.0);
+        let norm_x = ((cx - mm_min_x) / MINIMAP_SIZE).clamp(0.0, 1.0);
+        let norm_y = ((cy - mm_min_y) / MINIMAP_SIZE).clamp(0.0, 1.0);
         engine.camera.x = norm_x * MAP_WIDTH;
         engine.camera.y = norm_y * MAP_HEIGHT;
         return;
@@ -179,12 +201,24 @@ pub fn handle_mouse_move(engine: &mut GameEngine, cx: f32, cy: f32) {
         engine.selection_box = Some((sx1, sy1, cx, cy));
     }
 
-    // Hover trên Command Card
-    if cx >= vw - 225.0 && cx <= vw - 10.0 && cy >= vh - 150.0 && cy <= vh - 10.0 {
-        let rel_x = cx - (vw - 225.0);
-        let rel_y = cy - (vh - 150.0);
-        let col = ((rel_x - 5.0).max(0.0) / 67.0).min(2.0) as usize;
-        let row = ((rel_y - 6.0).max(0.0) / 44.0).min(2.0) as usize;
+    let cc_min_x = vw - (HUD_MARGIN + COMMAND_CARD_WIDTH);
+    let cc_max_x = vw - HUD_MARGIN;
+    let cc_min_y = vh - (HUD_MARGIN + COMMAND_CARD_HEIGHT);
+    let cc_max_y = vh - HUD_MARGIN;
+
+    // Hover trên Command Card (chỉ khi đang hiển thị)
+    if engine.has_command_card_content()
+        && cx >= cc_min_x
+        && cx <= cc_max_x
+        && cy >= cc_min_y
+        && cy <= cc_max_y
+    {
+        let rel_x = cx - cc_min_x;
+        let rel_y = cy - cc_min_y;
+        let col_step = COMMAND_CARD_BTN_WIDTH + COMMAND_CARD_GAP;
+        let row_step = COMMAND_CARD_BTN_HEIGHT + COMMAND_CARD_GAP;
+        let col = ((rel_x - COMMAND_CARD_PADDING).max(0.0) / col_step).min(2.0) as usize;
+        let row = ((rel_y - COMMAND_CARD_PADDING).max(0.0) / row_step).min(2.0) as usize;
         engine.hovered_command_button = Some(row * 3 + col);
     } else {
         engine.hovered_command_button = None;

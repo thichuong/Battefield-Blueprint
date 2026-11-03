@@ -320,6 +320,13 @@ pub fn update_buildings(engine: &mut GameEngine, dt: f32) {
 
     // Xóa nhà sập
     engine.buildings.retain(|b| b.hp > 0.0);
+    if let Some(bid) = engine.selected_building_id {
+        if !engine.buildings.iter().any(|b| b.id == bid) {
+            engine.selected_building_id = None;
+            engine.selection_dirty = true;
+            engine.command_card_dirty = true;
+        }
+    }
 }
 
 pub fn process_building_combat(

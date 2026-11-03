@@ -198,6 +198,14 @@ function loadStoredSettings(): StoredSettings {
   return defaults;
 }
 
+export const HUD_SIZES = {
+  MINIMAP: 220,
+  SELECTION_W: 480,
+  SELECTION_H: 180,
+  COMMAND_CARD_W: 285,
+  COMMAND_CARD_H: 180,
+};
+
 export const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const topBarCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -259,24 +267,24 @@ export const App: React.FC = () => {
         }
 
         if (minimapCanvasRef.current) {
-          minimapCanvasRef.current.width = Math.round(160 * dpr);
-          minimapCanvasRef.current.height = Math.round(160 * dpr);
-          minimapCanvasRef.current.style.width = '160px';
-          minimapCanvasRef.current.style.height = '160px';
+          minimapCanvasRef.current.width = Math.round(HUD_SIZES.MINIMAP * dpr);
+          minimapCanvasRef.current.height = Math.round(HUD_SIZES.MINIMAP * dpr);
+          minimapCanvasRef.current.style.width = `${HUD_SIZES.MINIMAP}px`;
+          minimapCanvasRef.current.style.height = `${HUD_SIZES.MINIMAP}px`;
         }
 
         if (selectionCanvasRef.current) {
-          selectionCanvasRef.current.width = Math.round(360 * dpr);
-          selectionCanvasRef.current.height = Math.round(140 * dpr);
-          selectionCanvasRef.current.style.width = '360px';
-          selectionCanvasRef.current.style.height = '140px';
+          selectionCanvasRef.current.width = Math.round(HUD_SIZES.SELECTION_W * dpr);
+          selectionCanvasRef.current.height = Math.round(HUD_SIZES.SELECTION_H * dpr);
+          selectionCanvasRef.current.style.width = `${HUD_SIZES.SELECTION_W}px`;
+          selectionCanvasRef.current.style.height = `${HUD_SIZES.SELECTION_H}px`;
         }
 
         if (commandCardCanvasRef.current) {
-          commandCardCanvasRef.current.width = Math.round(215 * dpr);
-          commandCardCanvasRef.current.height = Math.round(140 * dpr);
-          commandCardCanvasRef.current.style.width = '215px';
-          commandCardCanvasRef.current.style.height = '140px';
+          commandCardCanvasRef.current.width = Math.round(HUD_SIZES.COMMAND_CARD_W * dpr);
+          commandCardCanvasRef.current.height = Math.round(HUD_SIZES.COMMAND_CARD_H * dpr);
+          commandCardCanvasRef.current.style.width = `${HUD_SIZES.COMMAND_CARD_W}px`;
+          commandCardCanvasRef.current.style.height = `${HUD_SIZES.COMMAND_CARD_H}px`;
         }
 
         if (overlayCanvasRef.current) {
@@ -608,22 +616,22 @@ export const App: React.FC = () => {
         className="absolute top-0 left-0 w-full h-[48px] pointer-events-none block z-10"
       />
 
-      {/* 2. Minimap Canvas: 160 x 160px cố định góc dưới trái */}
+      {/* 2. Minimap Canvas: 220 x 220px cố định góc dưới trái */}
       <canvas
         ref={minimapCanvasRef}
-        className="absolute bottom-[10px] left-[10px] w-[160px] h-[160px] pointer-events-none block z-10"
+        className="absolute bottom-[10px] left-[10px] w-[220px] h-[220px] pointer-events-none block z-10"
       />
 
-      {/* 3. Selection Info Panel Canvas: 360 x 140px đáy giữa màn hình */}
+      {/* 3. Selection Info Panel Canvas: 480 x 180px đáy giữa màn hình */}
       <canvas
         ref={selectionCanvasRef}
-        className="absolute bottom-[10px] left-1/2 -translate-x-1/2 w-[360px] h-[140px] pointer-events-none block z-10"
+        className="absolute bottom-[10px] left-1/2 -translate-x-1/2 w-[480px] h-[180px] pointer-events-none block z-10"
       />
 
-      {/* 4. Command Card Canvas: 215 x 140px đáy góc phải màn hình */}
+      {/* 4. Command Card Canvas: 285 x 180px đáy góc phải màn hình */}
       <canvas
         ref={commandCardCanvasRef}
-        className="absolute bottom-[10px] right-[10px] w-[215px] h-[140px] pointer-events-none block z-10"
+        className="absolute bottom-[10px] right-[10px] w-[285px] h-[180px] pointer-events-none block z-10"
       />
 
       {/* 5. Dynamic Overlay Canvas: Box select, Attack-move cursor, Floating texts */}

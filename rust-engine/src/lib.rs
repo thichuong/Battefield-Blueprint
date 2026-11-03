@@ -19,6 +19,10 @@ pub mod simulation;
 pub mod spatial_grid;
 
 use bridge::*;
+use config::{
+    COMMAND_CARD_HEIGHT, COMMAND_CARD_WIDTH, MINIMAP_SIZE, SELECTION_PANEL_HEIGHT,
+    SELECTION_PANEL_WIDTH,
+};
 pub use engine::GameEngine;
 
 thread_local! {
@@ -360,16 +364,16 @@ pub fn resize_canvas(width: f32, height: f32, dpr: Option<f32>) {
                 c.set_height((48.0 * dpr_val) as u32);
             }
             if let Some(ref c) = engine.minimap_canvas {
-                c.set_width((160.0 * dpr_val) as u32);
-                c.set_height((160.0 * dpr_val) as u32);
+                c.set_width((MINIMAP_SIZE * dpr_val) as u32);
+                c.set_height((MINIMAP_SIZE * dpr_val) as u32);
             }
             if let Some(ref c) = engine.selection_canvas {
-                c.set_width((360.0 * dpr_val) as u32);
-                c.set_height((140.0 * dpr_val) as u32);
+                c.set_width((SELECTION_PANEL_WIDTH * dpr_val) as u32);
+                c.set_height((SELECTION_PANEL_HEIGHT * dpr_val) as u32);
             }
             if let Some(ref c) = engine.command_card_canvas {
-                c.set_width((215.0 * dpr_val) as u32);
-                c.set_height((140.0 * dpr_val) as u32);
+                c.set_width((COMMAND_CARD_WIDTH * dpr_val) as u32);
+                c.set_height((COMMAND_CARD_HEIGHT * dpr_val) as u32);
             }
             if let Some(ref c) = engine.overlay_canvas {
                 c.set_width(pixel_w);

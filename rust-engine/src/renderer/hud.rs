@@ -1,4 +1,8 @@
 use crate::components::{BuildingType, HarvestPhase, Team, UnitOrder, UnitType};
+use crate::config::{
+    COMMAND_CARD_HEIGHT, COMMAND_CARD_WIDTH, MINIMAP_SIZE, SELECTION_PANEL_HEIGHT,
+    SELECTION_PANEL_WIDTH,
+};
 use crate::map::{MAP_HEIGHT, MAP_WIDTH};
 use crate::renderer::command_card::render_command_card;
 use crate::renderer::effects::{render_attack_move_cursor_ctx, render_floating_texts_ctx};
@@ -156,7 +160,7 @@ pub fn render_top_bar_hud(engine: &GameEngine, ctx: &CanvasRenderingContext2d) {
 pub fn render_minimap_hud(engine: &GameEngine, ctx: &CanvasRenderingContext2d) {
     let dpr = engine.camera.dpr.max(0.5) as f64;
     let _ = ctx.set_transform(dpr, 0.0, 0.0, dpr, 0.0, 0.0);
-    let mm_s = 160.0;
+    let mm_s = MINIMAP_SIZE as f64;
     ctx.clear_rect(0.0, 0.0, mm_s, mm_s);
 
     // Nền Minimap
@@ -190,12 +194,12 @@ pub fn render_minimap_hud(engine: &GameEngine, ctx: &CanvasRenderingContext2d) {
         // Điểm A (Cyan) & Điểm B (Purple)
         ctx.set_fill_style_str("#06b6d4");
         ctx.begin_path();
-        let _ = ctx.arc(p1x, p1y, 2.5, 0.0, std::f64::consts::PI * 2.0);
+        let _ = ctx.arc(p1x, p1y, 3.0, 0.0, std::f64::consts::PI * 2.0);
         ctx.fill();
 
         ctx.set_fill_style_str("#a855f7");
         ctx.begin_path();
-        let _ = ctx.arc(p2x, p2y, 2.5, 0.0, std::f64::consts::PI * 2.0);
+        let _ = ctx.arc(p2x, p2y, 3.0, 0.0, std::f64::consts::PI * 2.0);
         ctx.fill();
     }
 
@@ -205,7 +209,7 @@ pub fn render_minimap_hud(engine: &GameEngine, ctx: &CanvasRenderingContext2d) {
         if engine.fog.is_explored(m.x, m.y) {
             let mx = (m.x / MAP_WIDTH) as f64 * mm_s;
             let my = (m.y / MAP_HEIGHT) as f64 * mm_s;
-            ctx.fill_rect(mx - 1.5, my - 1.5, 3.0, 3.0);
+            ctx.fill_rect(mx - 2.0, my - 2.0, 4.0, 4.0);
         }
     }
 
@@ -225,7 +229,7 @@ pub fn render_minimap_hud(engine: &GameEngine, ctx: &CanvasRenderingContext2d) {
                 }
                 let mx = (b.x / MAP_WIDTH) as f64 * mm_s;
                 let my = (b.y / MAP_HEIGHT) as f64 * mm_s;
-                ctx.fill_rect(mx - 2.5, my - 2.5, 5.0, 5.0);
+                ctx.fill_rect(mx - 3.0, my - 3.0, 6.0, 6.0);
             }
         }
     }
@@ -257,7 +261,7 @@ pub fn render_minimap_hud(engine: &GameEngine, ctx: &CanvasRenderingContext2d) {
                 }
                 let mx = (u.x / MAP_WIDTH) as f64 * mm_s;
                 let my = (u.y / MAP_HEIGHT) as f64 * mm_s;
-                ctx.fill_rect(mx - 1.5, my - 1.5, 3.0, 3.0);
+                ctx.fill_rect(mx - 2.0, my - 2.0, 4.0, 4.0);
             }
         }
     }
@@ -281,16 +285,27 @@ pub fn render_minimap_hud(engine: &GameEngine, ctx: &CanvasRenderingContext2d) {
 pub fn render_selection_panel_hud(engine: &GameEngine, ctx: &CanvasRenderingContext2d) {
     let dpr = engine.camera.dpr.max(0.5) as f64;
     let _ = ctx.set_transform(dpr, 0.0, 0.0, dpr, 0.0, 0.0);
-    let w = 360.0;
-    let h = 140.0;
+    let w = SELECTION_PANEL_WIDTH as f64;
+    let h = SELECTION_PANEL_HEIGHT as f64;
     ctx.clear_rect(0.0, 0.0, w, h);
+    if !engine.has_selection_info_content() {
+        return;
+    }
     render_selection_info_panel(engine, ctx, 0.0, 0.0, w, h);
 }
 
 pub fn render_command_card_hud(engine: &GameEngine, ctx: &CanvasRenderingContext2d) {
     let dpr = engine.camera.dpr.max(0.5) as f64;
     let _ = ctx.set_transform(dpr, 0.0, 0.0, dpr, 0.0, 0.0);
-    ctx.clear_rect(0.0, 0.0, 215.0, 140.0);
+    ctx.clear_rect(
+        0.0,
+        0.0,
+        COMMAND_CARD_WIDTH as f64,
+        COMMAND_CARD_HEIGHT as f64,
+    );
+    if !engine.has_command_card_content() {
+        return;
+    }
     render_command_card(engine, ctx, 0.0, 0.0);
 }
 
@@ -334,6 +349,10 @@ pub fn render_selection_info_panel(
     w: f64,
     h: f64,
 ) {
+    if !engine.has_selection_info_content() {
+        return;
+    }
+
     ctx.set_fill_style_str("rgba(3, 13, 26, 0.94)");
     ctx.fill_rect(x, y, w, h);
     ctx.set_stroke_style_str("#0284c7");
@@ -348,33 +367,33 @@ pub fn render_selection_info_panel(
             } else {
                 "#f43f5e"
             };
-            ctx.set_font("bold 13px monospace");
+            ctx.set_font("bold 14px monospace");
             ctx.set_fill_style_str(color);
             let title = engine.config.get_building_name(b.building_type);
-            let _ = ctx.fill_text(title, x + 15.0, y + 22.0);
+            let _ = ctx.fill_text(title, x + 16.0, y + 25.0);
 
             // Thanh máu chi tiết
             let hp_pct = (b.hp / b.max_hp).clamp(0.0, 1.0) as f64;
             ctx.set_fill_style_str("#1e293b");
-            ctx.fill_rect(x + 15.0, y + 30.0, w - 30.0, 10.0);
+            ctx.fill_rect(x + 16.0, y + 35.0, w - 32.0, 14.0);
             let hp_color = if hp_pct > 0.4 {
                 &engine.config.render.hp_high_color
             } else {
                 &engine.config.render.hp_low_color
             };
             ctx.set_fill_style_str(hp_color);
-            ctx.fill_rect(x + 15.0, y + 30.0, (w - 30.0) * hp_pct, 10.0);
+            ctx.fill_rect(x + 16.0, y + 35.0, (w - 32.0) * hp_pct, 14.0);
 
-            ctx.set_font("bold 10px monospace");
+            ctx.set_font("bold 11px monospace");
             ctx.set_fill_style_str("#ffffff");
             let _ = ctx.fill_text(
                 &format!("{:.0} / {:.0} HP", b.hp, b.max_hp),
-                x + 20.0,
-                y + 39.0,
+                x + 22.0,
+                y + 46.0,
             );
 
             // Chỉ số kháng công trình
-            ctx.set_font("10px monospace");
+            ctx.set_font("11px monospace");
             ctx.set_fill_style_str("#38bdf8");
             let _ = ctx.fill_text(
                 &format!(
@@ -384,8 +403,8 @@ pub fn render_selection_info_panel(
                     b.resistances.explosive * 100.0,
                     b.resistances.arcane * 100.0
                 ),
-                x + 15.0,
-                y + 58.0,
+                x + 16.0,
+                y + 68.0,
             );
 
             let b_cfg = engine.config.get_building(b.building_type);
@@ -395,7 +414,7 @@ pub fn render_selection_info_panel(
 
             // Trạng thái công trình đặc thù cho Trạm Chuyển Hóa
             if b.building_type == BuildingType::EnergyConverter {
-                ctx.set_font("bold 11px monospace");
+                ctx.set_font("bold 12px monospace");
                 let cur_energy = if b.team == Team::Player {
                     engine.player_eco.energy
                 } else {
@@ -412,56 +431,56 @@ pub fn render_selection_info_panel(
                             "STATUS: CONVERTING ({:.0}⚡ ➔ {:.0}💎/s)",
                             en_rate, min_rate
                         ),
-                        x + 15.0,
-                        y + 85.0,
+                        x + 16.0,
+                        y + 98.0,
                     );
-                    ctx.set_font("10px monospace");
+                    ctx.set_font("11px monospace");
                     ctx.set_fill_style_str("#38bdf8");
                     let _ = ctx.fill_text(
                         &format!(
                             "Tự động chuyển Năng lượng dư thừa (>{:.0}⚡) thành Vàng.",
                             threshold
                         ),
-                        x + 15.0,
-                        y + 105.0,
+                        x + 16.0,
+                        y + 124.0,
                     );
                 } else {
                     ctx.set_fill_style_str("#f97316");
                     let _ = ctx.fill_text(
                         &format!("STATUS: STANDBY (Năng lượng < {:.0}⚡)", threshold),
-                        x + 15.0,
-                        y + 85.0,
+                        x + 16.0,
+                        y + 98.0,
                     );
-                    ctx.set_font("10px monospace");
+                    ctx.set_font("11px monospace");
                     ctx.set_fill_style_str("#94a3b8");
                     let _ = ctx.fill_text(
                         &format!(
                             "Cần thêm {:.0}⚡ để tự động kích hoạt.",
                             (threshold - cur_energy).max(0.0)
                         ),
-                        x + 15.0,
-                        y + 105.0,
+                        x + 16.0,
+                        y + 124.0,
                     );
                 }
             } else if !b.training_queue.is_empty() {
-                ctx.set_font("11px monospace");
+                ctx.set_font("bold 12px monospace");
                 ctx.set_fill_style_str("#facc15");
                 let cur_unit = b.training_queue[0].button_label();
                 let req_time = engine.config.get_unit_training_time(b.training_queue[0]);
                 let prog = (b.training_timer / req_time).clamp(0.0, 1.0);
                 let _ = ctx.fill_text(
                     &format!("TRAINING: {} ({:.0}%)", cur_unit, prog * 100.0),
-                    x + 15.0,
-                    y + 78.0,
+                    x + 16.0,
+                    y + 95.0,
                 );
 
                 ctx.set_fill_style_str("#334155");
-                ctx.fill_rect(x + 15.0, y + 84.0, w - 30.0, 6.0);
+                ctx.fill_rect(x + 16.0, y + 104.0, w - 32.0, 8.0);
                 ctx.set_fill_style_str("#facc15");
-                ctx.fill_rect(x + 15.0, y + 84.0, (w - 30.0) * (prog as f64), 6.0);
+                ctx.fill_rect(x + 16.0, y + 104.0, (w - 32.0) * (prog as f64), 8.0);
 
                 if is_armed {
-                    ctx.set_font("10px monospace");
+                    ctx.set_font("11px monospace");
                     ctx.set_fill_style_str("#38bdf8");
                     let _ = ctx.fill_text(
                         &format!(
@@ -470,11 +489,11 @@ pub fn render_selection_info_panel(
                             b.damage_type.display_name(),
                             b_range
                         ),
-                        x + 15.0,
-                        y + 106.0,
+                        x + 16.0,
+                        y + 130.0,
                     );
                 } else if b.training_queue.len() > 1 {
-                    ctx.set_font("10px monospace");
+                    ctx.set_font("11px monospace");
                     ctx.set_fill_style_str("#94a3b8");
                     let mut q_str = String::from("Queue: ");
                     for (i, u) in b.training_queue.iter().skip(1).enumerate() {
@@ -483,7 +502,7 @@ pub fn render_selection_info_panel(
                         }
                         q_str.push_str(u.button_label());
                     }
-                    let _ = ctx.fill_text(&q_str, x + 15.0, y + 106.0);
+                    let _ = ctx.fill_text(&q_str, x + 16.0, y + 130.0);
                 }
             } else if is_armed {
                 let b_cd = b_cfg.map(|c| c.turret_cooldown).unwrap_or(1.0).max(0.1);
@@ -498,7 +517,7 @@ pub fn render_selection_info_panel(
                 };
                 let eff_cd = if has_overload { b_cd * 0.6 } else { b_cd };
 
-                ctx.set_font("11px monospace");
+                ctx.set_font("12px monospace");
                 ctx.set_fill_style_str("#e2e8f0");
                 let _ = ctx.fill_text(
                     &format!(
@@ -508,11 +527,11 @@ pub fn render_selection_info_panel(
                         b_range,
                         eff_cd
                     ),
-                    x + 15.0,
-                    y + 78.0,
+                    x + 16.0,
+                    y + 96.0,
                 );
 
-                ctx.set_font("10px monospace");
+                ctx.set_font("11px monospace");
                 if has_dark_rockets || has_overload {
                     ctx.set_fill_style_str("#f59e0b");
                     let mut upgrades_str = String::from("UPGRADES: ");
@@ -522,23 +541,24 @@ pub fn render_selection_info_panel(
                     if has_overload {
                         upgrades_str.push_str("[OVERLOAD: +66% SPD]");
                     }
-                    let _ = ctx.fill_text(&upgrades_str, x + 15.0, y + 96.0);
+                    let _ = ctx.fill_text(&upgrades_str, x + 16.0, y + 120.0);
                 } else {
                     ctx.set_fill_style_str("#94a3b8");
-                    let _ = ctx.fill_text("STATUS: DEFENSIVE // ARMED", x + 15.0, y + 96.0);
+                    let _ = ctx.fill_text("STATUS: DEFENSIVE // ARMED", x + 16.0, y + 120.0);
                 }
-                ctx.set_font("10px monospace");
+                ctx.set_font("11px monospace");
                 ctx.set_fill_style_str("#64748b");
                 let _ = ctx.fill_text(
                     "Targeting: Automatic hostile engagement",
-                    x + 15.0,
-                    y + 112.0,
+                    x + 16.0,
+                    y + 142.0,
                 );
             } else {
-                ctx.set_font("11px monospace");
+                ctx.set_font("12px monospace");
                 ctx.set_fill_style_str("#94a3b8");
-                let _ = ctx.fill_text("STATUS: OPERATIONAL // IDLE", x + 15.0, y + 85.0);
-                let _ = ctx.fill_text("Rally Point: Set via Right-Click", x + 15.0, y + 105.0);
+                let _ = ctx.fill_text("STATUS: OPERATIONAL // IDLE", x + 16.0, y + 100.0);
+                ctx.set_font("11px monospace");
+                let _ = ctx.fill_text("Rally Point: Set via Right-Click", x + 16.0, y + 126.0);
             }
             return;
         }
@@ -548,37 +568,40 @@ pub fn render_selection_info_panel(
     if engine.selected_unit_ids.len() == 1 {
         let uid = engine.selected_unit_ids[0];
         if let Some(u) = engine.get_unit_by_id(uid) {
-            ctx.set_font("bold 13px monospace");
+            ctx.set_font("bold 14px monospace");
             ctx.set_fill_style_str(if u.team == Team::Player {
                 "#00e5ff"
             } else {
                 "#f43f5e"
             });
             let name = engine.config.get_unit_name(u.unit_type);
-            let _ = ctx.fill_text(name, x + 15.0, y + 22.0);
+            let _ = ctx.fill_text(name, x + 16.0, y + 25.0);
 
             // Thanh máu (+ Thanh khiên nếu có)
             let hp_pct = (u.hp / u.max_hp).clamp(0.0, 1.0) as f64;
+            let bar_y = if u.max_shield > 0.0 { y + 36.0 } else { y + 35.0 };
+            let bar_h = 14.0;
+
+            // Vạch khiên đè lên trên thanh trạng thái nếu có
+            if u.max_shield > 0.0 {
+                let shield_pct = (u.shield / u.max_shield).clamp(0.0, 1.0) as f64;
+                ctx.set_fill_style_str("#0284c7");
+                ctx.fill_rect(x + 16.0, y + 30.0, w - 32.0, 4.0);
+                ctx.set_fill_style_str("#38bdf8");
+                ctx.fill_rect(x + 16.0, y + 30.0, (w - 32.0) * shield_pct, 4.0);
+            }
+
             ctx.set_fill_style_str("#1e293b");
-            ctx.fill_rect(x + 15.0, y + 30.0, w - 30.0, 10.0);
+            ctx.fill_rect(x + 16.0, bar_y, w - 32.0, bar_h);
             let hp_color = if hp_pct > 0.4 {
                 &engine.config.render.hp_high_color
             } else {
                 &engine.config.render.hp_low_color
             };
             ctx.set_fill_style_str(hp_color);
-            ctx.fill_rect(x + 15.0, y + 30.0, (w - 30.0) * hp_pct, 10.0);
+            ctx.fill_rect(x + 16.0, bar_y, (w - 32.0) * hp_pct, bar_h);
 
-            // Vạch khiên đè lên thanh trạng thái nếu có
-            if u.max_shield > 0.0 {
-                let shield_pct = (u.shield / u.max_shield).clamp(0.0, 1.0) as f64;
-                ctx.set_fill_style_str("#0284c7");
-                ctx.fill_rect(x + 15.0, y + 27.0, w - 30.0, 3.0);
-                ctx.set_fill_style_str("#38bdf8");
-                ctx.fill_rect(x + 15.0, y + 27.0, (w - 30.0) * shield_pct, 3.0);
-            }
-
-            ctx.set_font("bold 10px monospace");
+            ctx.set_font("bold 11px monospace");
             ctx.set_fill_style_str("#ffffff");
             if u.max_shield > 0.0 {
                 let _ = ctx.fill_text(
@@ -586,19 +609,19 @@ pub fn render_selection_info_panel(
                         "{:.0}/{:.0} HP  [🛡️Khiên: {:.0}/{:.0}]",
                         u.hp, u.max_hp, u.shield, u.max_shield
                     ),
-                    x + 20.0,
-                    y + 39.0,
+                    x + 22.0,
+                    bar_y + 11.0,
                 );
             } else {
                 let _ = ctx.fill_text(
                     &format!("{:.0} / {:.0} HP", u.hp, u.max_hp),
-                    x + 20.0,
-                    y + 39.0,
+                    x + 22.0,
+                    bar_y + 11.0,
                 );
             }
 
             // Chỉ số chiến đấu & Loại sát thương (hiển thị đặc thù cho từng đơn vị)
-            ctx.set_font("11px monospace");
+            ctx.set_font("12px monospace");
             ctx.set_fill_style_str("#e2e8f0");
             let atk_str = if u.unit_type == UnitType::LaserMarksman {
                 let cur_dmg = 1.0 + (u.laser_stacks as f32) * 2.0;
@@ -641,10 +664,10 @@ pub fn render_selection_info_panel(
                     u.speed
                 )
             };
-            let _ = ctx.fill_text(&atk_str, x + 15.0, y + 60.0);
+            let _ = ctx.fill_text(&atk_str, x + 16.0, y + 74.0);
 
             // Chỉ số kháng
-            ctx.set_font("10px monospace");
+            ctx.set_font("11px monospace");
             ctx.set_fill_style_str("#38bdf8");
             let _ = ctx.fill_text(
                 &format!(
@@ -654,11 +677,12 @@ pub fn render_selection_info_panel(
                     u.resistances.explosive * 100.0,
                     u.resistances.arcane * 100.0
                 ),
-                x + 15.0,
-                y + 80.0,
+                x + 16.0,
+                y + 98.0,
             );
 
             // Trạng thái hành động
+            ctx.set_font("12px monospace");
             ctx.set_fill_style_str("#94a3b8");
             let status_text = match u.order {
                 UnitOrder::Idle => "Status: Standing By [IDLE]",
@@ -678,19 +702,19 @@ pub fn render_selection_info_panel(
                     }
                 }
             };
-            let _ = ctx.fill_text(status_text, x + 15.0, y + 102.0);
+            let _ = ctx.fill_text(status_text, x + 16.0, y + 125.0);
             return;
         }
     }
 
     // 3. Nếu đang chọn nhiều lính
     if engine.selected_unit_ids.len() > 1 {
-        ctx.set_font("bold 13px monospace");
+        ctx.set_font("bold 14px monospace");
         ctx.set_fill_style_str("#00e5ff");
         let _ = ctx.fill_text(
             &format!("SELECTED SQUAD ({} UNITS)", engine.selected_unit_ids.len()),
-            x + 15.0,
-            y + 25.0,
+            x + 16.0,
+            y + 28.0,
         );
 
         let mut workers = 0;
@@ -714,51 +738,34 @@ pub fn render_selection_info_panel(
             }
         }
 
-        ctx.set_font("11px monospace");
+        ctx.set_font("12px monospace");
         ctx.set_fill_style_str("#e2e8f0");
         let _ = ctx.fill_text(
             &format!("• Workers: {}  • Regular Forces: {}", workers, combat_count),
-            x + 15.0,
-            y + 55.0,
+            x + 16.0,
+            y + 62.0,
         );
         let _ = ctx.fill_text(
             &format!("• Evolution Elite Units: {}", evo_count),
-            x + 15.0,
-            y + 75.0,
+            x + 16.0,
+            y + 88.0,
         );
-        ctx.set_font("bold 11px monospace");
+        ctx.set_font("bold 12px monospace");
         ctx.set_fill_style_str("#38bdf8");
         let active_form = engine.team_formation(Team::Player);
         let _ = ctx.fill_text(
             &format!("📐 ĐỘI HÌNH: {}", active_form.display_name()),
-            x + 15.0,
-            y + 98.0,
+            x + 16.0,
+            y + 118.0,
         );
-        ctx.set_font("10px monospace");
+        ctx.set_font("11px monospace");
         ctx.set_fill_style_str("#64748b");
         let _ = ctx.fill_text(
             "Phím F / Command Card: Đổi đội hình  |  Phím A: Attack-Move",
-            x + 15.0,
-            y + 118.0,
+            x + 16.0,
+            y + 144.0,
         );
-        return;
     }
-
-    // 4. Khi chưa chọn gì
-    ctx.set_font("12px monospace");
-    ctx.set_fill_style_str("#475569");
-    let _ = ctx.fill_text("NO TARGET SELECTED", x + 15.0, y + 35.0);
-    ctx.set_font("10px monospace");
-    let _ = ctx.fill_text(
-        "Click hoặc Kéo chuột để chọn đơn vị / công trình.",
-        x + 15.0,
-        y + 60.0,
-    );
-    let _ = ctx.fill_text(
-        "Phím A: Attack-Move  |  Phím T: Cây Công Nghệ",
-        x + 15.0,
-        y + 80.0,
-    );
 }
 
 pub fn render_debug_overlay_ctx(engine: &GameEngine, ctx: &CanvasRenderingContext2d) {
