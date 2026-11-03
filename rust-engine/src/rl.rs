@@ -401,6 +401,24 @@ impl RlBrain {
         Self::default()
     }
 
+    pub fn load_from_file(path: &str) -> Option<Self> {
+        if let Ok(contents) = std::fs::read_to_string(path) {
+            if let Ok(brain) = serde_json::from_str::<Self>(&contents) {
+                return Some(brain.ensure_dimensions());
+            }
+        }
+        None
+    }
+
+    pub fn load_saved_model() -> Option<Self> {
+        for candidate in &["assets/rl_model.json", "rust-engine/assets/rl_model.json", "../assets/rl_model.json"] {
+            if let Some(brain) = Self::load_from_file(candidate) {
+                return Some(brain);
+            }
+        }
+        Self::load_default_weights()
+    }
+
     pub fn load_default_weights() -> Option<Self> {
         let model_str = include_str!("../assets/rl_model.json");
         if let Ok(brain) = serde_json::from_str::<Self>(model_str) {

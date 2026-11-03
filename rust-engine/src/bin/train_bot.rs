@@ -231,6 +231,16 @@ enum OpponentStyle {
     BotSelfPlay,
 }
 
+const ALL_AUTO_ARCHETYPES: [AutoTrainingArchetype; 7] = [
+    AutoTrainingArchetype::ScienceArtillery,
+    AutoTrainingArchetype::MagicCelestialVoid,
+    AutoTrainingArchetype::MonsterSwarmBehemoth,
+    AutoTrainingArchetype::BioBlitzRush,
+    AutoTrainingArchetype::MacroFortress,
+    AutoTrainingArchetype::CombinedTitanArtilleryMage,
+    AutoTrainingArchetype::OmniTechGrandmaster,
+];
+
 struct TrainConfig {
     episodes_per_mode: usize,
     time_scale_dt: f32,
@@ -240,21 +250,24 @@ struct TrainConfig {
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let default_threads = std::thread::available_parallelism()
+    let total_cpus = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(8);
-    let mut total_episodes = 64;
-    let mut time_scale_dt = 0.25_f32; // Tăng tốc bước nhảy mô phỏng mặc định lên 0.25s
-    let mut max_game_time = 1800.0_f32; // Tăng max game time lên 1800s (30 phút game)
+    let default_threads = (total_cpus / 4).max(1);
+    let mut total_episodes = 128;
+    let mut time_scale_dt = 0.25_f32; // Bước nhảy mô phỏng mặc định 0.25s
+    let mut max_game_time = 1800.0_f32; // Max game time 1800s (30 phút game)
     let mut num_threads = default_threads;
+    let mut resume_training = true; // Mặc định tiếp tục từ model kết quả trước đó
     let mut specific_mode: Option<String> = None;
 
     let mut i = 1;
+    let mut positional_idx = 0;
     while i < args.len() {
         match args[i].as_str() {
             "--episodes" | "-e" => {
                 if i + 1 < args.len() {
-                    total_episodes = args[i + 1].parse().unwrap_or(64);
+                    total_episodes = args[i + 1].parse().unwrap_or(128);
                     i += 1;
                 }
             }
@@ -272,9 +285,25 @@ fn main() {
             }
             "--threads" | "-t" => {
                 if i + 1 < args.len() {
-                    num_threads = args[i + 1].parse().unwrap_or(default_threads);
+                    let val = &args[i + 1];
+                    if val == "null" || val.is_empty() {
+                        num_threads = default_threads;
+                    } else {
+                        num_threads = val.parse().unwrap_or(default_threads).max(1);
+                    }
                     i += 1;
                 }
+            }
+            "--resume" | "-r" => {
+                if i + 1 < args.len() && (args[i + 1] == "true" || args[i + 1] == "false") {
+                    resume_training = args[i + 1] == "true";
+                    i += 1;
+                } else {
+                    resume_training = true;
+                }
+            }
+            "--scratch" | "--from-scratch" | "--fresh" => {
+                resume_training = false;
             }
             "--mode" | "-m" => {
                 if i + 1 < args.len() {
@@ -285,11 +314,43 @@ fn main() {
             "--sequential" | "--no-parallel" => {
                 num_threads = 1;
             }
-            _ => {
-                if let Ok(ep) = args[i].parse::<usize>() {
-                    total_episodes = ep;
+            arg if !arg.starts_with('-') => {
+                // Hỗ trợ truyền theo thứ tự tham số: [EPISODES] [DT] [MAX_TIME] [THREADS] [RESUME]
+                match positional_idx {
+                    0 => {
+                        if let Ok(ep) = arg.parse::<usize>() {
+                            total_episodes = ep;
+                        }
+                    }
+                    1 => {
+                        if let Ok(dt) = arg.parse::<f32>() {
+                            time_scale_dt = dt;
+                        }
+                    }
+                    2 => {
+                        if let Ok(mt) = arg.parse::<f32>() {
+                            max_game_time = mt;
+                        }
+                    }
+                    3 => {
+                        if arg == "null" || arg.is_empty() {
+                            num_threads = default_threads;
+                        } else if let Ok(th) = arg.parse::<usize>() {
+                            num_threads = th.max(1);
+                        }
+                    }
+                    4 => {
+                        if arg == "false" || arg == "0" || arg == "scratch" || arg == "no" {
+                            resume_training = false;
+                        } else {
+                            resume_training = true;
+                        }
+                    }
+                    _ => {}
                 }
+                positional_idx += 1;
             }
+            _ => {}
         }
         i += 1;
     }
@@ -351,8 +412,8 @@ fn main() {
     );
     println!("   Episodes per Mode:  {}", total_episodes);
     println!(
-        "   CPU Multi-threading:{} parallel worker threads",
-        num_threads
+        "   CPU Multi-threading:{} parallel worker threads (Cores / 4 = {})",
+        num_threads, default_threads
     );
     println!(
         "   Fast-Forward dt:    {:.3}s/step (High-Speed Tick)",
@@ -361,6 +422,17 @@ fn main() {
     println!(
         "   Max Game Time:      {:.0}s (Expanded Endgame Window)",
         max_game_time
+    );
+    println!(
+        "   Training Mode:      {}",
+        if resume_training {
+            "🔄 Tiếp tục huấn luyện từ model trước đó (Resume Mode)"
+        } else {
+            "🌱 Huấn luyện lại từ đầu (Scratch Mode - Trọng số ngẫu nhiên He/Xavier)"
+        }
+    );
+    println!(
+        "   Curriculum Sched:   1 vòng Auto (7 archetypes) -> 100% Bot Self-Play"
     );
     println!(
         "   State Dimension:    {} inputs (Deep Economy & Resource Flow)",
@@ -386,33 +458,54 @@ fn main() {
         num_threads,
     };
 
-    // Nạp trọng số sẵn có từ rl_model.json để huấn luyện liên tục
-    let mut unified_brain = RlBrain::default();
-    unified_brain.sanitize();
-
-    // Tự động kiểm tra nếu model cũ bị bão hòa (toàn ±5.0 hoặc ±3.0) do gradient trước đây
-    let is_saturated = {
-        let count_extremes = unified_brain
-            .w1
-            .iter()
-            .flatten()
-            .filter(|&&v| v.abs() >= 2.99)
-            .count();
-        let total = unified_brain.w1.iter().flatten().count().max(1);
-        (count_extremes as f32 / total as f32) > 0.4
-    };
-    if is_saturated {
-        println!("⚠️ Phát hiện model nạp vào bị bão hòa trọng số (toàn ±5.0/±3.0). Tự động tái tạo trọng số chuẩn He/Xavier!");
-        unified_brain = RlBrain::new_random(
+    // Khởi tạo hoặc nạp trọng số dựa trên tùy chọn resume_training
+    let mut unified_brain = if resume_training {
+        if let Some(loaded) = RlBrain::load_saved_model() {
+            println!(
+                "🔄 [Resume] Đã nạp thành công model đã có từ file đĩa ({} tham số).",
+                loaded.total_parameters()
+            );
+            loaded
+        } else {
+            println!("ℹ️ [Resume] Chưa tìm thấy file model trên đĩa, sử dụng trọng số mặc định.");
+            RlBrain::default()
+        }
+    } else {
+        println!("🌱 [From Scratch] Khởi tạo mạng mới hoàn toàn với trọng số chuẩn He/Xavier.");
+        RlBrain::new_random(
             STATE_DIM,
             DEFAULT_HIDDEN_SIZE,
             DEFAULT_HIDDEN2_SIZE,
             ACTION_DIM,
-        );
+        )
+    };
+    unified_brain.sanitize();
+
+    // Tự động kiểm tra nếu model cũ bị bão hòa (toàn ±5.0 hoặc ±3.0) do gradient trước đây
+    if resume_training {
+        let is_saturated = {
+            let count_extremes = unified_brain
+                .w1
+                .iter()
+                .flatten()
+                .filter(|&&v| v.abs() >= 2.99)
+                .count();
+            let total = unified_brain.w1.iter().flatten().count().max(1);
+            (count_extremes as f32 / total as f32) > 0.4
+        };
+        if is_saturated {
+            println!("⚠️ Phát hiện model nạp vào bị bão hòa trọng số (toàn ±5.0/±3.0). Tự động tái tạo trọng số chuẩn He/Xavier!");
+            unified_brain = RlBrain::new_random(
+                STATE_DIM,
+                DEFAULT_HIDDEN_SIZE,
+                DEFAULT_HIDDEN2_SIZE,
+                ACTION_DIM,
+            );
+        }
     }
 
     println!(
-        "🧠 Đã nạp thành công bộ não AI gốc ({}) tham số (Valid: {}).",
+        "🧠 Bộ não AI hoạt động sẵn sàng: {} tham số (Valid: {}).",
         unified_brain.total_parameters(),
         unified_brain.is_valid()
     );
@@ -543,8 +636,18 @@ fn simulate_single_episode(
                 }
             }
         } else {
-            let cfg = create_training_autoplay_config(team, AutoTrainingArchetype::MacroFortress);
-            engine.team_autoplay_mut(team).config = cfg;
+            match opponent_style {
+                OpponentStyle::VsAuto(_) => {
+                    let cfg = create_training_autoplay_config(team, AutoTrainingArchetype::MacroFortress);
+                    engine.team_autoplay_mut(team).config = cfg;
+                }
+                OpponentStyle::BotSelfPlay => {
+                    // Chuyển hẳn sang bot AI tự đối kháng cho cả đồng đội
+                    engine.team_autoplay_mut(team).config.enabled = false;
+                    engine.team_ai_mut(team).rl_brain = brain.clone();
+                    engine.team_ai_mut(team).rl_brain.epsilon = epsilon;
+                }
+            }
         }
     }
 
@@ -558,6 +661,17 @@ fn simulate_single_episode(
     while !engine.game_over && engine.game_time < max_game_time {
         let prev_state = extract_state_vector_for_team(&engine, learner_team);
         let prev_snap = RewardSnapshot::capture(&engine, learner_team);
+
+        // Ghi nhận state trước bước nhảy cho các bot AI khác trong self-play
+        let mut other_prev_states: [Option<Vec<f32>>; MAX_PLAYERS] = Default::default();
+        if matches!(opponent_style, OpponentStyle::BotSelfPlay) {
+            for slot_idx in 0..MAX_PLAYERS {
+                let t = Team::from_index(slot_idx);
+                if engine.is_slot_active(t) && t != learner_team && !engine.team_autoplay(t).config.enabled {
+                    other_prev_states[slot_idx] = Some(extract_state_vector_for_team(&engine, t));
+                }
+            }
+        }
 
         mid_adapt_timer += time_scale_dt;
         if mid_adapt_timer >= 2.0 {
@@ -604,24 +718,26 @@ fn simulate_single_episode(
                 done: is_done,
             });
 
-            // Multi-Agent Sharing: Các slot AI khác phe đối địch nếu có RL brain cũng học từ kinh nghiệm đối kháng
+            // Multi-Agent Sharing: Các slot AI khác trong BotSelfPlay cùng học từ kinh nghiệm
             if matches!(opponent_style, OpponentStyle::BotSelfPlay) {
                 for slot_idx in 0..MAX_PLAYERS {
                     let other_team = Team::from_index(slot_idx);
-                    if engine.is_slot_active(other_team)
-                        && other_team != learner_team
-                        && !engine.team_autoplay(other_team).config.enabled
-                    {
-                        let other_prev = extract_state_vector_for_team(&engine, other_team);
+                    if let Some(ref other_prev) = other_prev_states[slot_idx] {
+                        let other_next = extract_state_vector_for_team(&engine, other_team);
                         let other_act = engine.team_ai(other_team).current_action;
                         let other_form = engine.team_ai(other_team).current_formation;
-                        let other_reward = -step_reward * 0.8;
+                        let is_hostile = engine.are_hostile(learner_team, other_team);
+                        let other_reward = if is_hostile {
+                            -step_reward * 0.8
+                        } else {
+                            step_reward * 0.9
+                        };
                         transitions.push(TransitionSample {
-                            state: other_prev,
+                            state: other_prev.clone(),
                             action: other_act.to_index(),
                             formation: other_form.to_index(),
                             reward: other_reward,
-                            next_state: cur_state.clone(),
+                            next_state: other_next,
                             done: is_done,
                         });
                     }
@@ -685,24 +801,19 @@ fn train_scenario_with_brain(
             let mut handles = Vec::with_capacity(wave_size);
             for ep_idx in 0..wave_size {
                 let current_ep = completed_episodes + ep_idx + 1;
-                let opponent_style = if champion_pool.is_empty() || current_ep % 4 != 0 {
-                    let arch_idx = current_ep % 7;
-                    let arch = match arch_idx {
-                        0 => AutoTrainingArchetype::CombinedTitanArtilleryMage,
-                        1 => AutoTrainingArchetype::OmniTechGrandmaster,
-                        2 => AutoTrainingArchetype::ScienceArtillery,
-                        3 => AutoTrainingArchetype::MagicCelestialVoid,
-                        4 => AutoTrainingArchetype::MonsterSwarmBehemoth,
-                        5 => AutoTrainingArchetype::BioBlitzRush,
-                        _ => AutoTrainingArchetype::MacroFortress,
-                    };
-                    OpponentStyle::VsAuto(arch)
+                // Đúng 1 vòng Auto cho đủ 7 thể loại có sẵn, sau đó chuyển hẳn 100% sang Bot tự đối kháng
+                let opponent_style = if current_ep <= ALL_AUTO_ARCHETYPES.len() {
+                    OpponentStyle::VsAuto(ALL_AUTO_ARCHETYPES[current_ep - 1])
                 } else {
                     OpponentStyle::BotSelfPlay
                 };
 
                 let worker_brain = brain.clone();
-                let opp_champ = champion_pool.last().cloned();
+                let opp_champ = if champion_pool.is_empty() {
+                    Some(brain.clone())
+                } else {
+                    Some(champion_pool[current_ep % champion_pool.len()].clone())
+                };
                 let eps = brain.epsilon;
 
                 handles.push(s.spawn(move || {
@@ -772,11 +883,17 @@ fn train_scenario_with_brain(
             || completed_episodes % (num_threads * 2).max(10) == 0
             || completed_episodes == total_episodes
         {
+            let phase_tag = if completed_episodes <= ALL_AUTO_ARCHETYPES.len() {
+                "Auto"
+            } else {
+                "SelfPlay"
+            };
             println!(
-                "[{:<18}] Ep {:3}/{} | Win: {:5.1}% (W:{} L:{} D:{}) | Champs: {} | Rew: {:+6.1} | Eps: {:.3} | Speed: {:.1} ep/s ({} th)",
+                "[{:<18}] Ep {:3}/{} | {:<8} | Win: {:5.1}% (W:{} L:{} D:{}) | Champs: {} | Rew: {:+6.1} | Eps: {:.3} | Speed: {:.1} ep/s ({} th)",
                 mode.name(),
                 completed_episodes,
                 total_episodes,
+                phase_tag,
                 win_rate,
                 total_wins,
                 total_losses,

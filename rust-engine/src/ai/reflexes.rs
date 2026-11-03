@@ -17,7 +17,7 @@ pub fn update_ai(engine: &mut GameEngine) {
 }
 
 pub fn update_ai_with_dt(engine: &mut GameEngine, dt: f32) {
-    for i in 1..crate::components::MAX_PLAYERS {
+    for i in 0..crate::components::MAX_PLAYERS {
         let team = Team::from_index(i);
         if engine.is_slot_active(team)
             && !engine.player_slots[i].is_human
