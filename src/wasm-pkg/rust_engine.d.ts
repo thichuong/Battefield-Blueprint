@@ -89,6 +89,8 @@ export function handle_mouse_wheel(delta_y: number): void;
 
 export function init_engine(canvas: HTMLCanvasElement): void;
 
+export function init_engine_webgpu(world_canvas: HTMLCanvasElement, ui_canvas?: HTMLCanvasElement | null): Promise<boolean>;
+
 export function poll_events_from_engine(): string;
 
 export function resize_canvas(width: number, height: number, dpr?: number | null): void;
@@ -105,6 +107,7 @@ export interface InitOutput {
     readonly handle_key_down: (a: number, b: number) => void;
     readonly handle_key_up: (a: number, b: number) => void;
     readonly init_engine: (a: any) => [number, number];
+    readonly init_engine_webgpu: (a: any, b: number) => any;
     readonly poll_events_from_engine: () => [number, number];
     readonly resize_canvas: (a: number, b: number, c: number) => void;
     readonly send_command_to_engine: (a: number, b: number) => void;
@@ -113,11 +116,14 @@ export interface InitOutput {
     readonly handle_mouse_up: (a: number, b: number, c: number) => void;
     readonly handle_mouse_wheel: (a: number) => void;
     readonly handle_mouse_move: (a: number, b: number) => void;
+    readonly wasm_bindgen__convert__closures_____invoke__h9ab8d67cabe58c97: (a: number, b: number, c: any) => [number, number];
+    readonly wasm_bindgen__convert__closures_____invoke__h509e45764cc1d72b: (a: number, b: number, c: any, d: any) => void;
+    readonly __wbindgen_malloc: (a: number, b: number) => number;
+    readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_exn_store: (a: number) => void;
     readonly __externref_table_alloc: () => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;
-    readonly __wbindgen_malloc: (a: number, b: number) => number;
-    readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+    readonly __wbindgen_destroy_closure: (a: number, b: number) => void;
     readonly __externref_table_dealloc: (a: number) => void;
     readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_start: () => void;

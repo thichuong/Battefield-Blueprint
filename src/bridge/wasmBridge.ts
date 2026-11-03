@@ -1,5 +1,6 @@
 import init, {
   init_engine,
+  init_engine_webgpu,
   engine_frame,
   engine_step,
   engine_tick,
@@ -149,12 +150,30 @@ class WasmBridge {
   private eventListeners: EngineEventCallback[] = [];
   public mouseX = 0;
   public mouseY = 0;
+  public isWebGpu = false;
 
-  public async initialize(canvas: HTMLCanvasElement): Promise<void> {
-    if (this.isInitialized) return;
+  public async initialize(
+    canvas: HTMLCanvasElement,
+    uiCanvas?: HTMLCanvasElement | null
+  ): Promise<boolean> {
+    if (this.isInitialized) return this.isWebGpu;
     await init();
-    init_engine(canvas);
+
+    try {
+      this.isWebGpu = await init_engine_webgpu(canvas, uiCanvas);
+      if (this.isWebGpu) {
+        console.log(
+          '%c[WGPU] Engine initialized with GPU acceleration!',
+          'color: #10b981; font-weight: bold;'
+        );
+      }
+    } catch (e) {
+      console.warn('init_engine_webgpu error, fallback to 2d:', e);
+      init_engine(canvas);
+      this.isWebGpu = false;
+    }
     this.isInitialized = true;
+    return this.isWebGpu;
   }
 
   /**

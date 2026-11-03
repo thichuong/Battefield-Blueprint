@@ -392,7 +392,7 @@ pub fn render_build_ghost(engine: &GameEngine, b_type: BuildingType) {
 }
 
 pub fn render_floating_texts(engine: &GameEngine) {
-    let ctx = match engine.context.as_ref() {
+    let ctx = match engine.ui_context.as_ref().or(engine.context.as_ref()) {
         Some(c) => c,
         None => return,
     };
@@ -412,7 +412,7 @@ pub fn render_floating_texts(engine: &GameEngine) {
 }
 
 pub fn render_attack_move_cursor(engine: &GameEngine) {
-    let ctx = match engine.context.as_ref() {
+    let ctx = match engine.ui_context.as_ref().or(engine.context.as_ref()) {
         Some(c) => c,
         None => return,
     };

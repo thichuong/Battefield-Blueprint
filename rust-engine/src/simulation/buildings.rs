@@ -164,9 +164,10 @@ pub fn update_buildings(engine: &mut GameEngine, dt: f32) {
                     b.current_cooldown = if has_overload { base_cd * 0.6 } else { base_cd };
 
                     let has_dark_rockets = b_team_tech.dark_matter_rockets;
-                    let spawn_y = b.y - (b.height * 0.25).min(20.0);
+                    let spawn_x = b.x;
+                    let spawn_y = b.y - 12.0;
                     let is_laser = !has_dark_rockets && base_dmg_type == DamageType::Energy;
-                    let angle = (ey - spawn_y).atan2(ex - b.x);
+                    let angle = (ey - spawn_y).atan2(ex - spawn_x);
                     let visual = if has_dark_rockets {
                         ProjectileVisual::Rocket
                     } else if is_laser {
@@ -178,9 +179,9 @@ pub fn update_buildings(engine: &mut GameEngine, dt: f32) {
                     new_turret_projectiles.push(Projectile {
                         id: 0,
                         team: b.team,
-                        x: b.x,
+                        x: spawn_x,
                         y: spawn_y,
-                        prev_x: b.x,
+                        prev_x: spawn_x,
                         prev_y: spawn_y,
                         target_x: ex,
                         target_y: ey,
@@ -204,7 +205,7 @@ pub fn update_buildings(engine: &mut GameEngine, dt: f32) {
                         lifetime: if has_dark_rockets {
                             1.2
                         } else if is_laser {
-                            0.3
+                            0.25
                         } else {
                             1.0
                         },

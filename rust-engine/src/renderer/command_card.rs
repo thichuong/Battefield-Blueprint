@@ -3,7 +3,7 @@ use crate::GameEngine;
 use web_sys::CanvasRenderingContext2d;
 
 pub fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
-    let ctx = match engine.context.as_ref() {
+    let ctx = match engine.ui_context.as_ref().or(engine.context.as_ref()) {
         Some(c) => c,
         None => return,
     };

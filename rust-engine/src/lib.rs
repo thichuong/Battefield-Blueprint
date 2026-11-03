@@ -32,12 +32,97 @@ pub fn init_engine(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
         .unwrap()
         .dyn_into::<CanvasRenderingContext2d>()?;
 
-    let engine = GameEngine::new(canvas, ctx);
+    let mut engine = GameEngine::new(canvas, ctx);
+    engine.gpu_cache = crate::renderer::gpu_cache::GpuCacheManager::new(&engine.config);
     ENGINE_STATE.with(|state| {
         *state.borrow_mut() = Some(engine);
     });
 
     Ok(())
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub async fn init_engine_webgpu(
+    world_canvas: HtmlCanvasElement,
+    ui_canvas: Option<HtmlCanvasElement>,
+) -> Result<bool, JsValue> {
+    let config = crate::config::GameConfig::default();
+    let cache = match crate::renderer::gpu_cache::GpuCacheManager::new(&config) {
+        Some(c) => c,
+        None => return Ok(false),
+    };
+
+    let wgpu_renderer =
+        match crate::renderer::gpu::WgpuRenderer::new(world_canvas.clone(), &cache).await {
+            Ok(r) => Some(r),
+            Err(err) => {
+                web_sys::console::warn_1(
+                    &format!("WebGPU init failed, falling back to Canvas 2D: {}", err).into(),
+                );
+                None
+            }
+        };
+
+    let is_webgpu = wgpu_renderer.is_some();
+
+    let ui_ctx = if let Some(ref uic) = ui_canvas {
+        uic.get_context("2d")
+            .ok()
+            .flatten()
+            .and_then(|c| c.dyn_into::<CanvasRenderingContext2d>().ok())
+    } else {
+        None
+    };
+
+    let fallback_ctx = if !is_webgpu {
+        world_canvas
+            .get_context("2d")
+            .ok()
+            .flatten()
+            .and_then(|c| c.dyn_into::<CanvasRenderingContext2d>().ok())
+    } else {
+        None
+    };
+
+    let mut engine = if let Some(fctx) = fallback_ctx {
+        GameEngine::new(world_canvas.clone(), fctx)
+    } else {
+        let dummy_canvas: HtmlCanvasElement = web_sys::window()
+            .unwrap()
+            .document()
+            .unwrap()
+            .create_element("canvas")
+            .unwrap()
+            .dyn_into()
+            .unwrap();
+        let dummy_ctx: CanvasRenderingContext2d = dummy_canvas
+            .get_context("2d")
+            .unwrap()
+            .unwrap()
+            .dyn_into()
+            .unwrap();
+        GameEngine::new(world_canvas.clone(), dummy_ctx)
+    };
+
+    engine.wgpu_renderer = wgpu_renderer;
+    engine.ui_context = ui_ctx;
+    engine.gpu_cache = Some(cache);
+
+    ENGINE_STATE.with(|state| {
+        *state.borrow_mut() = Some(engine);
+    });
+
+    Ok(is_webgpu)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[wasm_bindgen]
+pub async fn init_engine_webgpu(
+    _world_canvas: HtmlCanvasElement,
+    _ui_canvas: Option<HtmlCanvasElement>,
+) -> Result<bool, JsValue> {
+    Ok(false)
 }
 
 fn get_performance_now() -> f64 {
@@ -212,9 +297,15 @@ pub fn resize_canvas(width: f32, height: f32, dpr: Option<f32>) {
     let dpr_val = dpr.unwrap_or(1.0).max(0.5);
     ENGINE_STATE.with(|state| {
         if let Some(ref mut engine) = *state.borrow_mut() {
+            let pixel_w = (width * dpr_val) as u32;
+            let pixel_h = (height * dpr_val) as u32;
             if let Some(ref canvas) = engine.canvas {
-                canvas.set_width((width * dpr_val) as u32);
-                canvas.set_height((height * dpr_val) as u32);
+                canvas.set_width(pixel_w);
+                canvas.set_height(pixel_h);
+            }
+            #[cfg(target_arch = "wasm32")]
+            if let Some(ref mut wgpu_rend) = engine.wgpu_renderer {
+                wgpu_rend.resize(pixel_w, pixel_h);
             }
             engine.camera.viewport_w = width;
             engine.camera.viewport_h = height;

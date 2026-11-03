@@ -83,6 +83,9 @@ pub struct GameEngine {
     pub last_render_time: f64,
 
     // Tối ưu hóa GPU Cache & Render Scratchpad
+    #[cfg(target_arch = "wasm32")]
+    pub wgpu_renderer: Option<crate::renderer::gpu::WgpuRenderer>,
+    pub ui_context: Option<CanvasRenderingContext2d>,
     pub gpu_cache: Option<crate::renderer::gpu_cache::GpuCacheManager>,
     pub visible_unit_indices: Vec<(usize, f64, f64)>,
     pub selected_unit_set: std::collections::HashSet<u32>,
@@ -239,6 +242,9 @@ impl GameEngine {
             sim_time_ms: 0.0,
             render_time_ms: 0.0,
             last_render_time: 0.0,
+            #[cfg(target_arch = "wasm32")]
+            wgpu_renderer: None,
+            ui_context: None,
             gpu_cache: None,
             visible_unit_indices: Vec::with_capacity(512),
             selected_unit_set: std::collections::HashSet::with_capacity(128),
@@ -345,6 +351,9 @@ impl GameEngine {
             sim_time_ms: 0.0,
             render_time_ms: 0.0,
             last_render_time: 0.0,
+            #[cfg(target_arch = "wasm32")]
+            wgpu_renderer: None,
+            ui_context: None,
             gpu_cache: None,
             visible_unit_indices: Vec::with_capacity(512),
             selected_unit_set: std::collections::HashSet::with_capacity(128),

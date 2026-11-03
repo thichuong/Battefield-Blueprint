@@ -163,13 +163,15 @@ pub fn update_projectiles(engine: &mut GameEngine, dt: f32) {
         let dx = p.target_x - p.x;
         let dy = p.target_y - p.y;
         let dist = (dx * dx + dy * dy).sqrt();
-        if dist > 10.0 {
+        let is_laser = p.is_laser || p.visual == ProjectileVisual::Laser;
+
+        if !is_laser && dist > 10.0 {
             let step = (p.speed * dt).min(dist);
             p.x += (dx / dist) * step;
             p.y += (dy / dist) * step;
         }
 
-        if dist <= 18.0 || p.lifetime <= 0.0 {
+        if p.lifetime <= 0.0 || (!is_laser && dist <= 18.0) {
             let is_aoe = p.aoe_radius > 0.0;
             let aoe_range = if is_aoe { p.aoe_radius.max(30.0) } else { 24.0 };
             let p_team_idx = p.team.index() % 8;

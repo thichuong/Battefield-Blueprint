@@ -510,12 +510,33 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
                                         visual: ProjectileVisual::Bullet,
                                         angle: 0.0,
                                     });
+                                } else if unit.unit_type == UnitType::LaserMarksman {
+                                    // LaserMarksman: Tia laser công kích liên tục trực tiếp vào mục tiêu.
+                                    // Tia laser hiển thị đã được render riêng từ họng súng (gun tip) theo số cộng dồn.
+                                    // Projectile tác động tức thì tại vị trí mục tiêu, đánh dấu is_melee: true để không vẽ tia trùng lặp.
+                                    new_projectiles.push(Projectile {
+                                        id: 0,
+                                        team: unit.team,
+                                        x: hit_x,
+                                        y: hit_y,
+                                        prev_x: hit_x,
+                                        prev_y: hit_y,
+                                        target_x: hit_x,
+                                        target_y: hit_y,
+                                        speed: 2400.0,
+                                        damage: dmg,
+                                        damage_type: unit.damage_type,
+                                        aoe_radius: unit.aoe_radius,
+                                        is_laser: false,
+                                        lifetime: 0.0,
+                                        is_melee: true,
+                                        building_damage_mult: 1.0,
+                                        visual: ProjectileVisual::Laser,
+                                        angle: 0.0,
+                                    });
                                 } else {
-                                    // Tầm xa
-                                    let is_laser = unit.unit_type == UnitType::LaserMarksman;
-                                    let speed = if is_laser {
-                                        2400.0
-                                    } else if unit.unit_type == UnitType::TaoistSwordmaster {
+                                    // Tầm xa (Rifleman, DarkRocketeer, TaoistSwordmaster)
+                                    let speed = if unit.unit_type == UnitType::TaoistSwordmaster {
                                         1100.0
                                     } else if unit.unit_type == UnitType::DarkRocketeer {
                                         650.0
@@ -530,7 +551,6 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
                                         UnitType::TaoistSwordmaster => {
                                             ProjectileVisual::FlyingSword
                                         }
-                                        UnitType::LaserMarksman => ProjectileVisual::Laser,
                                         _ => ProjectileVisual::Bullet,
                                     };
                                     new_projectiles.push(Projectile {
@@ -546,8 +566,8 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
                                         damage: dmg,
                                         damage_type: unit.damage_type,
                                         aoe_radius: unit.aoe_radius,
-                                        is_laser,
-                                        lifetime: if is_laser { 0.2 } else { 1.5 },
+                                        is_laser: false,
+                                        lifetime: 1.5,
                                         is_melee: false,
                                         building_damage_mult: 1.0,
                                         visual,

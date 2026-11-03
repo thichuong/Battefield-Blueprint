@@ -200,6 +200,7 @@ function loadStoredSettings(): StoredSettings {
 
 export const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const uiCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isInGame, setIsInGame] = useState<boolean>(false);
   const [isTechTreeOpen, setIsTechTreeOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
@@ -223,17 +224,28 @@ export const App: React.FC = () => {
 
     const initEngine = async () => {
       if (!canvasRef.current) return;
-      await wasmBridge.initialize(canvasRef.current);
+      await wasmBridge.initialize(canvasRef.current, uiCanvasRef.current);
 
       const resize = () => {
         if (!canvasRef.current) return;
         const width = window.innerWidth;
         const height = window.innerHeight;
         const dpr = window.devicePixelRatio || 1;
-        canvasRef.current.width = Math.round(width * dpr);
-        canvasRef.current.height = Math.round(height * dpr);
+        const pxW = Math.round(width * dpr);
+        const pxH = Math.round(height * dpr);
+
+        canvasRef.current.width = pxW;
+        canvasRef.current.height = pxH;
         canvasRef.current.style.width = `${width}px`;
         canvasRef.current.style.height = `${height}px`;
+
+        if (uiCanvasRef.current) {
+          uiCanvasRef.current.width = pxW;
+          uiCanvasRef.current.height = pxH;
+          uiCanvasRef.current.style.width = `${width}px`;
+          uiCanvasRef.current.style.height = `${height}px`;
+        }
+
         wasmBridge.resize(width, height, dpr);
       };
 
@@ -524,7 +536,7 @@ export const App: React.FC = () => {
 
   return (
     <div className="relative w-full h-full overflow-hidden select-none bg-[#030d1a]">
-      {/* Canvas Game hoàn toàn do Wasm vẽ */}
+      {/* Canvas Game World (WebGPU) */}
       <canvas
         ref={canvasRef}
         onMouseDown={handleMouseDown}
@@ -533,6 +545,12 @@ export const App: React.FC = () => {
         onWheel={handleWheel}
         onContextMenu={handleContextMenu}
         className="block w-full h-full cursor-crosshair"
+      />
+
+      {/* Canvas UI / HUD Overlay (Canvas 2D) */}
+      <canvas
+        ref={uiCanvasRef}
+        className="absolute inset-0 pointer-events-none block w-full h-full"
       />
 
       {/* UI Ngoài vòng lặp do React quản lý */}

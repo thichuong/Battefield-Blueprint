@@ -15,7 +15,7 @@ thread_local! {
 }
 
 pub fn render_in_game_hud(engine: &GameEngine) {
-    let ctx = match engine.context.as_ref() {
+    let ctx = match engine.ui_context.as_ref().or(engine.context.as_ref()) {
         Some(c) => c,
         None => return,
     };
@@ -320,7 +320,7 @@ pub fn render_in_game_hud(engine: &GameEngine) {
 }
 
 fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f64) {
-    let ctx = match engine.context.as_ref() {
+    let ctx = match engine.ui_context.as_ref().or(engine.context.as_ref()) {
         Some(c) => c,
         None => return,
     };
@@ -756,12 +756,12 @@ pub fn render_debug_overlay(engine: &GameEngine) {
     if !engine.show_debug_overlay {
         return;
     }
-    let ctx = match engine.context.as_ref() {
+    let ctx = match engine.ui_context.as_ref().or(engine.context.as_ref()) {
         Some(c) => c,
         None => return,
     };
     let vw = engine.camera.viewport_w as f64;
-    let panel_w = 270.0;
+    let panel_w = 295.0;
     let panel_h = 75.0;
     let px = vw - panel_w - 12.0;
     let py = 56.0;
@@ -779,10 +779,18 @@ pub fn render_debug_overlay(engine: &GameEngine) {
         "unlimited" => "Max",
         other => other,
     };
+    #[cfg(target_arch = "wasm32")]
+    let backend = if let Some(ref rend) = engine.wgpu_renderer {
+        rend.state.backend_name.as_str()
+    } else {
+        "Canvas2D"
+    };
+    #[cfg(not(target_arch = "wasm32"))]
+    let backend = "Headless";
     let _ = ctx.fill_text(
         &format!(
-            "⚡ FPS: {:.0} [{}] | Sim: {:.1}ms | Rnd: {:.1}ms",
-            engine.fps, limit_tag, engine.sim_time_ms, engine.render_time_ms
+            "⚡ FPS: {:.0} [{}] | {} | Rnd: {:.1}ms",
+            engine.fps, limit_tag, backend, engine.render_time_ms
         ),
         px + 10.0,
         py + 20.0,

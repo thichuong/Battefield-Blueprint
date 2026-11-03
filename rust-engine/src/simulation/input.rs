@@ -85,7 +85,9 @@ pub fn handle_mouse_down(engine: &mut GameEngine, button: i32, cx: f32, cy: f32)
 
         engine.is_mouse_down = true;
         engine.mouse_down_start = (cx, cy);
-        engine.selection_box = Some((cx, cy, cx, cy));
+        if engine.build_mode.is_none() {
+            engine.selection_box = Some((cx, cy, cx, cy));
+        }
 
         // Kiểm tra xem có bấm vào các nút trên HUD của Bevy không
         if check_bevy_hud_click(engine, cx, cy) {
@@ -128,6 +130,7 @@ pub fn handle_mouse_up(engine: &mut GameEngine, button: i32, cx: f32, cy: f32) {
             let (wx, wy) = engine.screen_to_world(cx, cy);
             try_place_building(engine, b_type, wx, wy);
             engine.build_mode = None;
+            engine.selection_box = None;
         } else if dx > 8.0 || dy > 8.0 {
             // Box selection
             let (w_min_x, w_min_y) = engine.screen_to_world(sx1.min(sx2), sy1.min(cy));
@@ -171,7 +174,7 @@ pub fn handle_mouse_move(engine: &mut GameEngine, cx: f32, cy: f32) {
         return;
     }
 
-    if engine.is_mouse_down {
+    if engine.is_mouse_down && engine.build_mode.is_none() {
         let (sx1, sy1) = engine.mouse_down_start;
         engine.selection_box = Some((sx1, sy1, cx, cy));
     }
