@@ -163,3 +163,50 @@ fn test_render_config_customization() {
     assert_eq!(parsed.render.grid_size, 100.0);
     assert_eq!(parsed.render.bg_color, "#000000");
 }
+
+#[test]
+fn test_eight_player_colors_unique_and_non_overlapping() {
+    use crate::config::DEFAULT_PLAYER_COLORS;
+    use crate::renderer::gpu_cache::{get_color_index, COLOR_HIT_FLASH};
+    use std::collections::HashSet;
+
+    // 1. Kiểm tra 8 màu mặc định không trùng nhau
+    assert_eq!(DEFAULT_PLAYER_COLORS.len(), 8);
+    let mut stroke_set = HashSet::new();
+    let mut fill_set = HashSet::new();
+    for &(stroke, fill) in &DEFAULT_PLAYER_COLORS {
+        assert!(stroke_set.insert(stroke), "Trùng màu stroke: {}", stroke);
+        assert!(fill_set.insert(fill), "Trùng màu fill: {}", fill);
+    }
+
+    // 2. Kiểm tra get_color_index cho 8 Team
+    let mut color_indices = HashSet::new();
+    for i in 0..8 {
+        let team = Team::from_index(i);
+        let idx = get_color_index(team, false);
+        assert_eq!(idx, i);
+        assert!(color_indices.insert(idx), "Trùng index màu: {}", idx);
+
+        // Trường hợp bị đánh trúng (Hit flash)
+        let flash_idx = get_color_index(team, true);
+        assert_eq!(flash_idx, COLOR_HIT_FLASH);
+    }
+}
+
+#[test]
+fn test_get_team_color_matches_eight_players() {
+    use crate::renderer::get_team_color;
+    use crate::GameEngine;
+    use std::collections::HashSet;
+
+    let engine = GameEngine::new_headless();
+    let mut team_colors = HashSet::new();
+
+    for i in 0..8 {
+        let team = Team::from_index(i);
+        let (stroke, fill) = get_team_color(&engine, team);
+        assert_eq!(stroke, crate::config::DEFAULT_PLAYER_COLORS[i].0);
+        assert_eq!(fill, crate::config::DEFAULT_PLAYER_COLORS[i].1);
+        assert!(team_colors.insert(stroke), "Trùng màu team: {}", stroke);
+    }
+}

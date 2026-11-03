@@ -23,24 +23,12 @@ use crate::map::{MAP_HEIGHT, MAP_WIDTH};
 use crate::GameEngine;
 
 pub fn get_team_color(engine: &GameEngine, team: Team) -> (&str, &str) {
-    if team == Team::Player {
-        (
-            &engine.config.render.player_color,
-            &engine.config.render.player_fill,
-        )
-    } else if engine.are_allies(Team::Player, team) {
-        (
-            &engine.config.render.ally_color,
-            &engine.config.render.ally_fill,
-        )
+    let idx = team.index() % 8;
+    let palette = &engine.config.render.player_palette;
+    if idx < palette.len() {
+        (&palette[idx].0, &palette[idx].1)
     } else {
-        let palette = &engine.config.render.enemy_palette;
-        if !palette.is_empty() {
-            let idx = team.index() % palette.len();
-            (&palette[idx].0, &palette[idx].1)
-        } else {
-            ("#f43f5e", "rgba(244, 63, 94, 0.12)")
-        }
+        crate::config::DEFAULT_PLAYER_COLORS[idx]
     }
 }
 

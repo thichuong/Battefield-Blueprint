@@ -10,9 +10,6 @@ pub fn render_buildings(engine: &GameEngine) {
         None => return,
     };
 
-    let player_faction = engine.get_faction(Team::Player);
-    let team_factions = engine.team_factions();
-
     for b in &engine.buildings {
         let bw = b.width;
         let bh = b.height;
@@ -29,7 +26,7 @@ pub fn render_buildings(engine: &GameEngine) {
 
         let is_selected = engine.selected_building_id == Some(b.id);
         let is_hit_flash = b.hit_flash_timer > 0.0;
-        let color_idx = get_color_index(b.team, is_hit_flash, player_faction, &team_factions);
+        let color_idx = get_color_index(b.team, is_hit_flash);
 
         let bx = (b.x - b.width * 0.5) as f64;
         let by = (b.y - b.height * 0.5) as f64;

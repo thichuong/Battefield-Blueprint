@@ -92,6 +92,24 @@ pub struct TechItemConfig {
     pub research_time: f32,
 }
 
+pub const DEFAULT_PLAYER_COLORS: [(&str, &str); 8] = [
+    ("#00e5ff", "rgba(0, 229, 255, 0.12)"),  // Slot 0: Cyan neon (Player)
+    ("#f43f5e", "rgba(244, 63, 94, 0.12)"),  // Slot 1: Crimson / Rose red
+    ("#a855f7", "rgba(168, 85, 247, 0.12)"), // Slot 2: Arcane purple
+    ("#f59e0b", "rgba(245, 158, 11, 0.12)"), // Slot 3: Amber orange
+    ("#10b981", "rgba(16, 185, 129, 0.12)"), // Slot 4: Emerald green
+    ("#ec4899", "rgba(236, 72, 153, 0.12)"), // Slot 5: Hot pink / Magenta
+    ("#3b82f6", "rgba(59, 130, 246, 0.12)"), // Slot 6: Electric royal blue
+    ("#eab308", "rgba(234, 179, 8, 0.12)"),  // Slot 7: Gold yellow
+];
+
+fn default_player_palette() -> Vec<(String, String)> {
+    DEFAULT_PLAYER_COLORS
+        .iter()
+        .map(|(s, f)| (s.to_string(), f.to_string()))
+        .collect()
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct RenderConfig {
     pub bg_color: String,
@@ -104,6 +122,8 @@ pub struct RenderConfig {
     pub ally_color: String,
     pub ally_fill: String,
     pub enemy_palette: Vec<(String, String)>,
+    #[serde(default = "default_player_palette")]
+    pub player_palette: Vec<(String, String)>,
     pub hp_high_color: String,
     pub hp_low_color: String,
     pub build_progress_color: String,
@@ -142,6 +162,7 @@ impl Default for RenderConfig {
                     "rgba(249, 115, 22, 0.12)".to_string(),
                 ),
             ],
+            player_palette: default_player_palette(),
             hp_high_color: "#22c55e".to_string(),
             hp_low_color: "#ef4444".to_string(),
             build_progress_color: "#fbbf24".to_string(),

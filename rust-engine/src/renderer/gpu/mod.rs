@@ -16,6 +16,17 @@ use sprite_batch::SpriteBatch;
 use texture_atlas::TextureAtlas;
 use wgpu_state::WgpuState;
 
+const PLAYER_LASER_COLORS: [[f32; 4]; 8] = [
+    [0.00, 0.90, 1.00, 0.95], // 0: Cyan Neon (#00e5ff)
+    [0.96, 0.25, 0.37, 0.95], // 1: Crimson Red (#f43f5e)
+    [0.66, 0.33, 0.97, 0.95], // 2: Arcane Purple (#a855f7)
+    [0.96, 0.62, 0.04, 0.95], // 3: Amber Orange (#f59e0b)
+    [0.06, 0.73, 0.51, 0.95], // 4: Emerald Green (#10b981)
+    [0.93, 0.28, 0.60, 0.95], // 5: Hot Pink (#ec4899)
+    [0.23, 0.51, 0.96, 0.95], // 6: Royal Blue (#3b82f6)
+    [0.92, 0.70, 0.03, 0.95], // 7: Gold Yellow (#eab308)
+];
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 pub struct CameraUniform {
@@ -431,9 +442,6 @@ impl WgpuRenderer {
         }
 
         // 3.4. Công trình (Buildings)
-        let player_faction = engine.get_faction(Team::Player);
-        let team_factions = engine.team_factions();
-
         for b in &engine.buildings {
             if !engine.camera.is_rect_visible(b.x - b.width * 0.5, b.y - b.height * 0.5, b.width, b.height, 60.0) {
                 continue;
@@ -446,7 +454,7 @@ impl WgpuRenderer {
             let b_type_idx = b.building_type as usize;
             if b_type_idx < self.atlas.building_uvs.len() {
                 let is_hit_flash = b.hit_flash_timer > 0.0;
-                let color_idx = get_color_index(b.team, is_hit_flash, player_faction, &team_factions);
+                let color_idx = get_color_index(b.team, is_hit_flash);
                 let uv = &self.atlas.building_uvs[b_type_idx][color_idx];
 
                 // b.x, b.y là tâm công trình trong toàn bộ hệ thống mô phỏng
@@ -552,7 +560,7 @@ impl WgpuRenderer {
             let ut_idx = u.unit_type as usize;
             if ut_idx < self.atlas.unit_uvs.len() {
                 let is_hit_flash = u.hit_flash_timer > 0.0;
-                let color_idx = get_color_index(u.team, is_hit_flash, player_faction, &team_factions);
+                let color_idx = get_color_index(u.team, is_hit_flash);
 
                 let is_moving = matches!(
                     u.order,
@@ -844,14 +852,8 @@ impl WgpuRenderer {
 
             // 1. Tia Laser (Tháp TurretTower hoặc vũ khí năng lượng)
             if p.is_laser || p.visual == crate::components::ProjectileVisual::Laser {
-                let player_faction = engine.get_faction(Team::Player);
-                let team_factions = engine.team_factions();
-                let color_idx = get_color_index(p.team, false, player_faction, &team_factions);
-                let laser_color = match color_idx {
-                    0 => [0.0, 0.9, 1.0, 0.95],
-                    1 => [0.06, 0.85, 0.5, 0.95],
-                    _ => [0.98, 0.25, 0.38, 0.95],
-                };
+                let color_idx = get_color_index(p.team, false);
+                let laser_color = PLAYER_LASER_COLORS[color_idx.min(7)];
 
                 // Tia viền màu phe
                 self.sprite_batch.push_line(

@@ -2,7 +2,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 use crate::components::{BuildingType, Team, UnitType};
-use crate::config::GameConfig;
+use crate::config::{GameConfig, DEFAULT_PLAYER_COLORS};
 use crate::fog::{FOG_COLS, FOG_ROWS};
 
 // Helper tạo offscreen HTML canvas element
@@ -19,33 +19,23 @@ fn create_offscreen_canvas(
     Some((canvas, ctx))
 }
 
-pub const COLOR_PLAYER: usize = 0;
-pub const COLOR_ALLY: usize = 1;
-pub const COLOR_ENEMY_0: usize = 2;
-pub const COLOR_ENEMY_1: usize = 3;
-pub const COLOR_ENEMY_2: usize = 4;
-pub const COLOR_ENEMY_3: usize = 5;
-pub const COLOR_ENEMY_4: usize = 6;
-pub const COLOR_ENEMY_5: usize = 7;
+pub const COLOR_PLAYER_0: usize = 0;
+pub const COLOR_PLAYER_1: usize = 1;
+pub const COLOR_PLAYER_2: usize = 2;
+pub const COLOR_PLAYER_3: usize = 3;
+pub const COLOR_PLAYER_4: usize = 4;
+pub const COLOR_PLAYER_5: usize = 5;
+pub const COLOR_PLAYER_6: usize = 6;
+pub const COLOR_PLAYER_7: usize = 7;
 pub const COLOR_HIT_FLASH: usize = 8;
 pub const NUM_COLOR_VARIANTS: usize = 9;
 
-pub fn get_color_index(
-    team: Team,
-    hit_flash: bool,
-    player_faction: u8,
-    team_factions: &[u8; 8],
-) -> usize {
+#[inline]
+pub fn get_color_index(team: Team, hit_flash: bool) -> usize {
     if hit_flash {
-        return COLOR_HIT_FLASH;
-    }
-    let t_idx = team.index() % 8;
-    if team == Team::Player {
-        COLOR_PLAYER
-    } else if team_factions[t_idx] == player_faction {
-        COLOR_ALLY
+        COLOR_HIT_FLASH
     } else {
-        COLOR_ENEMY_0 + (t_idx % 6)
+        team.index() % 8
     }
 }
 
@@ -335,14 +325,14 @@ impl GpuCacheManager {
 
         // --- 6. Bake Building Sprites ---
         let color_palette = [
-            ("#00e5ff", "rgba(0, 229, 255, 0.12)"),   // Player
-            ("#10b981", "rgba(16, 185, 129, 0.12)"),  // Ally
-            ("#f43f5e", "rgba(244, 63, 94, 0.12)"),   // Enemy 0
-            ("#ec4899", "rgba(236, 72, 153, 0.12)"),  // Enemy 1
-            ("#8b5cf6", "rgba(139, 92, 246, 0.12)"),  // Enemy 2
-            ("#eab308", "rgba(234, 179, 8, 0.12)"),   // Enemy 3
-            ("#f97316", "rgba(249, 115, 22, 0.12)"),  // Enemy 4
-            ("#06b6d4", "rgba(6, 182, 212, 0.12)"),   // Enemy 5
+            DEFAULT_PLAYER_COLORS[0],
+            DEFAULT_PLAYER_COLORS[1],
+            DEFAULT_PLAYER_COLORS[2],
+            DEFAULT_PLAYER_COLORS[3],
+            DEFAULT_PLAYER_COLORS[4],
+            DEFAULT_PLAYER_COLORS[5],
+            DEFAULT_PLAYER_COLORS[6],
+            DEFAULT_PLAYER_COLORS[7],
             ("#ffffff", "rgba(255, 255, 255, 0.35)"), // Hit flash
         ];
 

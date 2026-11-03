@@ -29,15 +29,26 @@ const SLOT_LOCATIONS = [
   'Đông (Cạnh phải giữa)',
 ];
 
-const FACTION_COLORS = [
-  '#00e5ff', // Phe 0: Player / Đồng minh (Cyan neon)
-  '#f43f5e', // Phe 1: Kẻ địch chính (Rose / Đỏ)
-  '#a855f7', // Phe 2: Tím (Arcane)
-  '#f59e0b', // Phe 3: Vàng hổ phách
-  '#10b981', // Phe 4: Lục bảo
-  '#ec4899', // Phe 5: Hồng Magenta
-  '#06b6d4', // Phe 6: Xanh biển
-  '#eab308', // Phe 7: Vàng Gold
+export const PLAYER_COLORS = [
+  '#00e5ff', // Slot 0: Cyan Neon (Chỉ Huy / Bạn)
+  '#f43f5e', // Slot 1: Crimson / Đỏ hồng
+  '#a855f7', // Slot 2: Arcane Purple / Tím
+  '#f59e0b', // Slot 3: Amber / Vàng hổ phách
+  '#10b981', // Slot 4: Emerald Green / Lục bảo
+  '#ec4899', // Slot 5: Hot Pink / Hồng đậm
+  '#3b82f6', // Slot 6: Royal Blue / Xanh lam
+  '#eab308', // Slot 7: Gold / Vàng tươi
+];
+
+export const PLAYER_COLOR_NAMES = [
+  'Cyan Neon',
+  'Đỏ Crimson',
+  'Tím Arcane',
+  'Vàng Hổ Phách',
+  'Lục Bảo',
+  'Hồng Magenta',
+  'Xanh Lam',
+  'Vàng Gold',
 ];
 
 export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
@@ -46,14 +57,14 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
 
   // Khởi tạo trạng thái 8 slots
   const [slots, setSlots] = useState<SlotUIData[]>([
-    { index: 0, name: 'Chỉ Huy (Bạn)', location: SLOT_LOCATIONS[0], active: true, faction: 0, isHuman: true, color: FACTION_COLORS[0] },
-    { index: 1, name: 'AI Đối Thủ 1', location: SLOT_LOCATIONS[1], active: true, faction: 1, isHuman: false, color: FACTION_COLORS[1] },
-    { index: 2, name: 'AI Đồng Minh 1', location: SLOT_LOCATIONS[2], active: true, faction: 0, isHuman: false, color: FACTION_COLORS[0] },
-    { index: 3, name: 'AI Đối Thủ 2', location: SLOT_LOCATIONS[3], active: true, faction: 1, isHuman: false, color: FACTION_COLORS[1] },
-    { index: 4, name: 'AI Đồng Minh 2', location: SLOT_LOCATIONS[4], active: true, faction: 0, isHuman: false, color: FACTION_COLORS[0] },
-    { index: 5, name: 'AI Đối Thủ 3', location: SLOT_LOCATIONS[5], active: true, faction: 1, isHuman: false, color: FACTION_COLORS[1] },
-    { index: 6, name: 'AI Đồng Minh 3', location: SLOT_LOCATIONS[6], active: true, faction: 0, isHuman: false, color: FACTION_COLORS[0] },
-    { index: 7, name: 'AI Đối Thủ 4', location: SLOT_LOCATIONS[7], active: true, faction: 1, isHuman: false, color: FACTION_COLORS[1] },
+    { index: 0, name: 'Chỉ Huy (Bạn)', location: SLOT_LOCATIONS[0], active: true, faction: 0, isHuman: true, color: PLAYER_COLORS[0] },
+    { index: 1, name: 'AI Đối Thủ 1', location: SLOT_LOCATIONS[1], active: true, faction: 1, isHuman: false, color: PLAYER_COLORS[1] },
+    { index: 2, name: 'AI Đồng Minh 1', location: SLOT_LOCATIONS[2], active: true, faction: 0, isHuman: false, color: PLAYER_COLORS[2] },
+    { index: 3, name: 'AI Đối Thủ 2', location: SLOT_LOCATIONS[3], active: true, faction: 1, isHuman: false, color: PLAYER_COLORS[3] },
+    { index: 4, name: 'AI Đồng Minh 2', location: SLOT_LOCATIONS[4], active: true, faction: 0, isHuman: false, color: PLAYER_COLORS[4] },
+    { index: 5, name: 'AI Đối Thủ 3', location: SLOT_LOCATIONS[5], active: true, faction: 1, isHuman: false, color: PLAYER_COLORS[5] },
+    { index: 6, name: 'AI Đồng Minh 3', location: SLOT_LOCATIONS[6], active: true, faction: 0, isHuman: false, color: PLAYER_COLORS[6] },
+    { index: 7, name: 'AI Đối Thủ 4', location: SLOT_LOCATIONS[7], active: true, faction: 1, isHuman: false, color: PLAYER_COLORS[7] },
   ]);
 
   // Áp dụng Preset nhanh
@@ -224,7 +235,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
             {slots.map((slot) => {
               const isPlayer = slot.index === 0;
               const isAlly = !isPlayer && slot.faction === 0;
-              const factionColor = FACTION_COLORS[slot.faction % FACTION_COLORS.length];
+              const playerColor = PLAYER_COLORS[slot.index];
+              const factionColor = PLAYER_COLORS[slot.faction % PLAYER_COLORS.length];
 
               return (
                 <div
@@ -235,9 +247,10 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
                       : isPlayer
                       ? 'bg-cyan-950/40 border-cyan-500/70 shadow-[0_0_8px_rgba(0,229,255,0.2)]'
                       : isAlly
-                      ? 'bg-emerald-950/40 border-emerald-500/60'
+                      ? 'bg-slate-950/80 border-slate-800'
                       : 'bg-slate-950/70 border-slate-800'
                   }`}
+                  style={slot.active ? { borderColor: `${playerColor}66` } : undefined}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     {/* Checkbox toggle slot */}
@@ -257,6 +270,15 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
 
                     <div className="truncate">
                       <div className="flex items-center gap-2">
+                        {/* Player Color Swatch */}
+                        <span
+                          className="w-2.5 h-2.5 rounded-full inline-block shrink-0"
+                          style={{
+                            backgroundColor: playerColor,
+                            boxShadow: slot.active ? `0 0 6px ${playerColor}` : 'none',
+                          }}
+                          title={`Màu người chơi: ${PLAYER_COLOR_NAMES[slot.index]}`}
+                        />
                         <span className="font-bold text-slate-200">
                           Slot {slot.index + 1}: {slot.name}
                         </span>
@@ -271,7 +293,11 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
                           </span>
                         )}
                       </div>
-                      <div className="text-[10px] text-slate-500">{slot.location}</div>
+                      <div className="text-[10px] text-slate-400 flex items-center gap-1.5">
+                        <span style={{ color: playerColor }}>● {PLAYER_COLOR_NAMES[slot.index]}</span>
+                        <span>•</span>
+                        <span>{slot.location}</span>
+                      </div>
                     </div>
                   </div>
 

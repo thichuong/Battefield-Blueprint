@@ -35,9 +35,6 @@ pub fn render_units(engine: &mut GameEngine) {
         .visible_unit_indices
         .sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
 
-    let player_faction = engine.get_faction(Team::Player);
-    let team_factions = engine.team_factions();
-
     let num_visible = engine.visible_unit_indices.len();
     for v_i in 0..num_visible {
         let (u_idx, draw_x, draw_y) = engine.visible_unit_indices[v_i];
@@ -45,7 +42,7 @@ pub fn render_units(engine: &mut GameEngine) {
 
         let is_selected = engine.selected_unit_set.contains(&u.id);
         let is_hit_flash = u.hit_flash_timer > 0.0;
-        let color_idx = get_color_index(u.team, is_hit_flash, player_faction, &team_factions);
+        let color_idx = get_color_index(u.team, is_hit_flash);
 
         // 1. Vòng tròn chọn dưới chân
         if is_selected {
