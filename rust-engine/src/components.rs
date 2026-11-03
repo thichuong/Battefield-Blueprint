@@ -434,9 +434,11 @@ pub enum ParticleColor {
     White,
 }
 
-impl ParticleColor {
-    pub fn from_str(s: &str) -> Self {
-        match s {
+impl std::str::FromStr for ParticleColor {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
             "#38bdf8" => ParticleColor::Blue,
             "#00e5ff" => ParticleColor::Cyan,
             "#facc15" | "#fef08a" | "#fbbf24" => ParticleColor::Yellow,
@@ -446,7 +448,21 @@ impl ParticleColor {
             "#84cc16" | "#a3e635" => ParticleColor::Green,
             "#475569" | "#94a3b8" => ParticleColor::Slate,
             _ => ParticleColor::White,
-        }
+        })
+    }
+}
+
+impl From<&str> for ParticleColor {
+    fn from(s: &str) -> Self {
+        use std::str::FromStr;
+        Self::from_str(s).unwrap_or(ParticleColor::White)
+    }
+}
+
+impl ParticleColor {
+    pub fn from_hex(s: &str) -> Self {
+        use std::str::FromStr;
+        Self::from_str(s).unwrap_or(ParticleColor::White)
     }
 
     pub fn to_hex(&self) -> &'static str {

@@ -12,19 +12,16 @@ pub fn render_blueprint_grid(engine: &GameEngine) {
         let (min_x, min_y, max_x, max_y) = engine.camera.viewport_bounds(512.0);
         let tile_size = 512.0;
         let start_x = ((min_x / tile_size).floor() * tile_size).max(0.0);
-        let end_x = ((max_x / tile_size).ceil() * tile_size).min(MAP_WIDTH as f32);
+        let end_x = ((max_x / tile_size).ceil() * tile_size).min(MAP_WIDTH);
         let start_y = ((min_y / tile_size).floor() * tile_size).max(0.0);
-        let end_y = ((max_y / tile_size).ceil() * tile_size).min(MAP_HEIGHT as f32);
+        let end_y = ((max_y / tile_size).ceil() * tile_size).min(MAP_HEIGHT);
 
         let mut x = start_x;
         while x < end_x {
             let mut y = start_y;
             while y < end_y {
-                let _ = ctx.draw_image_with_html_canvas_element(
-                    &cache.grid_canvas,
-                    x as f64,
-                    y as f64,
-                );
+                let _ =
+                    ctx.draw_image_with_html_canvas_element(&cache.grid_canvas, x as f64, y as f64);
                 y += tile_size;
             }
             x += tile_size;

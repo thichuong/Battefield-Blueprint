@@ -3,9 +3,7 @@ use rust_engine::autoplay::{
     adapt_training_autoplay_mid_match, create_training_autoplay_config, AutoTrainingArchetype,
 };
 use rust_engine::components::{BuildingType, PlayerSlotConfig, Team, UnitType, MAX_PLAYERS};
-use rust_engine::cuda_accel::{
-    CudaDeviceManager, PersistentGpuTrainer, TransitionSample,
-};
+use rust_engine::cuda_accel::{CudaDeviceManager, PersistentGpuTrainer, TransitionSample};
 use rust_engine::rl::{
     AiGameMode, RlBrain, ACTION_DIM, DEFAULT_HIDDEN2_SIZE, DEFAULT_HIDDEN_SIZE, FORMATION_DIM,
     STATE_DIM,
@@ -352,7 +350,10 @@ fn main() {
         total_params
     );
     println!("   Episodes per Mode:  {}", total_episodes);
-    println!("   CPU Multi-threading:{} parallel worker threads", num_threads);
+    println!(
+        "   CPU Multi-threading:{} parallel worker threads",
+        num_threads
+    );
     println!(
         "   Fast-Forward dt:    {:.3}s/step (High-Speed Tick)",
         time_scale_dt
@@ -391,7 +392,12 @@ fn main() {
 
     // Tự động kiểm tra nếu model cũ bị bão hòa (toàn ±5.0 hoặc ±3.0) do gradient trước đây
     let is_saturated = {
-        let count_extremes = unified_brain.w1.iter().flatten().filter(|&&v| v.abs() >= 2.99).count();
+        let count_extremes = unified_brain
+            .w1
+            .iter()
+            .flatten()
+            .filter(|&&v| v.abs() >= 2.99)
+            .count();
         let total = unified_brain.w1.iter().flatten().count().max(1);
         (count_extremes as f32 / total as f32) > 0.4
     };
@@ -735,11 +741,11 @@ fn train_scenario_with_brain(
                 total_draws += 1;
             }
 
-            for i in 0..ACTION_DIM {
-                action_counts[i] += res.action_counts[i];
+            for (acc, &inc) in action_counts.iter_mut().zip(&res.action_counts) {
+                *acc += inc;
             }
-            for f in 0..FORMATION_DIM {
-                formation_counts[f] += res.formation_counts[f];
+            for (acc, &inc) in formation_counts.iter_mut().zip(&res.formation_counts) {
+                *acc += inc;
             }
 
             all_transitions.extend(res.transitions);
@@ -830,8 +836,10 @@ fn evaluate_model_on_scenario(
                         let cfg = create_training_autoplay_config(team, arch);
                         engine.team_autoplay_mut(team).config = cfg;
                     } else {
-                        let cfg =
-                            create_training_autoplay_config(team, AutoTrainingArchetype::MacroFortress);
+                        let cfg = create_training_autoplay_config(
+                            team,
+                            AutoTrainingArchetype::MacroFortress,
+                        );
                         engine.team_autoplay_mut(team).config = cfg;
                     }
                 }
@@ -877,7 +885,9 @@ fn save_unified_model(brain: &RlBrain) {
     safe_brain.sanitize();
 
     if !safe_brain.is_valid() {
-        eprintln!("❌ [LỖI NGHIÊM TRỌNG] Không thể lưu model: phát hiện trọng số không hợp lệ (NaN/Inf)!");
+        eprintln!(
+            "❌ [LỖI NGHIÊM TRỌNG] Không thể lưu model: phát hiện trọng số không hợp lệ (NaN/Inf)!"
+        );
         return;
     }
 

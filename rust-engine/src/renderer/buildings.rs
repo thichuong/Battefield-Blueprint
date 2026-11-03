@@ -40,7 +40,9 @@ pub fn render_buildings(engine: &GameEngine) {
         let mut rendered_from_cache = false;
         if let Some(ref cache) = engine.gpu_cache {
             let bt_idx = b.building_type as usize;
-            if bt_idx < cache.building_sprites.len() && color_idx < cache.building_sprites[bt_idx].len() {
+            if bt_idx < cache.building_sprites.len()
+                && color_idx < cache.building_sprites[bt_idx].len()
+            {
                 let sprite_canvas = &cache.building_sprites[bt_idx][color_idx];
                 let dx = bx - 10.0;
                 let dy = by - 5.0;

@@ -572,15 +572,21 @@ impl RlBrain {
         let mut grad_h2 = vec![0.0; self.hidden2_size];
         for k in 0..self.hidden2_size {
             let g_act = self.w2[k][action_idx] * grad_out_act;
-            self.w2[k][action_idx] = (self.w2[k][action_idx] * 0.9999 + self.learning_rate * grad_out_act * h2[k]).clamp(-3.0, 3.0);
+            self.w2[k][action_idx] = (self.w2[k][action_idx] * 0.9999
+                + self.learning_rate * grad_out_act * h2[k])
+                .clamp(-3.0, 3.0);
 
             let g_form = self.w_form[k][form_idx] * grad_out_form;
-            self.w_form[k][form_idx] = (self.w_form[k][form_idx] * 0.9999 + self.learning_rate * grad_out_form * h2[k]).clamp(-3.0, 3.0);
+            self.w_form[k][form_idx] = (self.w_form[k][form_idx] * 0.9999
+                + self.learning_rate * grad_out_form * h2[k])
+                .clamp(-3.0, 3.0);
 
             grad_h2[k] = (g_act + g_form * 0.7).clamp(-2.0, 2.0);
         }
-        self.b2[action_idx] = (self.b2[action_idx] + self.learning_rate * grad_out_act).clamp(-3.0, 3.0);
-        self.b_form[form_idx] = (self.b_form[form_idx] + self.learning_rate * grad_out_form).clamp(-3.0, 3.0);
+        self.b2[action_idx] =
+            (self.b2[action_idx] + self.learning_rate * grad_out_act).clamp(-3.0, 3.0);
+        self.b_form[form_idx] =
+            (self.b_form[form_idx] + self.learning_rate * grad_out_form).clamp(-3.0, 3.0);
 
         // 2. Backprop từ Layer 2 (h2) qua LeakyReLU vào Layer 1 (h1)
         let mut grad_h1 = vec![0.0; self.hidden_size];
@@ -590,7 +596,8 @@ impl RlBrain {
 
             for j in 0..self.hidden_size {
                 grad_h1[j] += self.w_h2[j][k] * delta_k;
-                self.w_h2[j][k] = (self.w_h2[j][k] * 0.9999 + self.learning_rate * delta_k * h1[j]).clamp(-3.0, 3.0);
+                self.w_h2[j][k] = (self.w_h2[j][k] * 0.9999 + self.learning_rate * delta_k * h1[j])
+                    .clamp(-3.0, 3.0);
             }
             self.b_h2[k] = (self.b_h2[k] + self.learning_rate * delta_k).clamp(-3.0, 3.0);
         }
@@ -602,7 +609,9 @@ impl RlBrain {
 
             for i in 0..self.input_size {
                 if i < state.len() {
-                    self.w1[i][j] = (self.w1[i][j] * 0.9999 + self.learning_rate * delta_j * state[i]).clamp(-3.0, 3.0);
+                    self.w1[i][j] = (self.w1[i][j] * 0.9999
+                        + self.learning_rate * delta_j * state[i])
+                        .clamp(-3.0, 3.0);
                 }
             }
             self.b1[j] = (self.b1[j] + self.learning_rate * delta_j).clamp(-3.0, 3.0);
@@ -665,6 +674,9 @@ mod tests {
             );
         }
 
-        assert!(brain.is_valid(), "Brain weights must remain valid and finite after high-reward stress testing");
+        assert!(
+            brain.is_valid(),
+            "Brain weights must remain valid and finite after high-reward stress testing"
+        );
     }
 }

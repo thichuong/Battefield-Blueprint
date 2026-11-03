@@ -807,12 +807,19 @@ fn test_high_load_8_teams_simulation_performance() {
                 2 => UnitType::LaserMarksman,
                 _ => UnitType::Engineer,
             };
-            let mut u = cfg.create_unit(uid, team, u_type, center_x + offset_x, center_y + offset_y);
+            let mut u =
+                cfg.create_unit(uid, team, u_type, center_x + offset_x, center_y + offset_y);
             // Issue orders to simulate real battle load
             if j % 2 == 0 {
-                u.order = UnitOrder::AttackMove { x: 2400.0, y: 2400.0 };
+                u.order = UnitOrder::AttackMove {
+                    x: 2400.0,
+                    y: 2400.0,
+                };
             } else {
-                u.order = UnitOrder::MoveTo { x: 2400.0, y: 2400.0 };
+                u.order = UnitOrder::MoveTo {
+                    x: 2400.0,
+                    y: 2400.0,
+                };
             }
             engine.units.push(u);
             uid += 1;
@@ -830,9 +837,11 @@ fn test_high_load_8_teams_simulation_performance() {
     let elapsed = start.elapsed();
 
     // Verify simulation completed and runs within high performance threshold
+    let threshold_ms = if cfg!(debug_assertions) { 2000 } else { 500 };
     assert!(
-        elapsed.as_millis() < 500,
-        "High-load 640-unit 8-team simulation took too long: {:?}",
-        elapsed
+        elapsed.as_millis() < threshold_ms,
+        "High-load 640-unit 8-team simulation took too long: {:?} (threshold: {}ms)",
+        elapsed,
+        threshold_ms
     );
 }

@@ -4,6 +4,16 @@ use crate::rl::RlBrain;
 use crate::rl::{ACTION_DIM, DEFAULT_HIDDEN2_SIZE, DEFAULT_HIDDEN_SIZE, FORMATION_DIM, STATE_DIM};
 
 #[cfg(has_cuda)]
+#[inline]
+fn sanitize_weight(v: f32, limit: f32) -> f32 {
+    if v.is_finite() {
+        v.clamp(-limit, limit)
+    } else {
+        0.0
+    }
+}
+
+#[cfg(has_cuda)]
 extern "C" {
     fn cuda_is_available() -> std::os::raw::c_int;
     fn cuda_get_device_name(buffer: *mut std::os::raw::c_char, max_len: std::os::raw::c_int);
@@ -227,48 +237,52 @@ impl GpuBatchTrainer {
         }
 
         // Unflatten weights back to brain with NaN/Inf safeguard and [-5.0, 5.0] weight clamping
-        for i in 0..STATE_DIM {
-            for j in 0..DEFAULT_HIDDEN_SIZE {
-                let v = flat_w1[i * DEFAULT_HIDDEN_SIZE + j];
-                brain.w1[i][j] = if v.is_finite() { v.clamp(-5.0, 5.0) } else { 0.0 };
+        for (row, chunk) in brain
+            .w1
+            .iter_mut()
+            .zip(flat_w1.chunks_exact(DEFAULT_HIDDEN_SIZE))
+        {
+            for (dst, &v) in row.iter_mut().zip(chunk) {
+                *dst = sanitize_weight(v, 5.0);
             }
         }
-        for j in 0..DEFAULT_HIDDEN_SIZE {
-            let v = flat_b1[j];
-            brain.b1[j] = if v.is_finite() { v.clamp(-5.0, 5.0) } else { 0.0 };
+        for (dst, &v) in brain.b1.iter_mut().zip(&flat_b1) {
+            *dst = sanitize_weight(v, 5.0);
         }
 
-        for j in 0..DEFAULT_HIDDEN_SIZE {
-            for k in 0..DEFAULT_HIDDEN2_SIZE {
-                let v = flat_w_h2[j * DEFAULT_HIDDEN2_SIZE + k];
-                brain.w_h2[j][k] = if v.is_finite() { v.clamp(-5.0, 5.0) } else { 0.0 };
+        for (row, chunk) in brain
+            .w_h2
+            .iter_mut()
+            .zip(flat_w_h2.chunks_exact(DEFAULT_HIDDEN2_SIZE))
+        {
+            for (dst, &v) in row.iter_mut().zip(chunk) {
+                *dst = sanitize_weight(v, 5.0);
             }
         }
-        for k in 0..DEFAULT_HIDDEN2_SIZE {
-            let v = flat_b_h2[k];
-            brain.b_h2[k] = if v.is_finite() { v.clamp(-5.0, 5.0) } else { 0.0 };
+        for (dst, &v) in brain.b_h2.iter_mut().zip(&flat_b_h2) {
+            *dst = sanitize_weight(v, 5.0);
         }
 
-        for k in 0..DEFAULT_HIDDEN2_SIZE {
-            for o in 0..ACTION_DIM {
-                let v = flat_w2[k * ACTION_DIM + o];
-                brain.w2[k][o] = if v.is_finite() { v.clamp(-5.0, 5.0) } else { 0.0 };
+        for (row, chunk) in brain.w2.iter_mut().zip(flat_w2.chunks_exact(ACTION_DIM)) {
+            for (dst, &v) in row.iter_mut().zip(chunk) {
+                *dst = sanitize_weight(v, 5.0);
             }
         }
-        for o in 0..ACTION_DIM {
-            let v = flat_b2[o];
-            brain.b2[o] = if v.is_finite() { v.clamp(-5.0, 5.0) } else { 0.0 };
+        for (dst, &v) in brain.b2.iter_mut().zip(&flat_b2) {
+            *dst = sanitize_weight(v, 5.0);
         }
 
-        for k in 0..DEFAULT_HIDDEN2_SIZE {
-            for f in 0..FORMATION_DIM {
-                let v = flat_w_form[k * FORMATION_DIM + f];
-                brain.w_form[k][f] = if v.is_finite() { v.clamp(-5.0, 5.0) } else { 0.0 };
+        for (row, chunk) in brain
+            .w_form
+            .iter_mut()
+            .zip(flat_w_form.chunks_exact(FORMATION_DIM))
+        {
+            for (dst, &v) in row.iter_mut().zip(chunk) {
+                *dst = sanitize_weight(v, 5.0);
             }
         }
-        for f in 0..FORMATION_DIM {
-            let v = flat_b_form[f];
-            brain.b_form[f] = if v.is_finite() { v.clamp(-5.0, 5.0) } else { 0.0 };
+        for (dst, &v) in brain.b_form.iter_mut().zip(&flat_b_form) {
+            *dst = sanitize_weight(v, 5.0);
         }
     }
 }
@@ -441,48 +455,52 @@ impl PersistentGpuTrainer {
 
                     // Copy back with gentle weight decay (L2 regularization) and safe clamping
                     let decay = 0.999f32;
-                    for i in 0..STATE_DIM {
-                        for j in 0..DEFAULT_HIDDEN_SIZE {
-                            let v = flat_w1[i * DEFAULT_HIDDEN_SIZE + j] * decay;
-                            brain.w1[i][j] = if v.is_finite() { v.clamp(-3.0, 3.0) } else { 0.0 };
+                    for (row, chunk) in brain
+                        .w1
+                        .iter_mut()
+                        .zip(flat_w1.chunks_exact(DEFAULT_HIDDEN_SIZE))
+                    {
+                        for (dst, &v) in row.iter_mut().zip(chunk) {
+                            *dst = sanitize_weight(v * decay, 3.0);
                         }
                     }
-                    for j in 0..DEFAULT_HIDDEN_SIZE {
-                        let v = flat_b1[j] * decay;
-                        brain.b1[j] = if v.is_finite() { v.clamp(-3.0, 3.0) } else { 0.0 };
+                    for (dst, &v) in brain.b1.iter_mut().zip(&flat_b1) {
+                        *dst = sanitize_weight(v * decay, 3.0);
                     }
 
-                    for j in 0..DEFAULT_HIDDEN_SIZE {
-                        for k in 0..DEFAULT_HIDDEN2_SIZE {
-                            let v = flat_w_h2[j * DEFAULT_HIDDEN2_SIZE + k] * decay;
-                            brain.w_h2[j][k] = if v.is_finite() { v.clamp(-3.0, 3.0) } else { 0.0 };
+                    for (row, chunk) in brain
+                        .w_h2
+                        .iter_mut()
+                        .zip(flat_w_h2.chunks_exact(DEFAULT_HIDDEN2_SIZE))
+                    {
+                        for (dst, &v) in row.iter_mut().zip(chunk) {
+                            *dst = sanitize_weight(v * decay, 3.0);
                         }
                     }
-                    for k in 0..DEFAULT_HIDDEN2_SIZE {
-                        let v = flat_b_h2[k] * decay;
-                        brain.b_h2[k] = if v.is_finite() { v.clamp(-3.0, 3.0) } else { 0.0 };
+                    for (dst, &v) in brain.b_h2.iter_mut().zip(&flat_b_h2) {
+                        *dst = sanitize_weight(v * decay, 3.0);
                     }
 
-                    for k in 0..DEFAULT_HIDDEN2_SIZE {
-                        for o in 0..ACTION_DIM {
-                            let v = flat_w2[k * ACTION_DIM + o] * decay;
-                            brain.w2[k][o] = if v.is_finite() { v.clamp(-3.0, 3.0) } else { 0.0 };
+                    for (row, chunk) in brain.w2.iter_mut().zip(flat_w2.chunks_exact(ACTION_DIM)) {
+                        for (dst, &v) in row.iter_mut().zip(chunk) {
+                            *dst = sanitize_weight(v * decay, 3.0);
                         }
                     }
-                    for o in 0..ACTION_DIM {
-                        let v = flat_b2[o] * decay;
-                        brain.b2[o] = if v.is_finite() { v.clamp(-3.0, 3.0) } else { 0.0 };
+                    for (dst, &v) in brain.b2.iter_mut().zip(&flat_b2) {
+                        *dst = sanitize_weight(v * decay, 3.0);
                     }
 
-                    for k in 0..DEFAULT_HIDDEN2_SIZE {
-                        for f in 0..FORMATION_DIM {
-                            let v = flat_w_form[k * FORMATION_DIM + f] * decay;
-                            brain.w_form[k][f] = if v.is_finite() { v.clamp(-3.0, 3.0) } else { 0.0 };
+                    for (row, chunk) in brain
+                        .w_form
+                        .iter_mut()
+                        .zip(flat_w_form.chunks_exact(FORMATION_DIM))
+                    {
+                        for (dst, &v) in row.iter_mut().zip(chunk) {
+                            *dst = sanitize_weight(v * decay, 3.0);
                         }
                     }
-                    for f in 0..FORMATION_DIM {
-                        let v = flat_b_form[f] * decay;
-                        brain.b_form[f] = if v.is_finite() { v.clamp(-3.0, 3.0) } else { 0.0 };
+                    for (dst, &v) in brain.b_form.iter_mut().zip(&flat_b_form) {
+                        *dst = sanitize_weight(v * decay, 3.0);
                     }
                     return;
                 }
@@ -577,7 +595,10 @@ mod tests {
 
         // Sync weights back to brain
         trainer.sync_to_brain(&mut brain);
-        assert!(brain.is_valid(), "Brain must be valid after persistent VRAM training");
+        assert!(
+            brain.is_valid(),
+            "Brain must be valid after persistent VRAM training"
+        );
         println!("Persistent GPU VRAM Trainer executed successfully!");
     }
 }

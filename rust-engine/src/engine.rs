@@ -760,6 +760,7 @@ impl GameEngine {
     }
 
     /// Tạo các hiệu ứng hạt ánh sáng / khói lửa / vụn nổ (Particle Pool)
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn_particles(
         &mut self,
         x: f32,
@@ -791,7 +792,7 @@ impl GameEngine {
                 y,
                 vx: angle.cos() * spd,
                 vy: angle.sin() * spd,
-                color: crate::components::ParticleColor::from_str(color),
+                color: crate::components::ParticleColor::from_hex(color),
                 size: p_size,
                 lifetime: p_life,
                 max_lifetime: p_life,

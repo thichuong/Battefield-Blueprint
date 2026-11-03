@@ -227,10 +227,10 @@ pub fn compute_ai_step_reward(
                 reward += 1.5;
             }
         }
-        BotStrategicAction::BuildInfrastructure => {
-            if cur.my_reactors < 24 || cur.my_converters < 8 {
-                reward += 1.2;
-            }
+        BotStrategicAction::BuildInfrastructure
+            if cur.my_reactors < 24 || cur.my_converters < 8 =>
+        {
+            reward += 1.2;
         }
         BotStrategicAction::BuildDefenseGrid if cur.my_turrets < 16 => {
             reward += 0.8;
@@ -238,10 +238,10 @@ pub fn compute_ai_step_reward(
         BotStrategicAction::TechScienceBranch
         | BotStrategicAction::TechMagicBranch
         | BotStrategicAction::TechMonsterBranch
-        | BotStrategicAction::TechLogisticsBranch => {
-            if cur.my_unlocked_techs < 19 {
-                reward += 1.5;
-            }
+        | BotStrategicAction::TechLogisticsBranch
+            if cur.my_unlocked_techs < 19 =>
+        {
+            reward += 1.5;
         }
         _ => {}
     }

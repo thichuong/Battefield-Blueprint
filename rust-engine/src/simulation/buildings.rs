@@ -27,7 +27,8 @@ pub fn update_buildings(engine: &mut GameEngine, dt: f32) {
     let team_techs: [TechTreeState; 8] =
         std::array::from_fn(|i| engine.team_tech(Team::from_index(i)).clone());
 
-    let worker_build_range_sq = crate::config::WORKER_BUILD_RANGE * crate::config::WORKER_BUILD_RANGE;
+    let worker_build_range_sq =
+        crate::config::WORKER_BUILD_RANGE * crate::config::WORKER_BUILD_RANGE;
 
     // Chỉ thu thập vị trí của Engineer khi có ít nhất 1 công trình chưa xây xong
     let has_incomplete_building = engine.buildings.iter().any(|b| b.build_progress < 1.0);
@@ -55,13 +56,17 @@ pub fn update_buildings(engine: &mut GameEngine, dt: f32) {
         let range = b_cfg.map(|c| c.turret_range).unwrap_or(0.0);
         let base_damage = b_cfg.map(|c| c.turret_damage).unwrap_or(0.0);
 
-        let target_pos = if range > 0.0 && base_damage > 0.0 && engine.buildings[b_idx].current_cooldown <= 0.0 {
+        let target_pos = if range > 0.0
+            && base_damage > 0.0
+            && engine.buildings[b_idx].current_cooldown <= 0.0
+        {
             if let Some((target_id, is_target_building, _dist)) = engine
                 .spatial_grid
                 .find_nearest_hostile(glam::Vec2::new(b_x, b_y), range, my_faction)
             {
                 if is_target_building {
-                    if let Some(&tb_idx) = engine.spatial_grid.building_id_to_index.get(&target_id) {
+                    if let Some(&tb_idx) = engine.spatial_grid.building_id_to_index.get(&target_id)
+                    {
                         if tb_idx < engine.buildings.len() {
                             let tb = &engine.buildings[tb_idx];
                             if tb.id == target_id {
@@ -105,8 +110,7 @@ pub fn update_buildings(engine: &mut GameEngine, dt: f32) {
 
         if b.build_progress < 1.0 {
             let is_worker_near = engineer_pos.iter().any(|(t, x, y)| {
-                *t == b.team
-                    && ((*x - b.x).powi(2) + (*y - b.y).powi(2)) <= worker_build_range_sq
+                *t == b.team && ((*x - b.x).powi(2) + (*y - b.y).powi(2)) <= worker_build_range_sq
             });
             let next_progress = calculate_building_construction_step(
                 b.build_progress,
@@ -149,7 +153,8 @@ pub fn update_buildings(engine: &mut GameEngine, dt: f32) {
                     b.current_cooldown -= dt;
                 } else if let Some((ex, ey)) = target_pos {
                     let base_cd = b_cfg.map(|c| c.turret_cooldown).unwrap_or(1.0).max(0.1);
-                    let base_dmg_type = b_cfg.map(|c| c.turret_damage_type).unwrap_or(b.damage_type);
+                    let base_dmg_type =
+                        b_cfg.map(|c| c.turret_damage_type).unwrap_or(b.damage_type);
                     let base_speed = b_cfg
                         .map(|c| c.turret_projectile_speed)
                         .unwrap_or(900.0)

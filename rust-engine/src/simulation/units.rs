@@ -51,7 +51,11 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
         let my_faction = factions[u_team_idx];
 
         // Lấy thông tin mục tiêu AttackTarget hoặc Build nhanh O(1) qua spatial_grid
-        let attack_target_info = if let UnitOrder::AttackTarget { target_id, is_building } = u_order {
+        let attack_target_info = if let UnitOrder::AttackTarget {
+            target_id,
+            is_building,
+        } = u_order
+        {
             if is_building {
                 if let Some(&b_idx) = spatial_grid.building_id_to_index.get(&target_id) {
                     if b_idx < engine.buildings.len() {
@@ -71,7 +75,9 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
                 if let Some(&t_idx) = spatial_grid.unit_id_to_index.get(&target_id) {
                     if t_idx < engine.units.len() {
                         let target_u = &engine.units[t_idx];
-                        if target_u.id == target_id && factions[target_u.team.index() % 8] != my_faction {
+                        if target_u.id == target_id
+                            && factions[target_u.team.index() % 8] != my_faction
+                        {
                             Some((target_u.x, target_u.y, 10.0))
                         } else {
                             None

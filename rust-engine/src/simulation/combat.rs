@@ -33,7 +33,9 @@ pub fn apply_damage_to_unit(unit: &mut Unit, taken: f32) -> f32 {
 
 pub fn update_magic_circles(engine: &mut GameEngine, dt: f32) {
     let factions = engine.team_factions();
-    engine.spatial_grid.rebuild_with_factions(&engine.units, &engine.buildings, &factions);
+    engine
+        .spatial_grid
+        .rebuild_with_factions(&engine.units, &engine.buildings, &factions);
     let has_corrosive: [bool; 8] =
         std::array::from_fn(|i| engine.team_tech(Team::from_index(i)).corrosive_curse);
     let mut new_texts = Vec::new();
@@ -98,8 +100,7 @@ pub fn update_magic_circles(engine: &mut GameEngine, dt: f32) {
 
                 if should_tick_text && !engine.is_headless {
                     let tick_raw = circle_dps * u.max_hp * 0.5;
-                    let tick_taken =
-                        calculate_effective_damage(tick_raw, dmg_type, &u.resistances);
+                    let tick_taken = calculate_effective_damage(tick_raw, dmg_type, &u.resistances);
                     new_texts.push(FloatingText {
                         id: 0,
                         text: format!("-{:.0}", tick_taken),
@@ -125,8 +126,7 @@ pub fn update_magic_circles(engine: &mut GameEngine, dt: f32) {
 
                 if should_tick_text && !engine.is_headless {
                     let tick_raw = circle_dps * b.max_hp * 0.5;
-                    let tick_taken =
-                        calculate_effective_damage(tick_raw, dmg_type, &b.resistances);
+                    let tick_taken = calculate_effective_damage(tick_raw, dmg_type, &b.resistances);
                     new_texts.push(FloatingText {
                         id: 0,
                         text: format!("-{:.0}", tick_taken),
@@ -239,8 +239,7 @@ pub fn update_projectiles(engine: &mut GameEngine, dt: f32) {
                     let b = &mut engine.buildings[b_idx];
                     let b_rad = b.width.max(b.height) * 0.5;
                     let raw_dmg = p.damage * p.building_damage_mult;
-                    let taken =
-                        calculate_effective_damage(raw_dmg, p.damage_type, &b.resistances);
+                    let taken = calculate_effective_damage(raw_dmg, p.damage_type, &b.resistances);
                     b.hp -= taken;
                     b.under_attack_timer = crate::config::BUILDING_UNDER_ATTACK_DURATION;
                     b.hit_flash_timer = 0.08;

@@ -213,7 +213,9 @@ pub fn render_in_game_hud(engine: &GameEngine) {
         let mut color_set = false;
 
         for b in &engine.buildings {
-            if b.team == team && (engine.are_allies(Team::Player, b.team) || engine.fog.is_explored(b.x, b.y)) {
+            if b.team == team
+                && (engine.are_allies(Team::Player, b.team) || engine.fog.is_explored(b.x, b.y))
+            {
                 if !color_set {
                     ctx.set_fill_style_str(color);
                     color_set = true;
@@ -281,7 +283,9 @@ pub fn render_in_game_hud(engine: &GameEngine) {
         let mut color_set = false;
 
         for u in &engine.units {
-            if u.team == team && (engine.are_allies(Team::Player, u.team) || engine.fog.is_visible(u.x, u.y)) {
+            if u.team == team
+                && (engine.are_allies(Team::Player, u.team) || engine.fog.is_visible(u.x, u.y))
+            {
                 if !color_set {
                     ctx.set_fill_style_str(color);
                     color_set = true;

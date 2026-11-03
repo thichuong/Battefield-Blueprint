@@ -6,17 +6,16 @@ use crate::config::GameConfig;
 use crate::fog::{FOG_COLS, FOG_ROWS};
 
 // Helper tạo offscreen HTML canvas element
-fn create_offscreen_canvas(w: u32, h: u32) -> Option<(HtmlCanvasElement, CanvasRenderingContext2d)> {
+fn create_offscreen_canvas(
+    w: u32,
+    h: u32,
+) -> Option<(HtmlCanvasElement, CanvasRenderingContext2d)> {
     let window = web_sys::window()?;
     let document = window.document()?;
     let canvas: HtmlCanvasElement = document.create_element("canvas").ok()?.dyn_into().ok()?;
     canvas.set_width(w);
     canvas.set_height(h);
-    let ctx: CanvasRenderingContext2d = canvas
-        .get_context("2d")
-        .ok()??
-        .dyn_into()
-        .ok()?;
+    let ctx: CanvasRenderingContext2d = canvas.get_context("2d").ok()??.dyn_into().ok()?;
     Some((canvas, ctx))
 }
 
@@ -31,7 +30,12 @@ pub const COLOR_ENEMY_5: usize = 7;
 pub const COLOR_HIT_FLASH: usize = 8;
 pub const NUM_COLOR_VARIANTS: usize = 9;
 
-pub fn get_color_index(team: Team, hit_flash: bool, player_faction: u8, team_factions: &[u8; 8]) -> usize {
+pub fn get_color_index(
+    team: Team,
+    hit_flash: bool,
+    player_faction: u8,
+    team_factions: &[u8; 8],
+) -> usize {
     if hit_flash {
         return COLOR_HIT_FLASH;
     }
@@ -331,14 +335,14 @@ impl GpuCacheManager {
 
         // --- 6. Bake Building Sprites ---
         let color_palette = [
-            ("#00e5ff", "rgba(0, 229, 255, 0.12)"), // Player
-            ("#10b981", "rgba(16, 185, 129, 0.12)"), // Ally
-            ("#f43f5e", "rgba(244, 63, 94, 0.12)"),  // Enemy 0
-            ("#ec4899", "rgba(236, 72, 153, 0.12)"), // Enemy 1
-            ("#8b5cf6", "rgba(139, 92, 246, 0.12)"), // Enemy 2
-            ("#eab308", "rgba(234, 179, 8, 0.12)"),  // Enemy 3
-            ("#f97316", "rgba(249, 115, 22, 0.12)"), // Enemy 4
-            ("#06b6d4", "rgba(6, 182, 212, 0.12)"),  // Enemy 5
+            ("#00e5ff", "rgba(0, 229, 255, 0.12)"),   // Player
+            ("#10b981", "rgba(16, 185, 129, 0.12)"),  // Ally
+            ("#f43f5e", "rgba(244, 63, 94, 0.12)"),   // Enemy 0
+            ("#ec4899", "rgba(236, 72, 153, 0.12)"),  // Enemy 1
+            ("#8b5cf6", "rgba(139, 92, 246, 0.12)"),  // Enemy 2
+            ("#eab308", "rgba(234, 179, 8, 0.12)"),   // Enemy 3
+            ("#f97316", "rgba(249, 115, 22, 0.12)"),  // Enemy 4
+            ("#06b6d4", "rgba(6, 182, 212, 0.12)"),   // Enemy 5
             ("#ffffff", "rgba(255, 255, 255, 0.35)"), // Hit flash
         ];
 
@@ -373,7 +377,9 @@ impl GpuCacheManager {
                 ctx.stroke_rect(ox, oy, w as f64, h as f64);
 
                 // Ký hiệu góc kỹ thuật
-                crate::renderer::buildings::draw_blueprint_brackets(&ctx, ox, oy, w as f64, h as f64, stroke_col);
+                crate::renderer::buildings::draw_blueprint_brackets(
+                    &ctx, ox, oy, w as f64, h as f64, stroke_col,
+                );
 
                 // Đồ họa lõi
                 crate::renderer::buildings::draw_building_graphic(
@@ -416,7 +422,11 @@ impl GpuCacheManager {
         let mut unit_sprites = Vec::with_capacity(all_units.len());
 
         for &ut in &all_units {
-            let sprite_dim: u32 = if ut == UnitType::BehemothTitan { 96 } else { 64 };
+            let sprite_dim: u32 = if ut == UnitType::BehemothTitan {
+                96
+            } else {
+                64
+            };
             let mut unit_variants = Vec::with_capacity(NUM_COLOR_VARIANTS);
 
             for &(col, _) in &color_palette {
@@ -434,22 +444,22 @@ impl GpuCacheManager {
                         let mut mock_u = config.create_unit(0, Team::Player, ut, 0.0, 0.0);
                         mock_u.flying_swords = 0; // Để sprite cơ bản không chứa kiếm tĩnh, kiếm sẽ được vẽ động theo số lượng thực tế
                         mock_u.facing_right = facing_right;
-                        mock_u.walk_cycle = (f_idx as f32) * (std::f32::consts::TAU / (num_anim_frames as f32));
-                        mock_u.attack_anim_timer = if f_idx < 4 { (4 - f_idx) as f32 * 0.25 } else { 0.0 };
+                        mock_u.walk_cycle =
+                            (f_idx as f32) * (std::f32::consts::TAU / (num_anim_frames as f32));
+                        mock_u.attack_anim_timer = if f_idx < 4 {
+                            (4 - f_idx) as f32 * 0.25
+                        } else {
+                            0.0
+                        };
                         if f_idx >= 1 {
-                            mock_u.order = crate::components::UnitOrder::MoveTo { x: 100.0, y: 100.0 };
+                            mock_u.order =
+                                crate::components::UnitOrder::MoveTo { x: 100.0, y: 100.0 };
                         } else {
                             mock_u.order = crate::components::UnitOrder::Idle;
                         }
 
                         crate::renderer::units::draw_procedural_stickman_direct(
-                            &ctx,
-                            &mock_u,
-                            col,
-                            0.0,
-                            false,
-                            cx,
-                            cy,
+                            &ctx, &mock_u, col, 0.0, false, cx, cy,
                         );
 
                         frame_variants.push(c);
@@ -494,7 +504,8 @@ impl GpuCacheManager {
     pub fn update_fog_texture(&self, fog_grid: &[crate::fog::Visibility]) {
         use crate::fog::Visibility;
 
-        self.fog_ctx.clear_rect(0.0, 0.0, FOG_COLS as f64, FOG_ROWS as f64);
+        self.fog_ctx
+            .clear_rect(0.0, 0.0, FOG_COLS as f64, FOG_ROWS as f64);
 
         for r in 0..FOG_ROWS {
             let ry = r as f64;

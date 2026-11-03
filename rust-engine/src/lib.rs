@@ -62,7 +62,9 @@ pub fn engine_frame(now_ms: f64, mouse_x: f32, mouse_y: f32, should_render: bool
         };
 
         // 1. Gom chuột (Mouse Coalescing)
-        if (engine.mouse_screen_x - mouse_x).abs() > 0.5 || (engine.mouse_screen_y - mouse_y).abs() > 0.5 {
+        if (engine.mouse_screen_x - mouse_x).abs() > 0.5
+            || (engine.mouse_screen_y - mouse_y).abs() > 0.5
+        {
             simulation::handle_mouse_move(engine, mouse_x, mouse_y);
         }
 
@@ -86,7 +88,11 @@ pub fn engine_frame(now_ms: f64, mouse_x: f32, mouse_y: f32, should_render: bool
         engine.sim_accumulator += delta_sec;
 
         let measure_debug = engine.show_debug_overlay;
-        let t0 = if measure_debug { get_performance_now() } else { 0.0 };
+        let t0 = if measure_debug {
+            get_performance_now()
+        } else {
+            0.0
+        };
 
         let mut sub_steps = 0;
         while engine.sim_accumulator >= FIXED_TIMESTEP && sub_steps < MAX_SUB_STEPS {
@@ -105,7 +111,11 @@ pub fn engine_frame(now_ms: f64, mouse_x: f32, mouse_y: f32, should_render: bool
             engine.last_render_time = now_ms;
             let alpha = (engine.sim_accumulator / FIXED_TIMESTEP).clamp(0.0, 1.0);
             engine.render_alpha = alpha;
-            let rt0 = if measure_debug { get_performance_now() } else { 0.0 };
+            let rt0 = if measure_debug {
+                get_performance_now()
+            } else {
+                0.0
+            };
             renderer::render(engine);
             if measure_debug {
                 let rt1 = get_performance_now();

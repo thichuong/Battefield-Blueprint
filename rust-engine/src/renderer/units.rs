@@ -23,8 +23,7 @@ pub fn render_units(engine: &mut GameEngine) {
         {
             continue;
         }
-        let is_visible =
-            engine.are_allies(Team::Player, u.team) || engine.fog.is_visible(u.x, u.y);
+        let is_visible = engine.are_allies(Team::Player, u.team) || engine.fog.is_visible(u.x, u.y);
         if !is_visible {
             continue;
         }
@@ -32,7 +31,9 @@ pub fn render_units(engine: &mut GameEngine) {
     }
 
     // Sắp xếp chiều sâu 2.5D theo trục Y
-    engine.visible_unit_indices.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
+    engine
+        .visible_unit_indices
+        .sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
 
     let player_faction = engine.get_faction(Team::Player);
     let team_factions = engine.team_factions();
@@ -93,16 +94,18 @@ pub fn render_units(engine: &mut GameEngine) {
                 let ut_idx = u.unit_type as usize;
                 if ut_idx < cache.unit_sprites.len() {
                     let facing_idx = if u.facing_right { 1 } else { 0 };
-                    let is_moving = !is_welding && matches!(
-                        u.order,
-                        UnitOrder::MoveTo { .. }
-                            | UnitOrder::AttackMove { .. }
-                            | UnitOrder::Harvest {
-                                phase: HarvestPhase::MovingToNode | HarvestPhase::ReturningToBase,
-                                ..
-                            }
-                            | UnitOrder::Build { .. }
-                    );
+                    let is_moving = !is_welding
+                        && matches!(
+                            u.order,
+                            UnitOrder::MoveTo { .. }
+                                | UnitOrder::AttackMove { .. }
+                                | UnitOrder::Harvest {
+                                    phase: HarvestPhase::MovingToNode
+                                        | HarvestPhase::ReturningToBase,
+                                    ..
+                                }
+                                | UnitOrder::Build { .. }
+                        );
 
                     let frame_idx = if u.attack_anim_timer > 0.0 {
                         let p = (1.0 - u.attack_anim_timer).clamp(0.0, 1.0);
@@ -115,8 +118,13 @@ pub fn render_units(engine: &mut GameEngine) {
                         0
                     };
 
-                    let sprite_canvas = &cache.unit_sprites[ut_idx][color_idx][facing_idx][frame_idx];
-                    let sprite_dim = if u.unit_type == UnitType::BehemothTitan { 96.0 } else { 64.0 };
+                    let sprite_canvas =
+                        &cache.unit_sprites[ut_idx][color_idx][facing_idx][frame_idx];
+                    let sprite_dim = if u.unit_type == UnitType::BehemothTitan {
+                        96.0
+                    } else {
+                        64.0
+                    };
                     let dx = draw_x - sprite_dim * 0.5;
                     let dy = draw_y - sprite_dim * 0.75;
                     let _ = ctx.draw_image_with_html_canvas_element(sprite_canvas, dx, dy);
@@ -134,7 +142,8 @@ pub fn render_units(engine: &mut GameEngine) {
                             let shoulder_y = chest_y + 1.5;
 
                             for i in 0..swords_count {
-                                let arc_offset = ((i as f64) - (swords_count as f64 - 1.0) * 0.5) * 5.0;
+                                let arc_offset =
+                                    ((i as f64) - (swords_count as f64 - 1.0) * 0.5) * 5.0;
                                 let sw_x = shoulder_x - (9.0 + (i as f64) * 1.5) * flip;
                                 let sw_y = shoulder_y - 12.0 + arc_offset;
 

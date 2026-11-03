@@ -35,7 +35,8 @@ pub fn render_magic_circles(engine: &GameEngine) {
             let _ = ctx.rotate(rot);
             let scale = r / 85.0;
             let _ = ctx.scale(scale, scale);
-            let _ = ctx.draw_image_with_html_canvas_element(&cache.magic_circle_canvas, -96.0, -96.0);
+            let _ =
+                ctx.draw_image_with_html_canvas_element(&cache.magic_circle_canvas, -96.0, -96.0);
             ctx.restore();
             continue;
         }
@@ -167,13 +168,19 @@ pub fn render_projectiles(engine: &GameEngine) {
         if let Some(ref cache) = engine.gpu_cache {
             match p.visual {
                 ProjectileVisual::Bullet => {
-                    let _ = ctx.draw_image_with_html_canvas_element(&cache.bullet_canvas, -20.0, -8.0);
+                    let _ =
+                        ctx.draw_image_with_html_canvas_element(&cache.bullet_canvas, -20.0, -8.0);
                 }
                 ProjectileVisual::Rocket => {
-                    let _ = ctx.draw_image_with_html_canvas_element(&cache.rocket_canvas, -18.0, -9.0);
+                    let _ =
+                        ctx.draw_image_with_html_canvas_element(&cache.rocket_canvas, -18.0, -9.0);
                 }
                 ProjectileVisual::FlyingSword => {
-                    let _ = ctx.draw_image_with_html_canvas_element(&cache.flying_sword_canvas, -18.0, -8.0);
+                    let _ = ctx.draw_image_with_html_canvas_element(
+                        &cache.flying_sword_canvas,
+                        -18.0,
+                        -8.0,
+                    );
                 }
                 ProjectileVisual::Laser => {}
             }
