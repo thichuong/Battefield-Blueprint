@@ -2,11 +2,7 @@ use crate::components::{Building, BuildingType, FormationType, Team, UnitType};
 use crate::GameEngine;
 use web_sys::CanvasRenderingContext2d;
 
-pub fn render_command_card(engine: &GameEngine, x: f64, y: f64) {
-    let ctx = match engine.ui_context.as_ref().or(engine.context.as_ref()) {
-        Some(c) => c,
-        None => return,
-    };
+pub fn render_command_card(engine: &GameEngine, ctx: &CanvasRenderingContext2d, x: f64, y: f64) {
     ctx.set_fill_style_str("rgba(3, 13, 26, 0.94)");
     ctx.fill_rect(x, y, 215.0, 140.0);
     ctx.set_stroke_style_str("#0284c7");

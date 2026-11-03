@@ -200,7 +200,11 @@ function loadStoredSettings(): StoredSettings {
 
 export const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const uiCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const topBarCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const minimapCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const selectionCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const commandCardCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isInGame, setIsInGame] = useState<boolean>(false);
   const [isTechTreeOpen, setIsTechTreeOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
@@ -224,7 +228,15 @@ export const App: React.FC = () => {
 
     const initEngine = async () => {
       if (!canvasRef.current) return;
-      await wasmBridge.initialize(canvasRef.current, uiCanvasRef.current);
+      await wasmBridge.initialize(
+        canvasRef.current,
+        null,
+        topBarCanvasRef.current,
+        minimapCanvasRef.current,
+        selectionCanvasRef.current,
+        commandCardCanvasRef.current,
+        overlayCanvasRef.current
+      );
 
       const resize = () => {
         if (!canvasRef.current) return;
@@ -239,11 +251,39 @@ export const App: React.FC = () => {
         canvasRef.current.style.width = `${width}px`;
         canvasRef.current.style.height = `${height}px`;
 
-        if (uiCanvasRef.current) {
-          uiCanvasRef.current.width = pxW;
-          uiCanvasRef.current.height = pxH;
-          uiCanvasRef.current.style.width = `${width}px`;
-          uiCanvasRef.current.style.height = `${height}px`;
+        if (topBarCanvasRef.current) {
+          topBarCanvasRef.current.width = pxW;
+          topBarCanvasRef.current.height = Math.round(48 * dpr);
+          topBarCanvasRef.current.style.width = `${width}px`;
+          topBarCanvasRef.current.style.height = '48px';
+        }
+
+        if (minimapCanvasRef.current) {
+          minimapCanvasRef.current.width = Math.round(160 * dpr);
+          minimapCanvasRef.current.height = Math.round(160 * dpr);
+          minimapCanvasRef.current.style.width = '160px';
+          minimapCanvasRef.current.style.height = '160px';
+        }
+
+        if (selectionCanvasRef.current) {
+          selectionCanvasRef.current.width = Math.round(360 * dpr);
+          selectionCanvasRef.current.height = Math.round(140 * dpr);
+          selectionCanvasRef.current.style.width = '360px';
+          selectionCanvasRef.current.style.height = '140px';
+        }
+
+        if (commandCardCanvasRef.current) {
+          commandCardCanvasRef.current.width = Math.round(215 * dpr);
+          commandCardCanvasRef.current.height = Math.round(140 * dpr);
+          commandCardCanvasRef.current.style.width = '215px';
+          commandCardCanvasRef.current.style.height = '140px';
+        }
+
+        if (overlayCanvasRef.current) {
+          overlayCanvasRef.current.width = pxW;
+          overlayCanvasRef.current.height = pxH;
+          overlayCanvasRef.current.style.width = `${width}px`;
+          overlayCanvasRef.current.style.height = `${height}px`;
         }
 
         wasmBridge.resize(width, height, dpr);
@@ -263,23 +303,37 @@ export const App: React.FC = () => {
       });
 
       // Vòng lặp tối ưu hóa: 1 lệnh gọi Wasm duy nhất mỗi frame (Zero JS-Wasm boundary overhead)
+      // Dùng MessageChannel thay vì setTimeout(..., 0) để không bị HTML5 4ms clamping khóa cứng ở ~200 FPS!
+      const channel = new MessageChannel();
+      channel.port1.onmessage = () => {
+        loop();
+      };
+
       const scheduleNext = () => {
         if (!isRunning) return;
         const limit = fpsLimitRef.current;
         if (limit === 'vsync') {
           animationFrameId = requestAnimationFrame(loop);
         } else if (limit === 'unlimited') {
-          timerId = window.setTimeout(loop, 0);
+          channel.port2.postMessage(null);
         } else {
           const interval = 1000 / limit;
           const now = performance.now();
           const elapsed = now - lastRenderTime;
-          const remaining = Math.max(0, interval - elapsed);
+          const remaining = interval - elapsed;
 
           if (limit <= 60) {
             animationFrameId = requestAnimationFrame(loop);
+          } else if (remaining <= 4.0) {
+            // Khi thời gian chờ còn lại <= 4ms, postMessage ngay để tránh bị dính HTML5 4ms clamp
+            channel.port2.postMessage(null);
           } else {
-            timerId = window.setTimeout(loop, Math.floor(remaining));
+            // Ngủ phần lớn thời gian (trừ đi 3ms buffer) rồi kích hoạt qua postMessage
+            timerId = window.setTimeout(() => {
+              if (isRunning) {
+                channel.port2.postMessage(null);
+              }
+            }, Math.floor(remaining - 3.0));
           }
         }
       };
@@ -296,8 +350,8 @@ export const App: React.FC = () => {
           lastRenderTime = now;
         } else {
           const interval = 1000 / limit;
-          // Bù sai số 1ms để khung hình không bị trôi chu kỳ
-          if (now - lastRenderTime >= interval - 1.0) {
+          // Bù sai số 0.5ms để khung hình ổn định
+          if (now - lastRenderTime >= interval - 0.5) {
             shouldRender = true;
             lastRenderTime = now;
           }
@@ -547,10 +601,35 @@ export const App: React.FC = () => {
         className="block w-full h-full cursor-crosshair"
       />
 
-      {/* Canvas UI / HUD Overlay (Canvas 2D) */}
+      {/* Multi-Canvas HUD Layering */}
+      {/* 1. Top Bar Canvas: 100vw x 48px */}
       <canvas
-        ref={uiCanvasRef}
-        className="absolute inset-0 pointer-events-none block w-full h-full"
+        ref={topBarCanvasRef}
+        className="absolute top-0 left-0 w-full h-[48px] pointer-events-none block z-10"
+      />
+
+      {/* 2. Minimap Canvas: 160 x 160px cố định góc dưới trái */}
+      <canvas
+        ref={minimapCanvasRef}
+        className="absolute bottom-[10px] left-[10px] w-[160px] h-[160px] pointer-events-none block z-10"
+      />
+
+      {/* 3. Selection Info Panel Canvas: 360 x 140px đáy giữa màn hình */}
+      <canvas
+        ref={selectionCanvasRef}
+        className="absolute bottom-[10px] left-1/2 -translate-x-1/2 w-[360px] h-[140px] pointer-events-none block z-10"
+      />
+
+      {/* 4. Command Card Canvas: 215 x 140px đáy góc phải màn hình */}
+      <canvas
+        ref={commandCardCanvasRef}
+        className="absolute bottom-[10px] right-[10px] w-[215px] h-[140px] pointer-events-none block z-10"
+      />
+
+      {/* 5. Dynamic Overlay Canvas: Box select, Attack-move cursor, Floating texts */}
+      <canvas
+        ref={overlayCanvasRef}
+        className="absolute inset-0 pointer-events-none block w-full h-full z-20"
       />
 
       {/* UI Ngoài vòng lặp do React quản lý */}

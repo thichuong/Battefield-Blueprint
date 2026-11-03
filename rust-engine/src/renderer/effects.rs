@@ -1,6 +1,7 @@
 use crate::components::{BuildingType, ProjectileVisual, Team};
 use crate::renderer::buildings::draw_building_graphic;
 use crate::GameEngine;
+use web_sys::CanvasRenderingContext2d;
 
 pub fn render_magic_circles(engine: &GameEngine) {
     let ctx = match engine.context.as_ref() {
@@ -391,11 +392,7 @@ pub fn render_build_ghost(engine: &GameEngine, b_type: BuildingType) {
     }
 }
 
-pub fn render_floating_texts(engine: &GameEngine) {
-    let ctx = match engine.ui_context.as_ref().or(engine.context.as_ref()) {
-        Some(c) => c,
-        None => return,
-    };
+pub fn render_floating_texts_ctx(engine: &GameEngine, ctx: &CanvasRenderingContext2d) {
     ctx.set_font("bold 13px monospace");
     for ft in &engine.floating_texts {
         if !engine.camera.is_point_visible(ft.x, ft.y, 40.0) {
@@ -411,11 +408,15 @@ pub fn render_floating_texts(engine: &GameEngine) {
     }
 }
 
-pub fn render_attack_move_cursor(engine: &GameEngine) {
+pub fn render_floating_texts(engine: &GameEngine) {
     let ctx = match engine.ui_context.as_ref().or(engine.context.as_ref()) {
         Some(c) => c,
         None => return,
     };
+    render_floating_texts_ctx(engine, ctx);
+}
+
+pub fn render_attack_move_cursor_ctx(engine: &GameEngine, ctx: &CanvasRenderingContext2d) {
     let mx = engine.mouse_screen_x as f64;
     let my = engine.mouse_screen_y as f64;
 
@@ -432,6 +433,14 @@ pub fn render_attack_move_cursor(engine: &GameEngine) {
     ctx.set_font("bold 11px monospace");
     ctx.set_fill_style_str("#ef4444");
     let _ = ctx.fill_text("ATTACK-MOVE", mx + 18.0, my + 4.0);
+}
+
+pub fn render_attack_move_cursor(engine: &GameEngine) {
+    let ctx = match engine.ui_context.as_ref().or(engine.context.as_ref()) {
+        Some(c) => c,
+        None => return,
+    };
+    render_attack_move_cursor_ctx(engine, ctx);
 }
 
 pub fn render_particles(engine: &GameEngine) {

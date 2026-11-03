@@ -89,7 +89,7 @@ export function handle_mouse_wheel(delta_y: number): void;
 
 export function init_engine(canvas: HTMLCanvasElement): void;
 
-export function init_engine_webgpu(world_canvas: HTMLCanvasElement, ui_canvas?: HTMLCanvasElement | null): Promise<boolean>;
+export function init_engine_webgpu(world_canvas: HTMLCanvasElement, ui_canvas?: HTMLCanvasElement | null, top_bar_canvas?: HTMLCanvasElement | null, minimap_canvas?: HTMLCanvasElement | null, selection_canvas?: HTMLCanvasElement | null, command_card_canvas?: HTMLCanvasElement | null, overlay_canvas?: HTMLCanvasElement | null): Promise<boolean>;
 
 export function poll_events_from_engine(): string;
 
@@ -107,7 +107,7 @@ export interface InitOutput {
     readonly handle_key_down: (a: number, b: number) => void;
     readonly handle_key_up: (a: number, b: number) => void;
     readonly init_engine: (a: any) => [number, number];
-    readonly init_engine_webgpu: (a: any, b: number) => any;
+    readonly init_engine_webgpu: (a: any, b: number, c: number, d: number, e: number, f: number, g: number) => any;
     readonly poll_events_from_engine: () => [number, number];
     readonly resize_canvas: (a: number, b: number, c: number) => void;
     readonly send_command_to_engine: (a: number, b: number) => void;

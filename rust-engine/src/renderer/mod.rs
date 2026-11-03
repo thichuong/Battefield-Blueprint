@@ -73,7 +73,10 @@ pub fn render_hud_layer(engine: &GameEngine, ctx: &web_sys::CanvasRenderingConte
     }
 
     // Toàn bộ In-game HUD
-    render_in_game_hud(engine);
+    render_top_bar_hud(engine, &ctx);
+    render_minimap_hud(engine, &ctx);
+    render_selection_panel_hud(engine, &ctx);
+    render_command_card_hud(engine, &ctx);
 
     // Bảng thông số hiệu năng FPS & Thời gian xử lý (Debug Performance Overlay)
     render_debug_overlay(engine);
@@ -92,15 +95,94 @@ pub fn render(engine: &mut GameEngine) {
         }
     }
 
+    // Tối ưu hóa: Cập nhật GPU Fog Texture & Minimap Fog Canvas chỉ khi sương mù thay đổi
+    if engine.fog_dirty {
+        if let Some(ref cache) = engine.gpu_cache {
+            cache.update_fog_texture(&engine.fog.grid);
+        }
+        #[cfg(target_arch = "wasm32")]
+        if let Some(ref mut rend) = engine.wgpu_renderer {
+            rend.fog_pass.update(&rend.state.queue, &engine.fog.grid);
+        }
+        engine.fog_dirty = false;
+    }
+
     // 1. Nếu có WebGPU Renderer: Render toàn bộ thế giới game bằng WebGPU!
     #[cfg(target_arch = "wasm32")]
     if let Some(mut wgpu_renderer) = engine.wgpu_renderer.take() {
         let _ = wgpu_renderer.render_frame(engine);
         engine.wgpu_renderer = Some(wgpu_renderer);
 
-        // Vẽ HUD lên UI Canvas (nếu có)
+        // A. KIẾN TRÚC MULTI-CANVAS TÁCH BIỆT: Mỗi Canvas tự render theo trạng thái riêng
+        let is_multi_canvas = engine.top_bar_ctx.is_some()
+            || engine.minimap_ctx.is_some()
+            || engine.selection_ctx.is_some()
+            || engine.command_card_ctx.is_some()
+            || engine.overlay_ctx.is_some();
+
+        if is_multi_canvas {
+            // 1. Top Bar Canvas: chỉ vẽ khi tài nguyên/tech thay đổi hoặc show_debug_overlay
+            if let Some(top_ctx) = engine.top_bar_ctx.clone() {
+                if engine.top_bar_dirty || engine.show_debug_overlay {
+                    render_top_bar_hud(engine, &top_ctx);
+                    engine.top_bar_dirty = false;
+                }
+            }
+
+            // 2. Minimap Canvas: chỉ vẽ khi có quân di chuyển hoặc sương mù thay đổi
+            if let Some(mm_ctx) = engine.minimap_ctx.clone() {
+                if engine.minimap_dirty || engine.is_minimap_dragging {
+                    render_minimap_hud(engine, &mm_ctx);
+                    engine.minimap_dirty = false;
+                }
+            }
+
+            // 3. Selection Panel Canvas: vẽ khi đổi lựa chọn hoặc máu/hàng đợi thay đổi
+            if let Some(sel_ctx) = engine.selection_ctx.clone() {
+                if engine.selection_dirty {
+                    render_selection_panel_hud(engine, &sel_ctx);
+                    engine.selection_dirty = false;
+                }
+            }
+
+            // 4. Command Card Canvas: vẽ khi hover nút hoặc đổi trạng thái lệnh
+            if let Some(cmd_ctx) = engine.command_card_ctx.clone() {
+                if engine.command_card_dirty {
+                    render_command_card_hud(engine, &cmd_ctx);
+                    engine.command_card_dirty = false;
+                }
+            }
+
+            // 5. Dynamic Overlay Canvas: chỉ vẽ khi kéo chuột chọn quân hoặc có con trỏ attack-move / chữ bay
+            if let Some(ovl_ctx) = engine.overlay_ctx.clone() {
+                let has_overlay_content = engine.selection_box.is_some()
+                    || engine.is_attack_move_mode
+                    || !engine.floating_texts.is_empty()
+                    || engine.show_debug_overlay;
+                if engine.overlay_dirty || has_overlay_content {
+                    render_overlay_hud(engine, &ovl_ctx);
+                    engine.overlay_dirty = has_overlay_content;
+                }
+            }
+            return;
+        }
+
+        // B. Fallback cho chế độ Single UI Canvas cũ nếu không có multi-canvas
         if let Some(ui_ctx) = engine.ui_context.clone() {
-            render_hud_layer(engine, &ui_ctx);
+            let now = engine.last_render_time;
+            let time_since_last_hud = now - engine.last_hud_render_time;
+            let needs_immediate_hud = engine.hud_dirty
+                || engine.selection_box.is_some()
+                || engine.is_attack_move_mode
+                || engine.is_minimap_dragging
+                || engine.show_debug_overlay
+                || time_since_last_hud >= 16.0;
+
+            if needs_immediate_hud {
+                render_hud_layer(engine, &ui_ctx);
+                engine.last_hud_render_time = now;
+                engine.hud_dirty = false;
+            }
         }
         return;
     }
@@ -108,14 +190,6 @@ pub fn render(engine: &mut GameEngine) {
     // 2. Fallback: Nếu không có WebGPU, chạy Canvas 2D truyền thống
     if engine.context.is_none() {
         return;
-    }
-
-    // Tối ưu hóa: Cập nhật GPU Fog Texture chỉ khi sương mù thay đổi
-    if engine.fog_dirty {
-        if let Some(ref cache) = engine.gpu_cache {
-            cache.update_fog_texture(&engine.fog.grid);
-        }
-        engine.fog_dirty = false;
     }
 
     // Đồng bộ selected_unit_set (nếu kích thước hoặc nội dung khác nhau)
@@ -216,7 +290,10 @@ pub fn render(engine: &mut GameEngine) {
     }
 
     // Toàn bộ In-game HUD
-    render_in_game_hud(engine);
+    render_top_bar_hud(engine, &ctx);
+    render_minimap_hud(engine, &ctx);
+    render_selection_panel_hud(engine, &ctx);
+    render_command_card_hud(engine, &ctx);
 
     // Bảng thông số hiệu năng FPS & Thời gian xử lý (Debug Performance Overlay)
     render_debug_overlay(engine);

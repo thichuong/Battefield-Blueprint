@@ -170,10 +170,15 @@ export function init_engine(canvas) {
 /**
  * @param {HTMLCanvasElement} world_canvas
  * @param {HTMLCanvasElement | null} [ui_canvas]
+ * @param {HTMLCanvasElement | null} [top_bar_canvas]
+ * @param {HTMLCanvasElement | null} [minimap_canvas]
+ * @param {HTMLCanvasElement | null} [selection_canvas]
+ * @param {HTMLCanvasElement | null} [command_card_canvas]
+ * @param {HTMLCanvasElement | null} [overlay_canvas]
  * @returns {Promise<boolean>}
  */
-export function init_engine_webgpu(world_canvas, ui_canvas) {
-    const ret = wasm.init_engine_webgpu(world_canvas, isLikeNone(ui_canvas) ? 0 : addToExternrefTable0(ui_canvas));
+export function init_engine_webgpu(world_canvas, ui_canvas, top_bar_canvas, minimap_canvas, selection_canvas, command_card_canvas, overlay_canvas) {
+    const ret = wasm.init_engine_webgpu(world_canvas, isLikeNone(ui_canvas) ? 0 : addToExternrefTable0(ui_canvas), isLikeNone(top_bar_canvas) ? 0 : addToExternrefTable0(top_bar_canvas), isLikeNone(minimap_canvas) ? 0 : addToExternrefTable0(minimap_canvas), isLikeNone(selection_canvas) ? 0 : addToExternrefTable0(selection_canvas), isLikeNone(command_card_canvas) ? 0 : addToExternrefTable0(command_card_canvas), isLikeNone(overlay_canvas) ? 0 : addToExternrefTable0(overlay_canvas));
     return ret;
 }
 

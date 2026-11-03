@@ -4,7 +4,7 @@ struct CameraUniform {
     view_proj: mat4x4<f32>,
     viewport: vec2<f32>,
     zoom: f32,
-    _pad: f32,
+    show_grid: f32,
 };
 
 @group(0) @binding(0)
@@ -111,25 +111,28 @@ fn fs_grid(in: GridVertexOutput) -> @location(0) vec4<f32> {
         return outside_color;
     }
 
-    // Lưới nhỏ 20px & Lưới lớn 100px
-    let d = fwidth(wp);
-    let grid_small = 20.0;
-    let grid_large = 100.0;
-
-    let coord_s = wp / grid_small;
-    let line_s = abs(fract(coord_s - 0.5) - 0.5) / (d / grid_small);
-    let s_factor = 1.0 - min(min(line_s.x, line_s.y), 1.0);
-
-    let coord_l = wp / grid_large;
-    let line_l = abs(fract(coord_l - 0.5) - 0.5) / (d / grid_large);
-    let l_factor = 1.0 - min(min(line_l.x, line_l.y), 1.0);
-
-    let line_color_small = vec4<f32>(0.07, 0.18, 0.32, 0.35); // Xanh nhạt mờ
-    let line_color_large = vec4<f32>(0.0, 0.9, 1.0, 0.18);     // Cyan sáng Blueprint
-
+    // Nếu người dùng tắt lưới trong Cài đặt, chỉ vẽ nền + đường viền map
     var color = bg_color;
-    color = mix(color, line_color_small, s_factor * 0.4);
-    color = mix(color, line_color_large, l_factor * 0.7);
+    if (camera.show_grid > 0.5) {
+        // Lưới nhỏ 20px & Lưới lớn 100px
+        let d = fwidth(wp);
+        let grid_small = 20.0;
+        let grid_large = 100.0;
+
+        let coord_s = wp / grid_small;
+        let line_s = abs(fract(coord_s - 0.5) - 0.5) / (d / grid_small);
+        let s_factor = 1.0 - min(min(line_s.x, line_s.y), 1.0);
+
+        let coord_l = wp / grid_large;
+        let line_l = abs(fract(coord_l - 0.5) - 0.5) / (d / grid_large);
+        let l_factor = 1.0 - min(min(line_l.x, line_l.y), 1.0);
+
+        let line_color_small = vec4<f32>(0.07, 0.18, 0.32, 0.35); // Xanh nhạt mờ
+        let line_color_large = vec4<f32>(0.0, 0.9, 1.0, 0.18);     // Cyan sáng Blueprint
+
+        color = mix(color, line_color_small, s_factor * 0.4);
+        color = mix(color, line_color_large, l_factor * 0.7);
+    }
 
     // Vẽ đường viền map 4800x4800
     let border_dist_x = min(wp.x, map_w - wp.x);

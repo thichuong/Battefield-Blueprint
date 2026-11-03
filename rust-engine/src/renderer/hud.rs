@@ -1,8 +1,10 @@
 use crate::components::{BuildingType, HarvestPhase, Team, UnitOrder, UnitType};
 use crate::map::{MAP_HEIGHT, MAP_WIDTH};
 use crate::renderer::command_card::render_command_card;
+use crate::renderer::effects::{render_attack_move_cursor_ctx, render_floating_texts_ctx};
 use crate::renderer::get_team_color;
 use crate::GameEngine;
+use web_sys::CanvasRenderingContext2d;
 
 thread_local! {
     static DASH_ARRAY: js_sys::Array = {
@@ -14,13 +16,11 @@ thread_local! {
     static EMPTY_DASH_ARRAY: js_sys::Array = js_sys::Array::new();
 }
 
-pub fn render_in_game_hud(engine: &GameEngine) {
-    let ctx = match engine.ui_context.as_ref().or(engine.context.as_ref()) {
-        Some(c) => c,
-        None => return,
-    };
+pub fn render_top_bar_hud(engine: &GameEngine, ctx: &CanvasRenderingContext2d) {
     let vw = engine.camera.viewport_w as f64;
-    let vh = engine.camera.viewport_h as f64;
+    let dpr = engine.camera.dpr.max(0.5) as f64;
+    let _ = ctx.set_transform(dpr, 0.0, 0.0, dpr, 0.0, 0.0);
+    ctx.clear_rect(0.0, 0.0, vw, 48.0);
 
     // 1. THANH TRẠNG THÁI TRÊN CÙNG (TOP BAR HUD)
     ctx.set_fill_style_str("rgba(3, 13, 26, 0.94)");
@@ -64,7 +64,7 @@ pub fn render_in_game_hud(engine: &GameEngine) {
         29.0,
     );
 
-    // Tiến trình nghiên cứu hiện tại (hỗ trợ hiển thị nhiều nhánh song song)
+    // Tiến trình nghiên cứu hiện tại
     if !engine.player_tech.active_researches.is_empty() {
         ctx.set_fill_style_str("#facc15");
         let list_str = engine
@@ -88,7 +88,7 @@ pub fn render_in_game_hud(engine: &GameEngine) {
         );
     }
 
-    // 0. Huy hiệu đo FPS thời gian thực trên Top Bar (Click hoặc F3 để xem chi tiết)
+    // Huy hiệu đo FPS thời gian thực trên Top Bar
     let fps_btn_x = vw - 380.0;
     let fps_val = engine.fps.round();
     let (fps_color, fps_bg) = if fps_val >= 50.0 {
@@ -151,25 +151,28 @@ pub fn render_in_game_hud(engine: &GameEngine) {
     ctx.stroke_rect(opt_btn_x, 10.0, 80.0, 28.0);
     ctx.set_fill_style_str("#cbd5e1");
     let _ = ctx.fill_text("MENU [ESC]", opt_btn_x + 8.0, 28.0);
+}
 
-    // 2. MINIMAP GÓC DƯỚI TRÁI (Kèm hiển thị mỏ khoáng sản)
-    let mm_x = 10.0;
-    let mm_y = vh - 170.0;
+pub fn render_minimap_hud(engine: &GameEngine, ctx: &CanvasRenderingContext2d) {
+    let dpr = engine.camera.dpr.max(0.5) as f64;
+    let _ = ctx.set_transform(dpr, 0.0, 0.0, dpr, 0.0, 0.0);
     let mm_s = 160.0;
+    ctx.clear_rect(0.0, 0.0, mm_s, mm_s);
 
+    // Nền Minimap
     ctx.set_fill_style_str("rgba(3, 13, 26, 0.94)");
-    ctx.fill_rect(mm_x, mm_y, mm_s, mm_s);
+    ctx.fill_rect(0.0, 0.0, mm_s, mm_s);
     ctx.set_stroke_style_str("#00e5ff");
     ctx.set_line_width(2.0);
-    ctx.stroke_rect(mm_x, mm_y, mm_s, mm_s);
+    ctx.stroke_rect(0.0, 0.0, mm_s, mm_s);
 
     // Tuyến phòng thủ TurretDefenseLine trên Minimap
     let def_line = &engine.autoplay.config.turret_defense;
     if def_line.enabled {
-        let p1x = mm_x + (def_line.p1.0 / MAP_WIDTH) as f64 * mm_s;
-        let p1y = mm_y + (def_line.p1.1 / MAP_HEIGHT) as f64 * mm_s;
-        let p2x = mm_x + (def_line.p2.0 / MAP_WIDTH) as f64 * mm_s;
-        let p2y = mm_y + (def_line.p2.1 / MAP_HEIGHT) as f64 * mm_s;
+        let p1x = (def_line.p1.0 / MAP_WIDTH) as f64 * mm_s;
+        let p1y = (def_line.p1.1 / MAP_HEIGHT) as f64 * mm_s;
+        let p2x = (def_line.p2.0 / MAP_WIDTH) as f64 * mm_s;
+        let p2y = (def_line.p2.1 / MAP_HEIGHT) as f64 * mm_s;
 
         ctx.set_stroke_style_str("rgba(245, 158, 11, 0.85)");
         ctx.set_line_width(1.5);
@@ -196,17 +199,17 @@ pub fn render_in_game_hud(engine: &GameEngine) {
         ctx.fill();
     }
 
-    // Vẽ mỏ quặng trên Minimap (chỉ vẽ nếu đã từng được thám hiểm)
+    // Vẽ mỏ quặng trên Minimap
     ctx.set_fill_style_str("#38bdf8");
     for m in &engine.minerals {
         if engine.fog.is_explored(m.x, m.y) {
-            let mx = mm_x + (m.x / MAP_WIDTH) as f64 * mm_s;
-            let my = mm_y + (m.y / MAP_HEIGHT) as f64 * mm_s;
+            let mx = (m.x / MAP_WIDTH) as f64 * mm_s;
+            let my = (m.y / MAP_HEIGHT) as f64 * mm_s;
             ctx.fill_rect(mx - 1.5, my - 1.5, 3.0, 3.0);
         }
     }
 
-    // Vẽ công trình trên Minimap gom nhóm theo Team (giảm số lần đổi context fill_style)
+    // Vẽ công trình trên Minimap gom nhóm theo Team
     for i in 0..8 {
         let team = Team::from_index(i);
         let color = get_team_color(engine, team).0;
@@ -220,60 +223,22 @@ pub fn render_in_game_hud(engine: &GameEngine) {
                     ctx.set_fill_style_str(color);
                     color_set = true;
                 }
-                let mx = mm_x + (b.x / MAP_WIDTH) as f64 * mm_s;
-                let my = mm_y + (b.y / MAP_HEIGHT) as f64 * mm_s;
+                let mx = (b.x / MAP_WIDTH) as f64 * mm_s;
+                let my = (b.y / MAP_HEIGHT) as f64 * mm_s;
                 ctx.fill_rect(mx - 2.5, my - 2.5, 5.0, 5.0);
             }
         }
     }
 
-    // Phủ sương mù chiến tranh lên Minimap (Minimap Fog of War Overlay)
+    // Phủ sương mù chiến tranh lên Minimap
     if let Some(ref cache) = engine.gpu_cache {
         let _ = ctx.draw_image_with_html_canvas_element_and_dw_and_dh(
             &cache.fog_canvas,
-            mm_x,
-            mm_y,
+            0.0,
+            0.0,
             mm_s,
             mm_s,
         );
-    } else {
-        use crate::fog::{Visibility, FOG_COLS, FOG_ROWS};
-        let cell_mm = mm_s / (FOG_COLS as f64);
-        for r in 0..FOG_ROWS {
-            let ry = mm_y + (r as f64) * cell_mm;
-            let mut current_vis = engine.fog.grid[r * FOG_COLS];
-            let mut start_c = 0;
-            let mut count = 0;
-
-            for c in 0..FOG_COLS {
-                let vis = engine.fog.grid[r * FOG_COLS + c];
-                if vis == current_vis {
-                    count += 1;
-                } else {
-                    if current_vis == Visibility::Hidden {
-                        ctx.set_fill_style_str("rgba(2, 6, 13, 0.72)");
-                        ctx.fill_rect(
-                            mm_x + (start_c as f64) * cell_mm,
-                            ry,
-                            (count as f64) * cell_mm + 0.3,
-                            cell_mm + 0.3,
-                        );
-                    }
-                    current_vis = vis;
-                    start_c = c;
-                    count = 1;
-                }
-            }
-            if current_vis == Visibility::Hidden {
-                ctx.set_fill_style_str("rgba(2, 6, 13, 0.72)");
-                ctx.fill_rect(
-                    mm_x + (start_c as f64) * cell_mm,
-                    ry,
-                    (count as f64) * cell_mm + 0.3,
-                    cell_mm + 0.3,
-                );
-            }
-        }
     }
 
     // Vẽ lính trên Minimap gom nhóm theo Team
@@ -290,40 +255,85 @@ pub fn render_in_game_hud(engine: &GameEngine) {
                     ctx.set_fill_style_str(color);
                     color_set = true;
                 }
-                let mx = mm_x + (u.x / MAP_WIDTH) as f64 * mm_s;
-                let my = mm_y + (u.y / MAP_HEIGHT) as f64 * mm_s;
+                let mx = (u.x / MAP_WIDTH) as f64 * mm_s;
+                let my = (u.y / MAP_HEIGHT) as f64 * mm_s;
                 ctx.fill_rect(mx - 1.5, my - 1.5, 3.0, 3.0);
             }
         }
     }
 
     // Khung nhìn Camera trên Minimap
-    let cam_rect_x = mm_x
-        + ((engine.camera.x - engine.camera.viewport_w * 0.5 / engine.camera.zoom) / MAP_WIDTH)
-            .clamp(0.0, 1.0) as f64
-            * mm_s;
-    let cam_rect_y = mm_y
-        + ((engine.camera.y - engine.camera.viewport_h * 0.5 / engine.camera.zoom) / MAP_HEIGHT)
-            .clamp(0.0, 1.0) as f64
-            * mm_s;
+    let cam_rect_x = ((engine.camera.x - engine.camera.viewport_w * 0.5 / engine.camera.zoom)
+        / MAP_WIDTH)
+        .clamp(0.0, 1.0) as f64
+        * mm_s;
+    let cam_rect_y = ((engine.camera.y - engine.camera.viewport_h * 0.5 / engine.camera.zoom)
+        / MAP_HEIGHT)
+        .clamp(0.0, 1.0) as f64
+        * mm_s;
     let cam_rect_w = ((engine.camera.viewport_w / engine.camera.zoom) / MAP_WIDTH) as f64 * mm_s;
     let cam_rect_h = ((engine.camera.viewport_h / engine.camera.zoom) / MAP_HEIGHT) as f64 * mm_s;
     ctx.set_stroke_style_str("#ffffff");
     ctx.set_line_width(1.2);
     ctx.stroke_rect(cam_rect_x, cam_rect_y, cam_rect_w, cam_rect_h);
-
-    // 3. SELECTION INFO PANEL (TRUNG TÂM ĐÁY MÀN HÌNH)
-    render_selection_info_panel(engine, (vw - 360.0) * 0.5, vh - 150.0, 360.0, 140.0);
-
-    // 4. BẢNG NÚT BẤM LỆNH GÓC DƯỚI PHẢI (COMMAND CARD)
-    render_command_card(engine, vw - 225.0, vh - 150.0);
 }
 
-fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f64) {
-    let ctx = match engine.ui_context.as_ref().or(engine.context.as_ref()) {
-        Some(c) => c,
-        None => return,
-    };
+pub fn render_selection_panel_hud(engine: &GameEngine, ctx: &CanvasRenderingContext2d) {
+    let dpr = engine.camera.dpr.max(0.5) as f64;
+    let _ = ctx.set_transform(dpr, 0.0, 0.0, dpr, 0.0, 0.0);
+    let w = 360.0;
+    let h = 140.0;
+    ctx.clear_rect(0.0, 0.0, w, h);
+    render_selection_info_panel(engine, ctx, 0.0, 0.0, w, h);
+}
+
+pub fn render_command_card_hud(engine: &GameEngine, ctx: &CanvasRenderingContext2d) {
+    let dpr = engine.camera.dpr.max(0.5) as f64;
+    let _ = ctx.set_transform(dpr, 0.0, 0.0, dpr, 0.0, 0.0);
+    ctx.clear_rect(0.0, 0.0, 215.0, 140.0);
+    render_command_card(engine, ctx, 0.0, 0.0);
+}
+
+pub fn render_overlay_hud(engine: &GameEngine, ctx: &CanvasRenderingContext2d) {
+    let vw = engine.camera.viewport_w as f64;
+    let vh = engine.camera.viewport_h as f64;
+    let dpr = engine.camera.dpr.max(0.5) as f64;
+    let _ = ctx.set_transform(dpr, 0.0, 0.0, dpr, 0.0, 0.0);
+    ctx.clear_rect(0.0, 0.0, vw, vh);
+
+    // Hiệu ứng chữ nổi bay lên
+    render_floating_texts_ctx(engine, ctx);
+
+    // Khung kéo chuột chọn quân (Box Select)
+    if let Some((sx1, sy1, sx2, sy2)) = engine.selection_box {
+        ctx.set_stroke_style_str(&engine.config.render.map_border_color);
+        ctx.set_line_width(1.5);
+        let rx = sx1.min(sx2);
+        let ry = sy1.min(sy2);
+        let rw = (sx2 - sx1).abs();
+        let rh = (sy2 - sy1).abs();
+        ctx.stroke_rect(rx as f64, ry as f64, rw as f64, rh as f64);
+        ctx.set_fill_style_str(&engine.config.render.player_fill);
+        ctx.fill_rect(rx as f64, ry as f64, rw as f64, rh as f64);
+    }
+
+    // Con trỏ chế độ Attack-Move
+    if engine.is_attack_move_mode {
+        render_attack_move_cursor_ctx(engine, ctx);
+    }
+
+    // Bảng thông số hiệu năng FPS & Thời gian xử lý
+    render_debug_overlay_ctx(engine, ctx);
+}
+
+pub fn render_selection_info_panel(
+    engine: &GameEngine,
+    ctx: &CanvasRenderingContext2d,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+) {
     ctx.set_fill_style_str("rgba(3, 13, 26, 0.94)");
     ctx.fill_rect(x, y, w, h);
     ctx.set_stroke_style_str("#0284c7");
@@ -751,15 +761,10 @@ fn render_selection_info_panel(engine: &GameEngine, x: f64, y: f64, w: f64, h: f
     );
 }
 
-/// Bảng thông số hiệu năng FPS và thời gian xử lý (Debug Performance Overlay)
-pub fn render_debug_overlay(engine: &GameEngine) {
+pub fn render_debug_overlay_ctx(engine: &GameEngine, ctx: &CanvasRenderingContext2d) {
     if !engine.show_debug_overlay {
         return;
     }
-    let ctx = match engine.ui_context.as_ref().or(engine.context.as_ref()) {
-        Some(c) => c,
-        None => return,
-    };
     let vw = engine.camera.viewport_w as f64;
     let panel_w = 295.0;
     let panel_h = 75.0;
@@ -798,21 +803,41 @@ pub fn render_debug_overlay(engine: &GameEngine) {
     ctx.set_fill_style_str("#38bdf8");
     let _ = ctx.fill_text(
         &format!(
-            "👤 Units: {} | 🏛 Buildings: {}",
-            engine.units.len(),
-            engine.buildings.len()
+            "⚙️ Sim: {:.1}ms (Accum: {:.1}ms)",
+            engine.sim_time_ms, engine.sim_accumulator * 1000.0
         ),
         px + 10.0,
-        py + 40.0,
+        py + 36.0,
     );
-    ctx.set_fill_style_str("#facc15");
+    ctx.set_fill_style_str("#cbd5e1");
     let _ = ctx.fill_text(
         &format!(
-            "🚀 Projectiles: {} | ✨ Particles: {}",
-            engine.projectiles.len(),
-            engine.particles.len()
+            "Units: {} | Bldgs: {} | Proj: {}",
+            engine.units.len(),
+            engine.buildings.len(),
+            engine.projectiles.len()
         ),
         px + 10.0,
-        py + 60.0,
+        py + 52.0,
     );
+    ctx.set_fill_style_str("#94a3b8");
+    let _ = ctx.fill_text(
+        &format!(
+            "Cam: ({:.0}, {:.0}) Zoom: {:.1}x",
+            engine.camera.x, engine.camera.y, engine.camera.zoom
+        ),
+        px + 10.0,
+        py + 68.0,
+    );
+}
+
+pub fn render_debug_overlay(engine: &GameEngine) {
+    if !engine.show_debug_overlay {
+        return;
+    }
+    let ctx = match engine.ui_context.as_ref().or(engine.context.as_ref()) {
+        Some(c) => c,
+        None => return,
+    };
+    render_debug_overlay_ctx(engine, ctx);
 }

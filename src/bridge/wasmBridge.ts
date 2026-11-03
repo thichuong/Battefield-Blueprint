@@ -154,16 +154,29 @@ class WasmBridge {
 
   public async initialize(
     canvas: HTMLCanvasElement,
-    uiCanvas?: HTMLCanvasElement | null
+    uiCanvas?: HTMLCanvasElement | null,
+    topBarCanvas?: HTMLCanvasElement | null,
+    minimapCanvas?: HTMLCanvasElement | null,
+    selectionCanvas?: HTMLCanvasElement | null,
+    commandCardCanvas?: HTMLCanvasElement | null,
+    overlayCanvas?: HTMLCanvasElement | null
   ): Promise<boolean> {
     if (this.isInitialized) return this.isWebGpu;
     await init();
 
     try {
-      this.isWebGpu = await init_engine_webgpu(canvas, uiCanvas);
+      this.isWebGpu = await init_engine_webgpu(
+        canvas,
+        uiCanvas,
+        topBarCanvas,
+        minimapCanvas,
+        selectionCanvas,
+        commandCardCanvas,
+        overlayCanvas
+      );
       if (this.isWebGpu) {
         console.log(
-          '%c[WGPU] Engine initialized with GPU acceleration!',
+          '%c[WGPU] Engine initialized with Multi-Canvas GPU acceleration!',
           'color: #10b981; font-weight: bold;'
         );
       }

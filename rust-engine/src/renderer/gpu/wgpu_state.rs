@@ -120,11 +120,29 @@ impl WgpuState {
                     .unwrap_or(wgpu::TextureFormat::Rgba8Unorm)
             });
 
-        let present_mode = surface_caps
+        // Ưu tiên Immediate hoặc Mailbox để unlock tối đa FPS, fallback về AutoNoVsync / Fifo
+        let present_mode = if surface_caps
             .present_modes
-            .first()
-            .copied()
-            .unwrap_or(wgpu::PresentMode::AutoVsync);
+            .contains(&wgpu::PresentMode::Immediate)
+        {
+            wgpu::PresentMode::Immediate
+        } else if surface_caps
+            .present_modes
+            .contains(&wgpu::PresentMode::Mailbox)
+        {
+            wgpu::PresentMode::Mailbox
+        } else if surface_caps
+            .present_modes
+            .contains(&wgpu::PresentMode::AutoNoVsync)
+        {
+            wgpu::PresentMode::AutoNoVsync
+        } else {
+            surface_caps
+                .present_modes
+                .first()
+                .copied()
+                .unwrap_or(wgpu::PresentMode::AutoVsync)
+        };
 
         let alpha_mode = surface_caps
             .alpha_modes
@@ -140,7 +158,7 @@ impl WgpuState {
             present_mode,
             alpha_mode,
             view_formats: vec![],
-            desired_maximum_frame_latency: 2,
+            desired_maximum_frame_latency: 1,
         };
         surface.configure(&device, &config);
 

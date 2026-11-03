@@ -46,6 +46,11 @@ pub fn init_engine(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
 pub async fn init_engine_webgpu(
     world_canvas: HtmlCanvasElement,
     ui_canvas: Option<HtmlCanvasElement>,
+    top_bar_canvas: Option<HtmlCanvasElement>,
+    minimap_canvas: Option<HtmlCanvasElement>,
+    selection_canvas: Option<HtmlCanvasElement>,
+    command_card_canvas: Option<HtmlCanvasElement>,
+    overlay_canvas: Option<HtmlCanvasElement>,
 ) -> Result<bool, JsValue> {
     let config = crate::config::GameConfig::default();
     let cache = match crate::renderer::gpu_cache::GpuCacheManager::new(&config) {
@@ -66,14 +71,18 @@ pub async fn init_engine_webgpu(
 
     let is_webgpu = wgpu_renderer.is_some();
 
-    let ui_ctx = if let Some(ref uic) = ui_canvas {
-        uic.get_context("2d")
-            .ok()
-            .flatten()
-            .and_then(|c| c.dyn_into::<CanvasRenderingContext2d>().ok())
-    } else {
-        None
+    let get_2d = |c: &Option<HtmlCanvasElement>| -> Option<CanvasRenderingContext2d> {
+        c.as_ref()
+            .and_then(|cv| cv.get_context("2d").ok().flatten())
+            .and_then(|ctx| ctx.dyn_into::<CanvasRenderingContext2d>().ok())
     };
+
+    let ui_ctx = get_2d(&ui_canvas);
+    let top_bar_ctx = get_2d(&top_bar_canvas);
+    let minimap_ctx = get_2d(&minimap_canvas);
+    let selection_ctx = get_2d(&selection_canvas);
+    let command_card_ctx = get_2d(&command_card_canvas);
+    let overlay_ctx = get_2d(&overlay_canvas);
 
     let fallback_ctx = if !is_webgpu {
         world_canvas
@@ -107,6 +116,18 @@ pub async fn init_engine_webgpu(
 
     engine.wgpu_renderer = wgpu_renderer;
     engine.ui_context = ui_ctx;
+    engine.top_bar_ctx = top_bar_ctx;
+    engine.minimap_ctx = minimap_ctx;
+    engine.selection_ctx = selection_ctx;
+    engine.command_card_ctx = command_card_ctx;
+    engine.overlay_ctx = overlay_ctx;
+
+    engine.top_bar_canvas = top_bar_canvas;
+    engine.minimap_canvas = minimap_canvas;
+    engine.selection_canvas = selection_canvas;
+    engine.command_card_canvas = command_card_canvas;
+    engine.overlay_canvas = overlay_canvas;
+
     engine.gpu_cache = Some(cache);
 
     ENGINE_STATE.with(|state| {
@@ -121,6 +142,11 @@ pub async fn init_engine_webgpu(
 pub async fn init_engine_webgpu(
     _world_canvas: HtmlCanvasElement,
     _ui_canvas: Option<HtmlCanvasElement>,
+    _top_bar_canvas: Option<HtmlCanvasElement>,
+    _minimap_canvas: Option<HtmlCanvasElement>,
+    _selection_canvas: Option<HtmlCanvasElement>,
+    _command_card_canvas: Option<HtmlCanvasElement>,
+    _overlay_canvas: Option<HtmlCanvasElement>,
 ) -> Result<bool, JsValue> {
     Ok(false)
 }
@@ -150,20 +176,29 @@ pub fn engine_frame(now_ms: f64, mouse_x: f32, mouse_y: f32, should_render: bool
         if (engine.mouse_screen_x - mouse_x).abs() > 0.5
             || (engine.mouse_screen_y - mouse_y).abs() > 0.5
         {
+            let old_hover = engine.hovered_command_button;
             simulation::handle_mouse_move(engine, mouse_x, mouse_y);
+            if engine.selection_box.is_some()
+                || engine.is_attack_move_mode
+                || engine.is_minimap_dragging
+                || engine.hovered_command_button != old_hover
+            {
+                engine.hud_dirty = true;
+            }
         }
 
-        // 2. Tính Delta Time và FPS mượt mà từ now_ms
-        let delta_sec = if engine.last_render_time > 0.0 {
-            let dt = (now_ms - engine.last_render_time) / 1000.0;
-            dt.clamp(0.0001, 0.25) as f32
+        // 2. Tính Delta Time chính xác cho mô phỏng từ last_frame_time (không phụ thuộc should_render)
+        let delta_sec = if engine.last_frame_time > 0.0 {
+            let dt = (now_ms - engine.last_frame_time) / 1000.0;
+            dt.clamp(0.00001, 0.25) as f32
         } else {
             1.0 / 60.0
         };
+        engine.last_frame_time = now_ms;
 
         if should_render && engine.last_render_time > 0.0 {
-            let dt_ms = (now_ms - engine.last_render_time).max(0.1);
-            let instant_fps = (1000.0 / dt_ms).min(2000.0) as f32;
+            let dt_ms = (now_ms - engine.last_render_time).max(0.01);
+            let instant_fps = (1000.0 / dt_ms).min(5000.0) as f32;
             engine.fps = engine.fps * 0.90 + instant_fps * 0.10;
         }
 
@@ -184,6 +219,14 @@ pub fn engine_frame(now_ms: f64, mouse_x: f32, mouse_y: f32, should_render: bool
             simulation::step(engine, FIXED_TIMESTEP);
             engine.sim_accumulator -= FIXED_TIMESTEP;
             sub_steps += 1;
+        }
+
+        if sub_steps > 0 {
+            engine.top_bar_dirty = true;
+            engine.minimap_dirty = true;
+            engine.selection_dirty = true;
+            engine.command_card_dirty = true;
+            engine.hud_dirty = true;
         }
 
         if measure_debug {
@@ -310,6 +353,35 @@ pub fn resize_canvas(width: f32, height: f32, dpr: Option<f32>) {
             engine.camera.viewport_w = width;
             engine.camera.viewport_h = height;
             engine.camera.dpr = dpr_val;
+
+            // Resize và set DPR scale cho các sub-canvas
+            if let Some(ref c) = engine.top_bar_canvas {
+                c.set_width(pixel_w);
+                c.set_height((48.0 * dpr_val) as u32);
+            }
+            if let Some(ref c) = engine.minimap_canvas {
+                c.set_width((160.0 * dpr_val) as u32);
+                c.set_height((160.0 * dpr_val) as u32);
+            }
+            if let Some(ref c) = engine.selection_canvas {
+                c.set_width((360.0 * dpr_val) as u32);
+                c.set_height((140.0 * dpr_val) as u32);
+            }
+            if let Some(ref c) = engine.command_card_canvas {
+                c.set_width((215.0 * dpr_val) as u32);
+                c.set_height((140.0 * dpr_val) as u32);
+            }
+            if let Some(ref c) = engine.overlay_canvas {
+                c.set_width(pixel_w);
+                c.set_height(pixel_h);
+            }
+
+            engine.top_bar_dirty = true;
+            engine.minimap_dirty = true;
+            engine.selection_dirty = true;
+            engine.command_card_dirty = true;
+            engine.overlay_dirty = true;
+            engine.hud_dirty = true;
         }
     });
 }
@@ -319,6 +391,12 @@ pub fn handle_mouse_down(button: i32, client_x: f32, client_y: f32) {
     ENGINE_STATE.with(|state| {
         if let Some(ref mut engine) = *state.borrow_mut() {
             simulation::handle_mouse_down(engine, button, client_x, client_y);
+            engine.top_bar_dirty = true;
+            engine.minimap_dirty = true;
+            engine.selection_dirty = true;
+            engine.command_card_dirty = true;
+            engine.overlay_dirty = true;
+            engine.hud_dirty = true;
         }
     });
 }
@@ -328,6 +406,12 @@ pub fn handle_mouse_up(button: i32, client_x: f32, client_y: f32) {
     ENGINE_STATE.with(|state| {
         if let Some(ref mut engine) = *state.borrow_mut() {
             simulation::handle_mouse_up(engine, button, client_x, client_y);
+            engine.top_bar_dirty = true;
+            engine.minimap_dirty = true;
+            engine.selection_dirty = true;
+            engine.command_card_dirty = true;
+            engine.overlay_dirty = true;
+            engine.hud_dirty = true;
         }
     });
 }
@@ -336,7 +420,18 @@ pub fn handle_mouse_up(button: i32, client_x: f32, client_y: f32) {
 pub fn handle_mouse_move(client_x: f32, client_y: f32) {
     ENGINE_STATE.with(|state| {
         if let Some(ref mut engine) = *state.borrow_mut() {
+            let old_hover = engine.hovered_command_button;
             simulation::handle_mouse_move(engine, client_x, client_y);
+            if engine.hovered_command_button != old_hover {
+                engine.command_card_dirty = true;
+            }
+            if engine.selection_box.is_some() || engine.is_attack_move_mode {
+                engine.overlay_dirty = true;
+            }
+            if engine.is_minimap_dragging {
+                engine.minimap_dirty = true;
+            }
+            engine.hud_dirty = true;
         }
     });
 }
@@ -347,6 +442,8 @@ pub fn handle_mouse_wheel(delta_y: f32) {
         if let Some(ref mut engine) = *state.borrow_mut() {
             let zoom_change = if delta_y > 0.0 { -0.1 } else { 0.1 };
             engine.camera.zoom = (engine.camera.zoom + zoom_change).clamp(0.5, 2.0);
+            engine.minimap_dirty = true;
+            engine.hud_dirty = true;
         }
     });
 }
@@ -360,6 +457,12 @@ pub fn handle_key_down(key: &str) {
             }
             engine.keys_down.insert(key.to_string());
             simulation::handle_hotkeys(engine, key);
+            engine.top_bar_dirty = true;
+            engine.minimap_dirty = true;
+            engine.selection_dirty = true;
+            engine.command_card_dirty = true;
+            engine.overlay_dirty = true;
+            engine.hud_dirty = true;
         }
     });
 }
@@ -369,6 +472,7 @@ pub fn handle_key_up(key: &str) {
     ENGINE_STATE.with(|state| {
         if let Some(ref mut engine) = *state.borrow_mut() {
             engine.keys_down.remove(key);
+            engine.hud_dirty = true;
         }
     });
 }

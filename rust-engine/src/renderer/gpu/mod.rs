@@ -22,7 +22,7 @@ pub struct CameraUniform {
     pub view_proj: [f32; 16],
     pub viewport: [f32; 2],
     pub zoom: f32,
-    pub _pad: f32,
+    pub show_grid: f32,
 }
 
 pub struct WgpuRenderer {
@@ -60,7 +60,7 @@ impl WgpuRenderer {
             view_proj: [0.0; 16],
             viewport: [state.width as f32, state.height as f32],
             zoom: 1.0,
-            _pad: 0.0,
+            show_grid: 1.0,
         };
 
         let camera_buffer = state.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -184,7 +184,7 @@ impl WgpuRenderer {
                         entry_point: Some("fs_grid"),
                         targets: &[Some(wgpu::ColorTargetState {
                             format: state.config.format,
-                            blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                            blend: None,
                             write_mask: wgpu::ColorWrites::ALL,
                         })],
                         compilation_options: Default::default(),
@@ -345,11 +345,12 @@ impl WgpuRenderer {
             tx,  ty,  0.0, 1.0,
         ];
 
+        let show_grid_val = if engine.settings.show_grid { 1.0 } else { 0.0 };
         let camera_data = CameraUniform {
             view_proj,
             viewport: [vw, vh],
             zoom,
-            _pad: 0.0,
+            show_grid: show_grid_val,
         };
         self.state.queue.write_buffer(
             &self.camera_buffer,
