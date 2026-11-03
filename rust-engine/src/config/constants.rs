@@ -52,4 +52,3 @@ pub const COMMAND_CARD_GAP: f32 = 6.0;
 pub const COMMAND_CARD_BTN_WIDTH: f32 = 87.0;
 pub const COMMAND_CARD_BTN_HEIGHT: f32 = 52.0;
 pub const COMMAND_CARD_FORMATION_BTN_WIDTH: f32 = 273.0; // 87.0 * 3 + 6.0 * 2
-

@@ -74,7 +74,15 @@ pub fn render_command_card(engine: &GameEngine, ctx: &CanvasRenderingContext2d, 
             .config
             .get_building_short_name(BuildingType::EnergyConverter);
 
-        draw_hud_button(ctx, x + pad, y + pad, btn_w, btn_h, supply_lbl, &supply_cost);
+        draw_hud_button(
+            ctx,
+            x + pad,
+            y + pad,
+            btn_w,
+            btn_h,
+            supply_lbl,
+            &supply_cost,
+        );
         draw_hud_button(
             ctx,
             x + pad + col_step,
@@ -528,6 +536,7 @@ pub fn render_command_card(engine: &GameEngine, ctx: &CanvasRenderingContext2d, 
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_barracks_slot(
     ctx: &CanvasRenderingContext2d,
     engine: &GameEngine,

@@ -652,15 +652,19 @@ impl GameEngine {
 
     #[inline]
     pub fn has_command_card_content(&self) -> bool {
-        let has_player_units = self
-            .selected_unit_ids
-            .iter()
-            .any(|uid| self.get_unit_by_id(*uid).map(|u| u.team == Team::Player).unwrap_or(false));
+        let has_player_units = self.selected_unit_ids.iter().any(|uid| {
+            self.get_unit_by_id(*uid)
+                .map(|u| u.team == Team::Player)
+                .unwrap_or(false)
+        });
         if has_player_units {
             return true;
         }
         if let Some(bid) = self.selected_building_id {
-            if let Some(b) = self.get_building_by_id(bid).filter(|b| b.team == Team::Player) {
+            if let Some(b) = self
+                .get_building_by_id(bid)
+                .filter(|b| b.team == Team::Player)
+            {
                 return matches!(
                     b.building_type,
                     BuildingType::CommandCenter | BuildingType::Barracks

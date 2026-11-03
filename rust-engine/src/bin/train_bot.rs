@@ -340,11 +340,7 @@ fn main() {
                         }
                     }
                     4 => {
-                        if arg == "false" || arg == "0" || arg == "scratch" || arg == "no" {
-                            resume_training = false;
-                        } else {
-                            resume_training = true;
-                        }
+                        resume_training = !matches!(arg, "false" | "0" | "scratch" | "no");
                     }
                     _ => {}
                 }
@@ -431,9 +427,7 @@ fn main() {
             "🌱 Huấn luyện lại từ đầu (Scratch Mode - Trọng số ngẫu nhiên He/Xavier)"
         }
     );
-    println!(
-        "   Curriculum Sched:   1 vòng Auto (7 archetypes) -> 100% Bot Self-Play"
-    );
+    println!("   Curriculum Sched:   1 vòng Auto (7 archetypes) -> 100% Bot Self-Play");
     println!(
         "   State Dimension:    {} inputs (Deep Economy & Resource Flow)",
         STATE_DIM
@@ -638,7 +632,8 @@ fn simulate_single_episode(
         } else {
             match opponent_style {
                 OpponentStyle::VsAuto(_) => {
-                    let cfg = create_training_autoplay_config(team, AutoTrainingArchetype::MacroFortress);
+                    let cfg =
+                        create_training_autoplay_config(team, AutoTrainingArchetype::MacroFortress);
                     engine.team_autoplay_mut(team).config = cfg;
                 }
                 OpponentStyle::BotSelfPlay => {
@@ -665,10 +660,13 @@ fn simulate_single_episode(
         // Ghi nhận state trước bước nhảy cho các bot AI khác trong self-play
         let mut other_prev_states: [Option<Vec<f32>>; MAX_PLAYERS] = Default::default();
         if matches!(opponent_style, OpponentStyle::BotSelfPlay) {
-            for slot_idx in 0..MAX_PLAYERS {
+            for (slot_idx, state_slot) in other_prev_states.iter_mut().enumerate() {
                 let t = Team::from_index(slot_idx);
-                if engine.is_slot_active(t) && t != learner_team && !engine.team_autoplay(t).config.enabled {
-                    other_prev_states[slot_idx] = Some(extract_state_vector_for_team(&engine, t));
+                if engine.is_slot_active(t)
+                    && t != learner_team
+                    && !engine.team_autoplay(t).config.enabled
+                {
+                    *state_slot = Some(extract_state_vector_for_team(&engine, t));
                 }
             }
         }
@@ -720,9 +718,9 @@ fn simulate_single_episode(
 
             // Multi-Agent Sharing: Các slot AI khác trong BotSelfPlay cùng học từ kinh nghiệm
             if matches!(opponent_style, OpponentStyle::BotSelfPlay) {
-                for slot_idx in 0..MAX_PLAYERS {
+                for (slot_idx, other_prev_opt) in other_prev_states.iter().enumerate() {
                     let other_team = Team::from_index(slot_idx);
-                    if let Some(ref other_prev) = other_prev_states[slot_idx] {
+                    if let Some(other_prev) = other_prev_opt {
                         let other_next = extract_state_vector_for_team(&engine, other_team);
                         let other_act = engine.team_ai(other_team).current_action;
                         let other_form = engine.team_ai(other_team).current_formation;

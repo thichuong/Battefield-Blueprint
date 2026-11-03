@@ -53,10 +53,7 @@ pub struct WgpuRenderer {
 }
 
 impl WgpuRenderer {
-    pub async fn new(
-        canvas: HtmlCanvasElement,
-        cache: &GpuCacheManager,
-    ) -> Result<Self, String> {
+    pub async fn new(canvas: HtmlCanvasElement, cache: &GpuCacheManager) -> Result<Self, String> {
         let state = WgpuState::new(canvas).await?;
 
         // 1. Tạo Texture Atlas từ GPU Cache Manager
@@ -74,11 +71,13 @@ impl WgpuRenderer {
             show_grid: 1.0,
         };
 
-        let camera_buffer = state.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("WebGPU Camera Uniform Buffer"),
-            contents: bytemuck::cast_slice(&[initial_camera]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
+        let camera_buffer = state
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("WebGPU Camera Uniform Buffer"),
+                contents: bytemuck::cast_slice(&[initial_camera]),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            });
 
         let camera_bind_group_layout =
             state
@@ -178,37 +177,36 @@ impl WgpuRenderer {
                     push_constant_ranges: &[],
                 });
 
-        let grid_pipeline =
-            state
-                .device
-                .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("WebGPU Grid Render Pipeline"),
-                    layout: Some(&grid_pipeline_layout),
-                    vertex: wgpu::VertexState {
-                        module: &shader,
-                        entry_point: Some("vs_grid"),
-                        buffers: &[],
-                        compilation_options: Default::default(),
-                    },
-                    fragment: Some(wgpu::FragmentState {
-                        module: &shader,
-                        entry_point: Some("fs_grid"),
-                        targets: &[Some(wgpu::ColorTargetState {
-                            format: state.config.format,
-                            blend: None,
-                            write_mask: wgpu::ColorWrites::ALL,
-                        })],
-                        compilation_options: Default::default(),
-                    }),
-                    primitive: wgpu::PrimitiveState {
-                        topology: wgpu::PrimitiveTopology::TriangleList,
-                        ..Default::default()
-                    },
-                    depth_stencil: None,
-                    multisample: wgpu::MultisampleState::default(),
-                    multiview: None,
-                    cache: None,
-                });
+        let grid_pipeline = state
+            .device
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("WebGPU Grid Render Pipeline"),
+                layout: Some(&grid_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_grid"),
+                    buffers: &[],
+                    compilation_options: Default::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_grid"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: state.config.format,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: Default::default(),
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    ..Default::default()
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+                cache: None,
+            });
 
         // 6. Sprite Pipeline
         let sprite_pipeline_layout =
@@ -284,37 +282,36 @@ impl WgpuRenderer {
                     push_constant_ranges: &[],
                 });
 
-        let fog_pipeline =
-            state
-                .device
-                .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("WebGPU Fog Render Pipeline"),
-                    layout: Some(&fog_pipeline_layout),
-                    vertex: wgpu::VertexState {
-                        module: &shader,
-                        entry_point: Some("vs_fog"),
-                        buffers: &[],
-                        compilation_options: Default::default(),
-                    },
-                    fragment: Some(wgpu::FragmentState {
-                        module: &shader,
-                        entry_point: Some("fs_fog"),
-                        targets: &[Some(wgpu::ColorTargetState {
-                            format: state.config.format,
-                            blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                            write_mask: wgpu::ColorWrites::ALL,
-                        })],
-                        compilation_options: Default::default(),
-                    }),
-                    primitive: wgpu::PrimitiveState {
-                        topology: wgpu::PrimitiveTopology::TriangleList,
-                        ..Default::default()
-                    },
-                    depth_stencil: None,
-                    multisample: wgpu::MultisampleState::default(),
-                    multiview: None,
-                    cache: None,
-                });
+        let fog_pipeline = state
+            .device
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("WebGPU Fog Render Pipeline"),
+                layout: Some(&fog_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_fog"),
+                    buffers: &[],
+                    compilation_options: Default::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_fog"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: state.config.format,
+                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: Default::default(),
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    ..Default::default()
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+                cache: None,
+            });
 
         Ok(Self {
             state,
@@ -363,11 +360,9 @@ impl WgpuRenderer {
             zoom,
             show_grid: show_grid_val,
         };
-        self.state.queue.write_buffer(
-            &self.camera_buffer,
-            0,
-            bytemuck::cast_slice(&[camera_data]),
-        );
+        self.state
+            .queue
+            .write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[camera_data]));
 
         // 2. Cập nhật GPU Fog Texture nếu sương mù thay đổi
         if engine.fog_dirty {
@@ -382,18 +377,17 @@ impl WgpuRenderer {
 
         // 3.1. Địa hình vật cản (Obstacles)
         for obs in &engine.obstacles {
-            if !engine.camera.is_rect_visible(obs.x, obs.y, obs.width, obs.height, 40.0) {
+            if !engine
+                .camera
+                .is_rect_visible(obs.x, obs.y, obs.width, obs.height, 40.0)
+            {
                 continue;
             }
             let center = [obs.x + obs.width * 0.5, obs.y + obs.height * 0.5];
             let size = [obs.width, obs.height];
             // Khối nền vật cản
-            self.sprite_batch.push_rect(
-                center,
-                size,
-                [0.08, 0.12, 0.18, 0.85],
-                white_uv,
-            );
+            self.sprite_batch
+                .push_rect(center, size, [0.08, 0.12, 0.18, 0.85], white_uv);
             // Viền viền Blueprint
             self.sprite_batch.push_stroke_rect(
                 center,
@@ -413,7 +407,11 @@ impl WgpuRenderer {
                 continue;
             }
             let uv = &self.atlas.mineral_uv;
-            let alpha_col = if engine.fog.is_visible(m.x, m.y) { 1.0 } else { 0.5 };
+            let alpha_col = if engine.fog.is_visible(m.x, m.y) {
+                1.0
+            } else {
+                0.5
+            };
             self.sprite_batch.push(
                 [m.x, m.y],
                 [64.0, 64.0],
@@ -443,10 +441,17 @@ impl WgpuRenderer {
 
         // 3.4. Công trình (Buildings)
         for b in &engine.buildings {
-            if !engine.camera.is_rect_visible(b.x - b.width * 0.5, b.y - b.height * 0.5, b.width, b.height, 60.0) {
+            if !engine.camera.is_rect_visible(
+                b.x - b.width * 0.5,
+                b.y - b.height * 0.5,
+                b.width,
+                b.height,
+                60.0,
+            ) {
                 continue;
             }
-            let is_visible = engine.are_allies(Team::Player, b.team) || engine.fog.is_visible(b.x, b.y);
+            let is_visible =
+                engine.are_allies(Team::Player, b.team) || engine.fog.is_visible(b.x, b.y);
             if !is_visible && !engine.fog.is_explored(b.x, b.y) {
                 continue;
             }
@@ -470,7 +475,8 @@ impl WgpuRenderer {
                     [0.55, 0.65, 0.75, 0.6] // Tối mờ nếu trong sương mù đã khám phá
                 };
 
-                self.sprite_batch.push([cx, cy], [sw, sh], uv.min, uv.max, tint, 0.0);
+                self.sprite_batch
+                    .push([cx, cy], [sw, sh], uv.min, uv.max, tint, 0.0);
 
                 // Khung chọn công trình
                 if engine.selected_building_id == Some(b.id) {
@@ -520,10 +526,14 @@ impl WgpuRenderer {
         for (idx, u) in engine.units.iter().enumerate() {
             let draw_x = (u.prev_x + (u.x - u.prev_x) * alpha) as f64;
             let draw_y = (u.prev_y + (u.y - u.prev_y) * alpha) as f64;
-            if !engine.camera.is_point_visible(draw_x as f32, draw_y as f32, 40.0) {
+            if !engine
+                .camera
+                .is_point_visible(draw_x as f32, draw_y as f32, 40.0)
+            {
                 continue;
             }
-            let is_visible = engine.are_allies(Team::Player, u.team) || engine.fog.is_visible(u.x, u.y);
+            let is_visible =
+                engine.are_allies(Team::Player, u.team) || engine.fog.is_visible(u.x, u.y);
             if !is_visible {
                 continue;
             }
@@ -584,7 +594,11 @@ impl WgpuRenderer {
                 };
 
                 let uv = &self.atlas.unit_uvs[ut_idx][color_idx][frame_idx];
-                let sprite_dim = if u.unit_type == UnitType::BehemothTitan { 96.0 } else { 64.0 };
+                let sprite_dim = if u.unit_type == UnitType::BehemothTitan {
+                    96.0
+                } else {
+                    64.0
+                };
 
                 // Xử lý lật mặt trái / phải bằng cách đảo ngược trục UV X
                 let (uv_min, uv_max) = if u.facing_right {
@@ -612,7 +626,10 @@ impl WgpuRenderer {
                         let (s_uv_min, s_uv_max) = if u.facing_right {
                             (sword_uv.min, sword_uv.max)
                         } else {
-                            ([sword_uv.max[0], sword_uv.min[1]], [sword_uv.min[0], sword_uv.max[1]])
+                            (
+                                [sword_uv.max[0], sword_uv.min[1]],
+                                [sword_uv.min[0], sword_uv.max[1]],
+                            )
                         };
 
                         for i in 0..swords_count {
@@ -1009,12 +1026,8 @@ impl WgpuRenderer {
             }
 
             // Khung giới hạn đặt móng
-            self.sprite_batch.push_rect(
-                [wx, wy],
-                [gw, gh],
-                [0.0, 0.8, 1.0, 0.2],
-                white_uv,
-            );
+            self.sprite_batch
+                .push_rect([wx, wy], [gw, gh], [0.0, 0.8, 1.0, 0.2], white_uv);
             self.sprite_batch.push_stroke_rect(
                 [wx, wy],
                 [gw, gh],
@@ -1043,7 +1056,8 @@ impl WgpuRenderer {
         }
 
         // 4. Chuẩn bị Instance Buffer lên GPU
-        self.sprite_batch.prepare(&self.state.device, &self.state.queue);
+        self.sprite_batch
+            .prepare(&self.state.device, &self.state.queue);
 
         // 5. Render Pass
         let output = self.state.surface.get_current_texture()?;

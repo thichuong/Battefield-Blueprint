@@ -48,11 +48,8 @@ impl TextureAtlas {
             document.create_element("canvas").ok()?.dyn_into().ok()?;
         atlas_canvas.set_width(ATLAS_WIDTH);
         atlas_canvas.set_height(ATLAS_HEIGHT);
-        let ctx: CanvasRenderingContext2d = atlas_canvas
-            .get_context("2d")
-            .ok()??
-            .dyn_into()
-            .ok()?;
+        let ctx: CanvasRenderingContext2d =
+            atlas_canvas.get_context("2d").ok()??.dyn_into().ok()?;
 
         let aw = ATLAS_WIDTH as f64;
         let ah = ATLAS_HEIGHT as f64;
@@ -255,10 +252,7 @@ impl TextureAtlas {
         }
 
         // 8. Đọc toàn bộ buffer pixel RGBA từ canvas atlas
-        let image_data = ctx
-            .get_image_data(0.0, 0.0, aw, ah)
-            .ok()?
-            .data();
+        let image_data = ctx.get_image_data(0.0, 0.0, aw, ah).ok()?.data();
         let pixel_bytes: Vec<u8> = image_data.0;
 
         // 9. Tạo GPU Texture và nạp pixel

@@ -938,13 +938,23 @@ fn test_hud_canvas_content_visibility() {
     assert!(!engine.has_command_card_content());
 
     // 2. Chọn lính Player -> Cả hai canvas đều hiện
-    let player_unit_id = engine.units.iter().find(|u| u.team == Team::Player).unwrap().id;
+    let player_unit_id = engine
+        .units
+        .iter()
+        .find(|u| u.team == Team::Player)
+        .unwrap()
+        .id;
     engine.selected_unit_ids = vec![player_unit_id];
     assert!(engine.has_selection_info_content());
     assert!(engine.has_command_card_content());
 
     // 3. Chọn lính Địch -> Selection Info hiện, Command Card ẩn
-    let enemy_unit_id = engine.units.iter().find(|u| u.team == Team::Enemy).unwrap().id;
+    let enemy_unit_id = engine
+        .units
+        .iter()
+        .find(|u| u.team == Team::Enemy)
+        .unwrap()
+        .id;
     engine.selected_unit_ids = vec![enemy_unit_id];
     assert!(engine.has_selection_info_content());
     assert!(!engine.has_command_card_content());
@@ -963,7 +973,14 @@ fn test_hud_canvas_content_visibility() {
 
     // 5. Chọn Trụ thủ Player (TurretTower) -> Selection Info hiện, Command Card ẩn
     let turret_id = engine.alloc_id();
-    let b_turret = cfg.create_building(turret_id, Team::Player, BuildingType::TurretTower, 400.0, 400.0, true);
+    let b_turret = cfg.create_building(
+        turret_id,
+        Team::Player,
+        BuildingType::TurretTower,
+        400.0,
+        400.0,
+        true,
+    );
     engine.buildings.push(b_turret);
     engine.selected_building_id = Some(turret_id);
     assert!(engine.has_selection_info_content());

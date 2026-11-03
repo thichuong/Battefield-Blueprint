@@ -590,7 +590,11 @@ pub fn render_selection_info_panel(
 
             // Thanh máu (+ Thanh khiên nếu có)
             let hp_pct = (u.hp / u.max_hp).clamp(0.0, 1.0) as f64;
-            let bar_y = if u.max_shield > 0.0 { y + 36.0 } else { y + 35.0 };
+            let bar_y = if u.max_shield > 0.0 {
+                y + 36.0
+            } else {
+                y + 35.0
+            };
             let bar_h = 14.0;
 
             // Vạch khiên đè lên trên thanh trạng thái nếu có
@@ -822,7 +826,8 @@ pub fn render_debug_overlay_ctx(engine: &GameEngine, ctx: &CanvasRenderingContex
     let _ = ctx.fill_text(
         &format!(
             "⚙️ Sim: {:.1}ms (Accum: {:.1}ms)",
-            engine.sim_time_ms, engine.sim_accumulator * 1000.0
+            engine.sim_time_ms,
+            engine.sim_accumulator * 1000.0
         ),
         px + 10.0,
         py + 36.0,

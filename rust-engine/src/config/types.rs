@@ -93,14 +93,14 @@ pub struct TechItemConfig {
 }
 
 pub const DEFAULT_PLAYER_COLORS: [(&str, &str); 8] = [
-    ("#00e5ff", "rgba(0, 229, 255, 0.12)"),  // Slot 0: Cyan neon (Player)
-    ("#f43f5e", "rgba(244, 63, 94, 0.12)"),  // Slot 1: Crimson / Rose red
+    ("#00e5ff", "rgba(0, 229, 255, 0.12)"), // Slot 0: Cyan neon (Player)
+    ("#f43f5e", "rgba(244, 63, 94, 0.12)"), // Slot 1: Crimson / Rose red
     ("#a855f7", "rgba(168, 85, 247, 0.12)"), // Slot 2: Arcane purple
     ("#f59e0b", "rgba(245, 158, 11, 0.12)"), // Slot 3: Amber orange
     ("#10b981", "rgba(16, 185, 129, 0.12)"), // Slot 4: Emerald green
     ("#ec4899", "rgba(236, 72, 153, 0.12)"), // Slot 5: Hot pink / Magenta
     ("#3b82f6", "rgba(59, 130, 246, 0.12)"), // Slot 6: Electric royal blue
-    ("#eab308", "rgba(234, 179, 8, 0.12)"),  // Slot 7: Gold yellow
+    ("#eab308", "rgba(234, 179, 8, 0.12)"), // Slot 7: Gold yellow
 ];
 
 fn default_player_palette() -> Vec<(String, String)> {

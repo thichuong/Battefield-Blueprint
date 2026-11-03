@@ -43,7 +43,18 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
 
     let num_units = engine.units.len();
     for u_idx in 0..num_units {
-        let (u_team, mut u_order, u_type, mut u_laser_target, u_range, u_x, u_y, mut u_laser_stacks, mut u_cooldown, mut u_last_attack_pos) = {
+        let (
+            u_team,
+            mut u_order,
+            u_type,
+            mut u_laser_target,
+            u_range,
+            u_x,
+            u_y,
+            mut u_laser_stacks,
+            mut u_cooldown,
+            mut u_last_attack_pos,
+        ) = {
             let u = &engine.units[u_idx];
             (
                 u.team,
@@ -67,7 +78,10 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
                 if let Some(&b_idx) = spatial_grid.building_id_to_index.get(&target_id) {
                     if b_idx < engine.buildings.len() {
                         let b = &engine.buildings[b_idx];
-                        if b.id == target_id && factions[b.team.index() % 8] != my_faction && b.hp > 0.0 {
+                        if b.id == target_id
+                            && factions[b.team.index() % 8] != my_faction
+                            && b.hp > 0.0
+                        {
                             return Some((b.x, b.y, b.width.max(b.height) * 0.5));
                         }
                     }
@@ -528,7 +542,8 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
                                     // LaserMarksman: Tăng sát thương theo thời gian trên cùng mục tiêu
                                     // Sát thương khởi đầu là 1, mỗi lần tăng 2
                                     let current_target = (target_id, is_building);
-                                    let is_same_target = unit.laser_target_id == Some(current_target);
+                                    let is_same_target =
+                                        unit.laser_target_id == Some(current_target);
 
                                     if is_same_target && unit.last_attack_pos.is_some() {
                                         unit.laser_stacks += 1;
@@ -774,7 +789,9 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
     let pre_selected = engine.selected_unit_ids.len();
     engine.units.retain(|u| u.hp > 0.0);
     if pre_selected > 0 {
-        engine.selected_unit_ids.retain(|id| engine.units.iter().any(|u| u.id == *id));
+        engine
+            .selected_unit_ids
+            .retain(|id| engine.units.iter().any(|u| u.id == *id));
         if engine.selected_unit_ids.len() != pre_selected {
             engine.selection_dirty = true;
             engine.command_card_dirty = true;

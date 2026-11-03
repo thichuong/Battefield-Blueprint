@@ -411,7 +411,11 @@ impl RlBrain {
     }
 
     pub fn load_saved_model() -> Option<Self> {
-        for candidate in &["assets/rl_model.json", "rust-engine/assets/rl_model.json", "../assets/rl_model.json"] {
+        for candidate in &[
+            "assets/rl_model.json",
+            "rust-engine/assets/rl_model.json",
+            "../assets/rl_model.json",
+        ] {
             if let Some(brain) = Self::load_from_file(candidate) {
                 return Some(brain);
             }

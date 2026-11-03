@@ -176,7 +176,8 @@ impl WgpuState {
     }
 
     pub fn resize(&mut self, new_width: u32, new_height: u32) {
-        if new_width > 0 && new_height > 0 && (self.width != new_width || self.height != new_height) {
+        if new_width > 0 && new_height > 0 && (self.width != new_width || self.height != new_height)
+        {
             self.width = new_width;
             self.height = new_height;
             self.config.width = new_width;
@@ -185,4 +186,3 @@ impl WgpuState {
         }
     }
 }
-

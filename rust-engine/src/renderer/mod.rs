@@ -61,10 +61,10 @@ pub fn render_hud_layer(engine: &GameEngine, ctx: &web_sys::CanvasRenderingConte
     }
 
     // Toàn bộ In-game HUD
-    render_top_bar_hud(engine, &ctx);
-    render_minimap_hud(engine, &ctx);
-    render_selection_panel_hud(engine, &ctx);
-    render_command_card_hud(engine, &ctx);
+    render_top_bar_hud(engine, ctx);
+    render_minimap_hud(engine, ctx);
+    render_selection_panel_hud(engine, ctx);
+    render_command_card_hud(engine, ctx);
 
     // Bảng thông số hiệu năng FPS & Thời gian xử lý (Debug Performance Overlay)
     render_debug_overlay(engine);

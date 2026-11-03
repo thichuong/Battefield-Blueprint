@@ -215,6 +215,7 @@ impl SpriteBatch {
     }
 
     /// Vẽ vòng tròn dạng đoạn thẳng xấp xỉ (Selection ring / Attack move circle)
+    #[allow(clippy::too_many_arguments)]
     pub fn push_circle_stroke(
         &mut self,
         center: [f32; 2],
@@ -230,8 +231,14 @@ impl SpriteBatch {
         for i in 0..segs {
             let a1 = (i as f32) * step;
             let a2 = ((i + 1) as f32) * step;
-            let p1 = [center[0] + a1.cos() * radius_x, center[1] + a1.sin() * radius_y];
-            let p2 = [center[0] + a2.cos() * radius_x, center[1] + a2.sin() * radius_y];
+            let p1 = [
+                center[0] + a1.cos() * radius_x,
+                center[1] + a1.sin() * radius_y,
+            ];
+            let p2 = [
+                center[0] + a2.cos() * radius_x,
+                center[1] + a2.sin() * radius_y,
+            ];
             self.push_line(p1, p2, thickness, color, white_uv);
         }
     }
@@ -269,4 +276,3 @@ impl SpriteBatch {
         render_pass.draw_indexed(0..6, 0, 0..count);
     }
 }
-
