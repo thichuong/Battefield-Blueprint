@@ -9,8 +9,6 @@ import {
   BookOpen,
   Settings,
   Zap,
-  Sparkles,
-  Radio,
 } from 'lucide-react';
 import { PlayerSlotConfig } from '../bridge/wasmBridge';
 import { soundEngine } from '../audio/soundEngine';
@@ -84,6 +82,11 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
   const [difficulty, setDifficulty] = useState<string>('normal');
   const [preset, setPreset] = useState<MatchPreset>('4v4');
   const [hoveredSlot, setHoveredSlot] = useState<number | null>(null);
+  const [openFactionDropdown, setOpenFactionDropdown] = useState<{
+    slotIndex: number;
+    top: number;
+    left: number;
+  } | null>(null);
 
   // Khởi tạo trạng thái 8 slots
   const [slots, setSlots] = useState<SlotUIData[]>(() =>
@@ -104,6 +107,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
   // Áp dụng Preset nhanh
   const applyPreset = (p: MatchPreset) => {
     soundEngine.playSound('click');
+    setOpenFactionDropdown(null);
     setPreset(p);
     setSlots((prev) => {
       const next = prev.map((s) => ({ ...s, isHuman: s.index === 0 }));
@@ -164,23 +168,93 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
   const toggleSlotActive = (index: number) => {
     if (index === 0) return; // Slot 0 luôn bật
     soundEngine.playSound('click');
+    setOpenFactionDropdown(null);
     setPreset('custom');
     setSlots((prev) =>
       prev.map((s) => (s.index === index ? { ...s, active: !s.active } : s))
     );
   };
 
-  // Thay đổi phe của slot
-  const cycleSlotFaction = (index: number) => {
+  // Thay đổi phe của slot bằng cách chọn trực tiếp từ danh sách
+  const selectSlotFaction = (index: number, faction: number) => {
     if (index === 0) return; // Slot 0 luôn là Phe 0
     soundEngine.playSound('order');
     setPreset('custom');
     setSlots((prev) =>
       prev.map((s) =>
-        s.index === index ? { ...s, faction: (s.faction + 1) % 8 } : s
+        s.index === index ? { ...s, faction } : s
       )
     );
+    setOpenFactionDropdown(null);
   };
+
+  // Mở/Đóng danh sách lựa chọn phe dạng popover nằm đè lên mọi component
+  const handleFactionButtonClick = (
+    index: number,
+    e: React.MouseEvent<HTMLButtonElement>
+  ) => {
+    if (index === 0) return;
+    e.stopPropagation();
+    soundEngine.playSound('click');
+
+    if (openFactionDropdown?.slotIndex === index) {
+      setOpenFactionDropdown(null);
+      return;
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const dropdownHeight = 270;
+    const dropdownWidth = 140;
+
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const showAbove = spaceBelow < dropdownHeight && rect.top > dropdownHeight;
+    const top = showAbove
+      ? Math.max(8, rect.top - dropdownHeight - 4)
+      : Math.min(window.innerHeight - dropdownHeight - 8, rect.bottom + 4);
+
+    let left = rect.right - dropdownWidth;
+    if (left < 8) left = 8;
+    if (left + dropdownWidth > window.innerWidth - 8) {
+      left = window.innerWidth - dropdownWidth - 8;
+    }
+
+    setOpenFactionDropdown({
+      slotIndex: index,
+      top,
+      left,
+    });
+  };
+
+  // Đóng dropdown khi click ra ngoài, cuộn trang hoặc bấm ESC
+  useEffect(() => {
+    if (!openFactionDropdown) return;
+
+    const handleClickOutside = () => {
+      setOpenFactionDropdown(null);
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpenFactionDropdown(null);
+      }
+    };
+
+    const handleScroll = () => {
+      setOpenFactionDropdown(null);
+    };
+
+    window.addEventListener('click', handleClickOutside);
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('scroll', handleScroll, true);
+    window.addEventListener('resize', handleClickOutside);
+
+    return () => {
+      window.removeEventListener('click', handleClickOutside);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('resize', handleClickOutside);
+    };
+  }, [openFactionDropdown]);
 
   // Thống kê tóm tắt
   const summary = useMemo(() => {
@@ -236,27 +310,6 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [difficulty, slots, onOpenGuide, onOpenSettings]);
 
-  // Các đường nối liên minh giữa các căn cứ cùng phe
-  const allianceLines = useMemo(() => {
-    const lines: { x1: number; y1: number; x2: number; y2: number; color: string; faction: number }[] = [];
-    const active = slots.filter((s) => s.active);
-
-    for (let i = 0; i < active.length; i++) {
-      for (let j = i + 1; j < active.length; j++) {
-        if (active[i].faction === active[j].faction) {
-          lines.push({
-            x1: active[i].radarX,
-            y1: active[i].radarY,
-            x2: active[j].radarX,
-            y2: active[j].radarY,
-            color: PLAYER_COLORS[active[i].faction % PLAYER_COLORS.length],
-            faction: active[i].faction,
-          });
-        }
-      }
-    }
-    return lines;
-  }, [slots]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#020813]/95 text-slate-100 font-mono p-2 sm:p-4 md:p-6 overflow-y-auto select-none backdrop-blur-sm">
@@ -264,7 +317,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
       <div className="fixed inset-0 bg-[linear-gradient(to_right,#071e3d_1px,transparent_1px),linear-gradient(to_bottom,#071e3d_1px,transparent_1px)] bg-[size:3.5rem_3.5rem] [mask-image:radial-gradient(ellipse_75%_65%_at_50%_50%,#000_70%,transparent_100%)] opacity-80 pointer-events-none" />
 
       {/* Main Tactical Command Console (Landscape 16:9 / Widescreen Optimized) */}
-      <div className="relative z-10 w-full max-w-7xl max-h-[96vh] flex flex-col border-2 border-cyan-500/70 rounded-2xl bg-slate-950/95 shadow-[0_0_80px_rgba(0,229,255,0.28)] p-3 sm:p-5 md:p-6 my-auto overflow-hidden">
+      <div className="relative z-10 w-[1280px] max-w-[96vw] h-[750px] max-h-[95vh] min-h-[580px] flex flex-col shrink-0 border-2 border-cyan-500/70 rounded-2xl bg-slate-950/95 shadow-[0_0_80px_rgba(0,229,255,0.28)] p-3 sm:p-5 md:p-6 my-auto overflow-hidden">
         {/* =========================================================================
             TOP BAR HUD: Title, Status Pill & Quick Action Buttons
         ========================================================================= */}
@@ -278,20 +331,20 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
                 <h1 className="text-lg sm:text-2xl md:text-3xl font-black tracking-tight text-white drop-shadow-[0_0_18px_rgba(0,229,255,0.6)] truncate">
                   BATTLEFIELD <span className="text-cyan-400">BLUEPRINT</span>
                 </h1>
-                <span className="hidden md:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-cyan-950/90 border border-cyan-500/70 text-cyan-300 text-[10px] font-bold tracking-widest uppercase shadow-sm">
+                <span className="hidden md:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-950/90 border border-cyan-500/70 text-cyan-300 text-[13px] font-bold tracking-widest uppercase shadow-sm">
                   <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping inline-block" />
                   RTS 4800x4800 // RUST WASM 60FPS
                 </span>
               </div>
-              <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5 hidden sm:block truncate">
+              <p className="text-[13px] sm:text-sm text-slate-300 mt-1 hidden sm:block truncate">
                 Trung tâm chỉ huy chiến thuật đa phe • Mô phỏng thời gian thực • Deep RL Bot & AutoPlay
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2.5 shrink-0">
             {/* Quick Status Pill */}
-            <div className="hidden lg:flex items-center gap-2 bg-slate-900/90 border border-cyan-900/80 px-3 py-1.5 rounded-xl text-xs text-slate-300 shadow-inner">
+            <div className="hidden lg:flex items-center gap-2 bg-slate-900/90 border border-cyan-900/80 px-3.5 py-1.5 rounded-xl text-sm text-slate-200 shadow-inner">
               <span className="text-cyan-400 font-bold">{summary.total}/8</span> Căn cứ •{' '}
               <span className="text-emerald-400 font-bold">{summary.allies}</span> Đồng minh •{' '}
               <span className="text-rose-400 font-bold">{summary.enemies}</span> Đối thủ •{' '}
@@ -304,12 +357,12 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
                 soundEngine.playSound('click');
                 onOpenGuide();
               }}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-slate-900/90 hover:bg-cyan-950/80 border border-slate-700 hover:border-cyan-400 text-cyan-300 font-bold text-xs uppercase tracking-wider transition-all cursor-pointer shadow-sm hover:shadow-[0_0_12px_rgba(0,229,255,0.25)]"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900/90 hover:bg-cyan-950/80 border border-slate-700 hover:border-cyan-400 text-cyan-300 font-bold text-sm uppercase tracking-wider transition-all cursor-pointer shadow-sm hover:shadow-[0_0_12px_rgba(0,229,255,0.25)]"
               title="Xem cẩm nang chiến thuật [Phím tắt: G]"
             >
               <BookOpen className="w-4 h-4 text-cyan-400" />
               <span className="hidden sm:inline">HƯỚNG DẪN</span>
-              <span className="text-[10px] text-cyan-500 font-normal">[G]</span>
+              <span className="text-[13px] text-cyan-400 font-medium">[G]</span>
             </button>
 
             {/* Settings Button */}
@@ -318,12 +371,12 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
                 soundEngine.playSound('click');
                 onOpenSettings();
               }}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 hover:border-slate-500 text-slate-300 hover:text-white font-bold text-xs uppercase tracking-wider transition-all cursor-pointer shadow-sm"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 hover:border-slate-500 text-slate-200 hover:text-white font-bold text-sm uppercase tracking-wider transition-all cursor-pointer shadow-sm"
               title="Cài đặt game [Phím tắt: S]"
             >
               <Settings className="w-4 h-4 text-slate-400" />
               <span className="hidden sm:inline">CÀI ĐẶT</span>
-              <span className="text-[10px] text-slate-500 font-normal">[S]</span>
+              <span className="text-[13px] text-slate-400 font-medium">[S]</span>
             </button>
           </div>
         </header>
@@ -331,23 +384,23 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
         {/* =========================================================================
             MAIN 2-COLUMN WAR ROOM LAYOUT (Optimized for Horizontal Displays)
         ========================================================================= */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 md:gap-5 flex-1 min-h-0 pt-3 overflow-y-auto lg:overflow-visible">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 md:gap-5 flex-1 min-h-0 pt-3 overflow-y-auto">
           {/* -----------------------------------------------------------------------
-              LEFT COLUMN (5 Cols): Presets, Radar Map & AI Difficulty
+              LEFT COLUMN (5 Cols): Presets & AI Difficulty
           ----------------------------------------------------------------------- */}
-          <div className="lg:col-span-5 flex flex-col justify-between gap-3 min-h-0">
+          <div className="lg:col-span-5 flex flex-col justify-start gap-3.5 min-h-0">
             {/* 1. Presets Grid */}
-            <div className="bg-slate-900/60 p-3 rounded-xl border border-slate-800/80 text-left shrink-0">
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+            <div className="bg-slate-900/60 p-3 sm:p-3.5 rounded-xl border border-slate-800/80 text-left shrink-0">
+              <div className="flex items-center justify-between mb-2.5">
+                <label className="text-sm font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
                   <Swords className="w-4 h-4 text-cyan-400" /> Kịch Bản & Chế Độ Chiến Đấu:
                 </label>
-                <span className="text-[10px] text-cyan-400 bg-cyan-950/70 border border-cyan-800/80 px-2 py-0.5 rounded font-mono">
+                <span className="text-[13px] text-cyan-300 bg-cyan-950/70 border border-cyan-800/80 px-2.5 py-0.5 rounded font-mono font-semibold">
                   Preset: {preset.toUpperCase()}
                 </span>
               </div>
 
-              <div className="grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-3 gap-1.5">
+              <div className="grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-3 gap-2">
                 {[
                   { id: '1v1', label: '1 vs 1', desc: 'Đối đầu', key: '1' },
                   { id: '2v2', label: '2 vs 2', desc: 'Song đấu', key: '2' },
@@ -359,156 +412,32 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
                   <button
                     key={p.id}
                     onClick={() => applyPreset(p.id as MatchPreset)}
-                    className={`py-1.5 px-2 rounded-lg border text-center transition-all cursor-pointer flex flex-col items-center justify-center relative overflow-hidden ${
+                    className={`py-2 px-2.5 rounded-lg border text-center transition-all cursor-pointer flex flex-col items-center justify-center relative overflow-hidden ${
                       preset === p.id
                         ? 'bg-cyan-950/90 border-cyan-400 text-cyan-300 shadow-[0_0_12px_rgba(0,229,255,0.35)] scale-[1.02]'
-                        : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                        : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:border-slate-700 hover:text-white'
                     }`}
                   >
                     <div className="flex items-center gap-1">
-                      <span className="text-xs font-bold">{p.label}</span>
-                      <span className="text-[9px] text-cyan-600 font-mono">[{p.key}]</span>
+                      <span className="text-sm font-bold">{p.label}</span>
+                      <span className="text-[13px] text-cyan-400 font-mono font-bold">[{p.key}]</span>
                     </div>
-                    <span className="text-[9px] text-slate-500 truncate w-full">{p.desc}</span>
+                    <span className="text-[13px] text-slate-300 truncate w-full mt-0.5">{p.desc}</span>
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* 2. Interactive Holographic Radar Mini-Map */}
-            <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800/80 flex flex-col justify-between flex-1 min-h-[170px] sm:min-h-[190px] relative overflow-hidden">
-              <div className="flex items-center justify-between mb-1.5 z-10 shrink-0">
-                <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-                  <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse" /> Sơ Đồ Radar Tác Chiến 4800x4800:
-                </span>
-                <span className="text-[10px] text-slate-400 italic">
-                  * Click trực tiếp vào điểm căn cứ để bật/tắt
-                </span>
-              </div>
-
-              {/* Radar Screen Area */}
-              <div className="relative w-full flex-1 rounded-lg bg-[#010915] border border-cyan-900/60 overflow-hidden flex items-center justify-center min-h-[140px]">
-                {/* Radar Grid Circles */}
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="w-[85%] h-[85%] rounded-full border border-cyan-500/15" />
-                  <div className="w-[60%] h-[60%] rounded-full border border-cyan-500/20" />
-                  <div className="w-[35%] h-[35%] rounded-full border border-cyan-500/25" />
-                  {/* Axis Crosshairs */}
-                  <div className="absolute w-full h-[1px] bg-cyan-500/20" />
-                  <div className="absolute h-full w-[1px] bg-cyan-500/20" />
-                  {/* Diagonal guides */}
-                  <div className="absolute w-[90%] h-[1px] bg-cyan-500/10 rotate-45" />
-                  <div className="absolute w-[90%] h-[1px] bg-cyan-500/10 -rotate-45" />
-                </div>
-
-                {/* Rotating Radar Scanner Sweep */}
-                <div className="absolute inset-0 pointer-events-none overflow-hidden flex items-center justify-center">
-                  <div className="w-full h-full rounded-full opacity-20 bg-[conic-gradient(from_0deg_at_50%_50%,rgba(0,229,255,0.4)_0deg,transparent_60deg)] animate-spin-slow" />
-                </div>
-
-                {/* Central Contested Zone indicator */}
-                <div className="absolute z-10 flex flex-col items-center pointer-events-none">
-                  <div className="w-3.5 h-3.5 rounded-full bg-cyan-500/20 border border-cyan-400/50 flex items-center justify-center shadow-[0_0_10px_rgba(0,229,255,0.4)]">
-                    <Sparkles className="w-2 h-2 text-cyan-300" />
-                  </div>
-                  <span className="text-[8px] text-cyan-500/80 font-bold uppercase tracking-tighter mt-0.5">
-                    TÂM CHIẾN SỰ
-                  </span>
-                </div>
-
-                {/* SVG Alliance Lines */}
-                <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
-                  {allianceLines.map((line, idx) => (
-                    <line
-                      key={idx}
-                      x1={`${line.x1}%`}
-                      y1={`${line.y1}%`}
-                      x2={`${line.x2}%`}
-                      y2={`${line.y2}%`}
-                      stroke={line.color}
-                      strokeWidth="1.2"
-                      strokeDasharray="3 3"
-                      strokeOpacity="0.45"
-                    />
-                  ))}
-                </svg>
-
-                {/* 8 Base Nodes on Radar */}
-                {slots.map((slot) => {
-                  const isPlayer = slot.index === 0;
-                  const isAlly = !isPlayer && slot.faction === 0;
-                  const playerColor = PLAYER_COLORS[slot.index];
-                  const factionColor = PLAYER_COLORS[slot.faction % PLAYER_COLORS.length];
-                  const isHovered = hoveredSlot === slot.index;
-
-                  return (
-                    <div
-                      key={slot.index}
-                      onClick={() => toggleSlotActive(slot.index)}
-                      onMouseEnter={() => setHoveredSlot(slot.index)}
-                      onMouseLeave={() => setHoveredSlot(null)}
-                      className={`absolute z-20 -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-all ${
-                        slot.active ? 'scale-100 hover:scale-125' : 'scale-90 opacity-40 hover:opacity-75'
-                      }`}
-                      style={{
-                        left: `${slot.radarX}%`,
-                        top: `${slot.radarY}%`,
-                      }}
-                      title={`Slot ${slot.index + 1}: ${slot.name} (${slot.shortLoc}) - ${
-                        slot.active ? `Phe ${slot.faction + 1}` : 'Tắt'
-                      }`}
-                    >
-                      {/* Pulse Ping effect when active */}
-                      {slot.active && (
-                        <div
-                          className="absolute inset-0 rounded-full animate-ping opacity-60 pointer-events-none"
-                          style={{ backgroundColor: playerColor }}
-                        />
-                      )}
-
-                      {/* Node Circle */}
-                      <div
-                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center font-bold text-[10px] transition-all shadow-md ${
-                          isHovered ? 'ring-2 ring-white ring-offset-1 ring-offset-slate-950' : ''
-                        }`}
-                        style={{
-                          backgroundColor: slot.active ? `${playerColor}33` : '#0f172a',
-                          borderColor: slot.active ? playerColor : '#475569',
-                          color: slot.active ? '#ffffff' : '#94a3b8',
-                          boxShadow: slot.active ? `0 0 10px ${playerColor}88` : 'none',
-                        }}
-                      >
-                        {slot.index + 1}
-                      </div>
-
-                      {/* Mini Tag */}
-                      <div
-                        className="absolute top-full left-1/2 -translate-x-1/2 mt-0.5 px-1 py-0.2 rounded text-[8px] font-bold whitespace-nowrap shadow pointer-events-none"
-                        style={{
-                          backgroundColor: slot.active ? '#030d1aee' : '#0f172aee',
-                          borderColor: slot.active ? factionColor : '#334155',
-                          borderWidth: '1px',
-                          color: slot.active ? factionColor : '#64748b',
-                        }}
-                      >
-                        {isPlayer ? 'BẠN' : isAlly && slot.active ? 'MINH' : slot.active ? `P${slot.faction + 1}` : 'TẮT'}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* 3. AI Difficulty Selector */}
-            <div className="bg-slate-900/60 p-2.5 sm:p-3 rounded-xl border border-slate-800/80 text-left shrink-0">
-              <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider block mb-1.5 flex items-center gap-1.5">
-                <Zap className="w-3.5 h-3.5 text-amber-400" /> Độ Khó Trí Tuệ Nhân Tạo (AI Difficulty):
+            {/* 2. AI Difficulty Selector */}
+            <div className="bg-slate-900/60 p-3 sm:p-3.5 rounded-xl border border-slate-800/80 text-left shrink-0">
+              <label className="text-sm font-bold text-slate-200 uppercase tracking-wider block mb-2 flex items-center gap-1.5">
+                <Zap className="w-4 h-4 text-amber-400" /> Độ Khó Trí Tuệ Nhân Tạo (AI Difficulty):
               </label>
               <div className="grid grid-cols-3 gap-2">
                 {[
-                  { id: 'easy', label: 'TÂN BINH', desc: '-20% T/Nguyên', badgeColor: 'text-sky-400' },
-                  { id: 'normal', label: 'TIÊU CHUẨN', desc: 'Chuẩn 100%', badgeColor: 'text-emerald-400' },
-                  { id: 'hard', label: 'CHUYÊN GIA', desc: '+20% T/Nguyên', badgeColor: 'text-rose-400' },
+                  { id: 'easy', label: 'TÂN BINH', desc: '-20% T/Nguyên', badgeColor: 'text-sky-300' },
+                  { id: 'normal', label: 'TIÊU CHUẨN', desc: 'Chuẩn 100%', badgeColor: 'text-emerald-300' },
+                  { id: 'hard', label: 'CHUYÊN GIA', desc: '+20% T/Nguyên', badgeColor: 'text-rose-300' },
                 ].map((diff) => (
                   <button
                     key={diff.id}
@@ -516,14 +445,14 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
                       soundEngine.playSound('click');
                       setDifficulty(diff.id);
                     }}
-                    className={`py-1.5 px-2 rounded-lg text-center transition-all border cursor-pointer flex flex-col items-center justify-center ${
+                    className={`py-2 px-2.5 rounded-lg text-center transition-all border cursor-pointer flex flex-col items-center justify-center ${
                       difficulty === diff.id
                         ? 'bg-cyan-950/90 border-cyan-400 text-cyan-300 shadow-[0_0_10px_rgba(0,229,255,0.3)]'
-                        : 'bg-slate-950/50 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                        : 'bg-slate-950/50 border-slate-800 text-slate-300 hover:border-slate-700 hover:text-white'
                     }`}
                   >
-                    <span className="text-xs font-bold">{diff.label}</span>
-                    <span className={`text-[10px] ${diff.badgeColor}`}>{diff.desc}</span>
+                    <span className="text-sm font-bold">{diff.label}</span>
+                    <span className={`text-[13px] font-semibold mt-0.5 ${diff.badgeColor}`}>{diff.desc}</span>
                   </button>
                 ))}
               </div>
@@ -537,16 +466,16 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
             {/* 1. 8 Slots Roster Grid */}
             <div className="bg-slate-900/60 p-3 sm:p-3.5 rounded-xl border border-slate-800/80 flex flex-col flex-1 min-h-0 text-left">
               <div className="flex items-center justify-between mb-2 shrink-0">
-                <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                <span className="text-sm font-bold text-slate-100 flex items-center gap-1.5">
                   <Users className="w-4 h-4 text-amber-400" /> Phân Bố 8 Căn Cứ Chiến Lược:
                 </span>
-                <span className="text-[10px] text-slate-400 italic hidden sm:inline">
+                <span className="text-[13px] text-slate-300 italic hidden sm:inline">
                   * Checkbox để bật/tắt • Click huy hiệu Phe để đổi liên minh
                 </span>
               </div>
 
               {/* Grid 4 rows x 2 cols (Compact & Sleek for landscape) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs flex-1 min-h-0 overflow-y-auto pr-0.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-sm flex-1 min-h-0 overflow-y-auto pr-0.5">
                 {slots.map((slot) => {
                   const isPlayer = slot.index === 0;
                   const isAlly = !isPlayer && slot.faction === 0;
@@ -559,7 +488,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
                       key={slot.index}
                       onMouseEnter={() => setHoveredSlot(slot.index)}
                       onMouseLeave={() => setHoveredSlot(null)}
-                      className={`p-2 rounded-xl border flex items-center justify-between gap-2 transition-all ${
+                      className={`p-2.5 rounded-xl border flex items-center justify-between gap-2.5 transition-all ${
                         !slot.active
                           ? 'bg-slate-950/40 border-slate-900/90 opacity-45'
                           : isPlayer
@@ -570,13 +499,13 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
                       } ${isHovered && slot.active ? 'ring-1 ring-cyan-400/50 bg-slate-900/80' : ''}`}
                       style={slot.active ? { borderColor: `${playerColor}77` } : undefined}
                     >
-                      <div className="flex items-center gap-2 min-w-0">
+                      <div className="flex items-center gap-2.5 min-w-0">
                         {/* Checkbox toggle slot */}
                         <button
                           type="button"
                           onClick={() => toggleSlotActive(slot.index)}
                           disabled={isPlayer}
-                          className={`w-5 h-5 rounded flex items-center justify-center border transition-all shrink-0 ${
+                          className={`w-6 h-6 rounded-md flex items-center justify-center border transition-all shrink-0 ${
                             isPlayer
                               ? 'bg-cyan-500 border-cyan-400 text-slate-950 cursor-not-allowed shadow-[0_0_6px_rgba(0,229,255,0.5)]'
                               : slot.active
@@ -585,43 +514,43 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
                           }`}
                           title={isPlayer ? 'Chỉ Huy luôn tham chiến' : 'Bật/Tắt Căn cứ này'}
                         >
-                          {slot.active && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                          {slot.active && <Check className="w-4 h-4 stroke-[3]" />}
                         </button>
 
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             {/* Color Dot Swatch */}
                             <span
-                              className="w-2.5 h-2.5 rounded-full inline-block shrink-0"
+                              className="w-3 h-3 rounded-full inline-block shrink-0"
                               style={{
                                 backgroundColor: playerColor,
                                 boxShadow: slot.active ? `0 0 8px ${playerColor}` : 'none',
                               }}
                               title={`Màu người chơi: ${PLAYER_COLOR_NAMES[slot.index]}`}
                             />
-                            <span className="font-bold text-slate-200 truncate">
+                            <span className="font-bold text-slate-100 truncate text-sm">
                               Slot {slot.index + 1}: {slot.name}
                             </span>
 
                             {isPlayer && (
-                              <span className="bg-cyan-500 text-slate-950 text-[9px] px-1.5 py-0.2 rounded font-black shrink-0">
+                              <span className="bg-cyan-500 text-slate-950 text-[13px] px-2 py-0.5 rounded font-black shrink-0">
                                 BẠN
                               </span>
                             )}
                             {isAlly && slot.active && (
-                              <span className="bg-emerald-500 text-slate-950 text-[9px] px-1.5 py-0.2 rounded font-black shrink-0">
+                              <span className="bg-emerald-500 text-slate-950 text-[13px] px-2 py-0.5 rounded font-black shrink-0">
                                 ĐỒNG MINH
                               </span>
                             )}
                             {!isPlayer && !isAlly && slot.active && (
-                              <span className="bg-rose-950/80 border border-rose-600 text-rose-300 text-[9px] px-1.5 py-0.2 rounded font-bold shrink-0">
+                              <span className="bg-rose-950/80 border border-rose-600 text-rose-300 text-[13px] px-2 py-0.5 rounded font-bold shrink-0">
                                 ĐỐI THỦ
                               </span>
                             )}
                           </div>
 
-                          <div className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5 truncate">
-                            <span style={{ color: playerColor }}>{PLAYER_COLOR_NAMES[slot.index]}</span>
+                          <div className="text-[13px] text-slate-300 flex items-center gap-1.5 mt-0.5 truncate font-medium">
+                            <span style={{ color: playerColor }} className="font-semibold">{PLAYER_COLOR_NAMES[slot.index]}</span>
                             <span>•</span>
                             <span className="truncate">{slot.shortLoc}</span>
                           </div>
@@ -632,12 +561,16 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
                       {slot.active ? (
                         <button
                           type="button"
-                          onClick={() => cycleSlotFaction(slot.index)}
+                          onClick={(e) => handleFactionButtonClick(slot.index, e)}
                           disabled={isPlayer}
-                          className={`px-2 py-1 rounded text-[11px] font-bold border transition-all flex items-center gap-1.5 shrink-0 ${
+                          className={`px-3 py-1.5 rounded-lg text-[13px] font-bold border transition-all flex items-center gap-1.5 shrink-0 select-none ${
                             isPlayer
                               ? 'cursor-not-allowed opacity-90'
                               : 'cursor-pointer hover:brightness-125 hover:scale-105 active:scale-95'
+                          } ${
+                            openFactionDropdown?.slotIndex === slot.index
+                              ? 'ring-2 ring-cyan-400 shadow-[0_0_12px_rgba(0,229,255,0.6)] brightness-125'
+                              : ''
                           }`}
                           style={{
                             borderColor: factionColor,
@@ -645,17 +578,23 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
                             color: factionColor,
                             boxShadow: `0 0 8px ${factionColor}33`,
                           }}
-                          title={isPlayer ? 'Phe của bạn cố định là Phe 1 (Liên Minh)' : 'Click để đổi Phe'}
+                          title={isPlayer ? 'Phe của bạn cố định là Phe 1 (Liên Minh)' : 'Click để chọn Phe'}
                         >
                           <span
-                            className="w-2 h-2 rounded-full inline-block"
-                            style={{ backgroundColor: factionColor }}
+                            className="w-2.5 h-2.5 rounded-full inline-block shrink-0 shadow-sm"
+                            style={{ backgroundColor: factionColor, boxShadow: `0 0 6px ${factionColor}` }}
                           />
                           <span>Phe {slot.faction + 1}</span>
-                          {!isPlayer && <ChevronDown className="w-3 h-3 opacity-80" />}
+                          {!isPlayer && (
+                            <ChevronDown
+                              className={`w-3.5 h-3.5 opacity-80 transition-transform duration-200 ${
+                                openFactionDropdown?.slotIndex === slot.index ? 'rotate-180 text-white' : ''
+                              }`}
+                            />
+                          )}
                         </button>
                       ) : (
-                        <span className="text-[10px] text-slate-600 italic shrink-0 px-2 py-1">Trống</span>
+                        <span className="text-[13px] text-slate-500 italic shrink-0 px-2 py-1 font-medium">Trống</span>
                       )}
                     </div>
                   );
@@ -664,7 +603,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
             </div>
 
             {/* 2. Tactical Launch Action Bar */}
-            <div className="bg-slate-900/60 p-3 rounded-xl border border-slate-800/80 shrink-0">
+            <div className="bg-slate-900/60 p-3 sm:p-3.5 rounded-xl border border-slate-800/80 shrink-0">
               <button
                 type="button"
                 onClick={handleStart}
@@ -675,12 +614,12 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
 
                 <Play className="w-5 h-5 fill-current shrink-0" />
                 <span className="truncate">XUẤT QUÂN // BẮT ĐẦU CHIẾN TRƯỜNG ĐA PHE</span>
-                <span className="hidden sm:inline-block text-xs font-mono text-slate-950/80 bg-cyan-300/60 px-2 py-0.5 rounded ml-1">
+                <span className="hidden sm:inline-block text-sm font-mono font-bold text-slate-950 bg-cyan-300/80 px-2 py-0.5 rounded ml-1">
                   [ENTER]
                 </span>
               </button>
 
-              <div className="flex items-center justify-between text-[10px] text-slate-400 mt-2 px-1">
+              <div className="flex items-center justify-between text-[13px] text-slate-300 mt-2 px-1">
                 <span>⚡ Phím tắt nhanh: [Enter] Xuất quân • [G] Hướng dẫn • [S] Cài đặt • [1..6] Chọn Kịch bản</span>
                 <span className="text-cyan-400 font-bold hidden sm:inline">Mô phỏng 60 FPS • Đồ họa Vector WebGPU</span>
               </div>
@@ -688,6 +627,55 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
           </div>
         </div>
       </div>
+
+      {/* =========================================================================
+          POPOVER: Floating Faction Selection Dropdown List (Guaranteed on top)
+      ========================================================================= */}
+      {openFactionDropdown && (
+        <div
+          className="fixed z-[9999] py-2 px-1.5 bg-slate-950/95 border border-cyan-500/80 rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.9),0_0_24px_rgba(0,229,255,0.35)] backdrop-blur-md min-w-[150px] select-none animate-in fade-in zoom-in-95 duration-100"
+          style={{
+            top: `${openFactionDropdown.top}px`,
+            left: `${openFactionDropdown.left}px`,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="text-[13px] font-bold text-slate-300 uppercase tracking-wider px-2.5 py-1 mb-1 border-b border-slate-800/80 flex items-center justify-between">
+            <span className="text-cyan-400">DANH SÁCH PHE</span>
+            <span className="text-[13px] text-slate-400 font-mono">1 - 8</span>
+          </div>
+          <div className="flex flex-col gap-1 max-h-[260px] overflow-y-auto pr-0.5">
+            {[0, 1, 2, 3, 4, 5, 6, 7].map((fIndex) => {
+              const fColor = PLAYER_COLORS[fIndex % PLAYER_COLORS.length];
+              const isSelected = slots[openFactionDropdown.slotIndex]?.faction === fIndex;
+              return (
+                <button
+                  key={fIndex}
+                  type="button"
+                  onClick={() => selectSlotFaction(openFactionDropdown.slotIndex, fIndex)}
+                  className={`flex items-center justify-between gap-2.5 px-3 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer text-left ${
+                    isSelected
+                      ? 'bg-cyan-950/90 text-white border border-cyan-400/70 shadow-[0_0_8px_rgba(0,229,255,0.3)]'
+                      : 'text-slate-200 hover:bg-slate-900/90 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span
+                      className="w-3 h-3 rounded-full inline-block shrink-0 shadow-sm"
+                      style={{
+                        backgroundColor: fColor,
+                        boxShadow: `0 0 6px ${fColor}`,
+                      }}
+                    />
+                    <span className="truncate">Phe {fIndex + 1}</span>
+                  </div>
+                  {isSelected && <Check className="w-4 h-4 text-cyan-400 shrink-0 stroke-[3]" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

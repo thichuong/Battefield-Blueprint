@@ -786,15 +786,15 @@ export const App: React.FC = () => {
       {isInGame && gameState.autoplay_state.enabled && (
         <div
           onClick={() => setIsAutoPlayOpen(true)}
-          className="fixed top-14 right-4 z-40 bg-slate-950/90 border border-emerald-500/80 rounded-xl px-3 py-1.5 shadow-[0_0_15px_rgba(16,185,129,0.3)] flex items-center gap-2.5 font-mono text-xs cursor-pointer hover:bg-slate-900 transition-colors"
+          className="fixed top-14 right-4 z-40 bg-slate-950/90 border border-emerald-500/80 rounded-xl px-3.5 py-2 shadow-[0_0_15px_rgba(16,185,129,0.3)] flex items-center gap-2.5 font-mono text-[13px] cursor-pointer hover:bg-slate-900 transition-colors"
         >
           <Bot className="w-4 h-4 text-emerald-400 animate-spin-slow" />
           <span className="text-emerald-300 font-bold">AUTO RUNNING</span>
-          <div className="flex items-center gap-1.5 text-[10px] text-slate-300 border-l border-slate-700 pl-2">
+          <div className="flex items-center gap-1.5 text-[13px] text-slate-200 border-l border-slate-700 pl-2.5">
             {gameState.autoplay_state.loops.map((l, i) => (
               <span
                 key={l.id}
-                className={`px-1.5 py-0.5 rounded ${
+                className={`px-2 py-0.5 rounded text-[13px] font-bold ${
                   l.enabled
                     ? 'bg-emerald-950 text-emerald-300 border border-emerald-600'
                     : 'bg-slate-900 text-slate-500'
