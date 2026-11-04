@@ -216,5 +216,26 @@ Sau khi quá trình huấn luyện hoàn tất và ghi nhận trọng số mới
 │   ├── bridge/wasmBridge.ts       # Cầu nối giao tiếp 2 chiều giữa React và Rust Wasm
 │   └── components/                # MainMenu, TechTreeModal, AutoPlayModal, GuideModal, SettingsModal...
 ├── build-wasm.sh                  # Script biên dịch Rust sang gói WebAssembly (src/wasm-pkg)
-└── train_bot.sh                   # Script khởi chạy huấn luyện AI trên GPU/CPU
+├── train_bot.sh                   # Script khởi chạy huấn luyện AI trên GPU/CPU
+├── .cursorrules                   # Quy chuẩn kỹ thuật cho Cursor / Windsurf / AI IDEs
+├── AGENTS.md                      # Đặc tả hệ thống chuẩn cho AI Coding Agents
+├── AGENT_RULES.md                 # Quy tắc & Kỷ luật Kỹ thuật Tuyệt đối Dành cho Agent
+├── AGENT_GUIDE.md                 # Cẩm nang Vận hành chuẩn (7 SOPs) cho Agent
+└── .agent/skills/                 # Danh mục 4 Agent Skills chuyên sâu của dự án
 ```
+
+---
+
+## 🤖 Tài liệu Dành Cho AI Coding Agents
+
+Dự án cung cấp bộ quy chuẩn và kỹ năng chuẩn hóa dành riêng cho AI Agents:
+- **[.cursorrules](./.cursorrules)**: Quy chuẩn tức thời cho Cursor, Windsurf và các agent IDE.
+- **[AGENTS.md](./AGENTS.md)**: Tổng quan kiến trúc và 5 nguyên tắc bất biến cho agent.
+- **[AGENT_RULES.md](./AGENT_RULES.md)**: Chi tiết kỷ luật hiệu năng (Zero-Allocation), ma trận cân bằng và các điều cấm kỵ.
+- **[AGENT_GUIDE.md](./AGENT_GUIDE.md)**: Cẩm nang 7 quy trình vận hành tiêu chuẩn (SOP 1 đến SOP 7) và checklist kiểm thử.
+- **[.agent/skills/](./.agent/skills/README.md)**: 4 kỹ năng module hóa:
+  - `rust-wasm-pipeline`: Mô phỏng Rust ECS, Spatial Grid, kiểm thử và build WASM.
+  - `gameplay-balancing-rl`: Cân bằng RTS, Auto-Play Loop và huấn luyện Deep RL GPU.
+  - `procedural-render-audio`: Đồ họa vector thủ tục và tổng hợp âm thanh Web Audio API.
+  - `react-blueprint-ui`: Giao diện React 19 Tactical Blueprint Neon và Multi-Canvas HUD.
+
