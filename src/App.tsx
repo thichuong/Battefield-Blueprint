@@ -8,6 +8,23 @@ import { AutoPlayModal } from './components/AutoPlayModal';
 import { GuideModal } from './components/GuideModal';
 import { soundEngine } from './audio/soundEngine';
 import { Bot } from 'lucide-react';
+import {
+  initScreenRefreshRateDetection,
+  getDetectedScreenHz,
+  onScreenRefreshRateReady,
+} from './utils/screenRefreshRate';
+
+// Khởi chạy quy trình phát hiện tần số quét màn hình ngay khi tải module
+initScreenRefreshRateDetection();
+
+export function resolveEffectiveFps(limit: FpsLimit): number | 'unlimited' {
+  if (limit === 'unlimited') return 'unlimited';
+  if (limit === 'vsync') {
+    return getDetectedScreenHz();
+  }
+  return limit;
+}
+
 
 const defaultAutoPlay: AutoPlayConfig = {
   enabled: false,
@@ -229,6 +246,7 @@ export const App: React.FC = () => {
   const [settings, setSettings] = useState<StoredSettings>(loadStoredSettings);
   const fpsLimitRef = useRef<FpsLimit>(settings.fpsLimit);
   fpsLimitRef.current = settings.fpsLimit;
+  const resetPacingRef = useRef<() => void>(() => {});
 
   // Khởi tạo Wasm và 2 vòng lặp tách biệt: Logic 60Hz cố định & Render độc lập
   useEffect(() => {
@@ -236,7 +254,7 @@ export const App: React.FC = () => {
     let simTimerId: number | null = null;
     let animationFrameId: number | null = null;
     let renderTimerId: number | null = null;
-    let lastRenderTime = performance.now();
+    let cleanupRefreshRate: (() => void) | null = null;
 
     const initEngine = async () => {
       if (!canvasRef.current) return;
@@ -331,37 +349,58 @@ export const App: React.FC = () => {
 
       // ============================================================================
       // VÒNG LẶP 2: RENDER LOOP (Độc lập theo giới hạn FPS: V-Sync / 60..240 / Max)
-      // Chỉ gọi xuống Wasm khi thực sự vẽ khung hình, dùng alpha nội suy mượt mà.
+      // Chế độ V-Sync tự động quy đổi thành số Hz của màn hình và xử lý như các giới hạn khác.
+      // Dùng Frame Pacing chuẩn xác nhằm chống dồn khung hình (anti-burst) và loại bỏ hiện tượng FPS vọt lố.
       // ============================================================================
       const channel = new MessageChannel();
       channel.port1.onmessage = () => {
         renderLoop();
       };
 
+      let nextTargetTime = performance.now();
+      let lastPassedRenderTime = 0;
+
+      const resetPacing = () => {
+        nextTargetTime = performance.now();
+        lastPassedRenderTime = 0;
+      };
+      resetPacingRef.current = resetPacing;
+
       const scheduleNextRender = () => {
         if (!isRunning) return;
         const limit = fpsLimitRef.current;
+        const effectiveLimit = resolveEffectiveFps(limit);
 
-        if (limit === 'vsync') {
-          animationFrameId = requestAnimationFrame(() => renderLoop());
-        } else if (limit === 'unlimited') {
+        if (effectiveLimit === 'unlimited') {
+          // Chế độ không giới hạn: đẩy render tối đa công suất
           channel.port2.postMessage(null);
-        } else {
-          const interval = 1000 / limit;
-          const now = performance.now();
-          const elapsed = now - lastRenderTime;
-          const remaining = interval - elapsed;
+          return;
+        }
 
-          if (limit <= 60) {
-            animationFrameId = requestAnimationFrame(() => renderLoop());
-          } else if (remaining <= 3.5) {
-            channel.port2.postMessage(null);
-          } else {
+        const screenHz = getDetectedScreenHz();
+        const now = performance.now();
+        const remaining = nextTargetTime - now;
+
+        // Nếu đã đến hạn hoặc sát hạn (dung sai 0.4ms cho jitter)
+        if (remaining <= 0.4) {
+          channel.port2.postMessage(null);
+          return;
+        }
+
+        // Nếu mức FPS giới hạn <= tần số quét màn hình:
+        // Dùng requestAnimationFrame để đồng bộ tối ưu với compositor của trình duyệt
+        if (effectiveLimit <= screenHz) {
+          animationFrameId = requestAnimationFrame(() => renderLoop());
+        } else {
+          // Nếu mức FPS cao hơn tần số quét màn hình (ví dụ 120/240 FPS trên màn 60Hz):
+          if (remaining > 1.5) {
             renderTimerId = window.setTimeout(() => {
               if (isRunning) {
-                channel.port2.postMessage(null);
+                renderLoop();
               }
-            }, Math.floor(remaining - 2.5));
+            }, Math.max(1, Math.floor(remaining - 0.8)));
+          } else {
+            channel.port2.postMessage(null);
           }
         }
       };
@@ -369,24 +408,51 @@ export const App: React.FC = () => {
       const renderLoop = () => {
         if (!isRunning) return;
 
-        // Luôn dùng duy nhất đồng hồ đơn điệu performance.now()
         const now = performance.now();
         const limit = fpsLimitRef.current;
+        const effectiveLimit = resolveEffectiveFps(limit);
 
-        if (limit === 'vsync' || limit === 'unlimited') {
-          lastRenderTime = now;
+        if (effectiveLimit === 'unlimited') {
+          lastPassedRenderTime = now;
           wasmBridge.renderFrame(now);
-        } else {
-          const interval = 1000 / limit;
-          const elapsed = now - lastRenderTime;
-          if (elapsed >= interval - 0.5) {
-            lastRenderTime = now - (elapsed % interval);
-            wasmBridge.renderFrame(now);
+          scheduleNextRender();
+          return;
+        }
+
+        const targetInterval = 1000 / effectiveLimit;
+        const remaining = nextTargetTime - now;
+
+        // Kiểm tra xem đã đến lúc vẽ khung hình chưa (dung sai vi mô 0.4ms)
+        if (remaining <= 0.4) {
+          // Khống chế thời gian mốc truyền xuống Wasm:
+          // Bắt buộc bước thời gian giữa 2 lần render >= targetInterval
+          // Điều này triệt tiêu hoàn toàn lỗi làm tròn/jitter micro-giây khiến Wasm tính FPS bị vọt qua trần!
+          const minPacedTime = lastPassedRenderTime > 0 ? lastPassedRenderTime + targetInterval : now;
+          const effectiveNow = Math.max(now, minPacedTime);
+
+          lastPassedRenderTime = effectiveNow;
+
+          // Tiến mốc thời gian kế tiếp
+          nextTargetTime += targetInterval;
+
+          // Cơ chế chống dồn khung hình (Anti-burst Frame Pacing):
+          // Nếu game bị gián đoạn/khựng quá 1 frame (chuyển tab, giật lag), không dồn dập render bù các frame cũ
+          if (now > nextTargetTime + targetInterval) {
+            nextTargetTime = now + targetInterval;
           }
+
+          wasmBridge.renderFrame(effectiveNow);
         }
 
         scheduleNextRender();
       };
+
+      // Đăng ký listener khi đo xong tần số quét thực tế của màn hình
+      cleanupRefreshRate = onScreenRefreshRateReady(() => {
+        if (fpsLimitRef.current === 'vsync') {
+          resetPacing();
+        }
+      });
 
       scheduleNextRender();
     };
@@ -398,6 +464,7 @@ export const App: React.FC = () => {
       if (simTimerId !== null) clearInterval(simTimerId);
       if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
       if (renderTimerId !== null) clearTimeout(renderTimerId);
+      if (cleanupRefreshRate) cleanupRefreshRate();
     };
   }, []);
 
@@ -586,6 +653,7 @@ export const App: React.FC = () => {
   const handleUpdateSettings = useCallback((newSettings: StoredSettings) => {
     setSettings(newSettings);
     fpsLimitRef.current = newSettings.fpsLimit;
+    resetPacingRef.current();
     try {
       localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(newSettings));
     } catch (e) {

@@ -168,7 +168,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               })}
             </div>
             <p className="text-[11px] text-slate-500 mt-1.5 leading-tight">
-              {fpsLimit === 'vsync' && 'Đồng bộ trực tiếp theo tần số quét màn hình, chống xé hình.'}
+              {fpsLimit === 'vsync' && 'Đồng bộ theo tần số quét thực tế của màn hình (tự động quy đổi FPS ngầm), chống xé hình và ổn định khung hình.'}
               {fpsLimit === 60 && 'Khóa tối đa 60 FPS để tiết kiệm pin và giảm tải GPU.'}
               {fpsLimit === 90 && 'Mức khung hình cân bằng, mượt mà cho màn hình 90Hz+.'}
               {fpsLimit === 120 && 'Tốc độ khung hình cao, mượt mà dành cho màn hình 120Hz/144Hz.'}
