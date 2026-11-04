@@ -15,8 +15,15 @@ pub struct GridEntity {
     pub is_threat: bool,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct FlatGridEntry {
+    entity: GridEntity,
+    next: i32,
+}
+
 pub struct SpatialGrid {
-    cells: Vec<Vec<GridEntity>>,
+    cell_heads: Vec<i32>,
+    entries: Vec<FlatGridEntry>,
     pub unit_id_to_index: HashMap<u32, usize>,
     pub building_id_to_index: HashMap<u32, usize>,
 }
@@ -30,21 +37,17 @@ impl Default for SpatialGrid {
 impl SpatialGrid {
     pub fn new() -> Self {
         let total_cells = COLS * ROWS;
-        let mut cells = Vec::with_capacity(total_cells);
-        for _ in 0..total_cells {
-            cells.push(Vec::with_capacity(8));
-        }
         Self {
-            cells,
+            cell_heads: vec![-1; total_cells],
+            entries: Vec::with_capacity(512),
             unit_id_to_index: HashMap::with_capacity(512),
             building_id_to_index: HashMap::with_capacity(128),
         }
     }
 
     pub fn clear(&mut self) {
-        for cell in self.cells.iter_mut() {
-            cell.clear();
-        }
+        self.cell_heads.fill(-1);
+        self.entries.clear();
         self.unit_id_to_index.clear();
         self.building_id_to_index.clear();
     }
@@ -117,7 +120,10 @@ impl SpatialGrid {
     pub fn insert(&mut self, entity: GridEntity) {
         let (c, r) = self.cell_coord(entity.pos.x, entity.pos.y);
         let idx = self.cell_index(c, r);
-        self.cells[idx].push(entity);
+        let next = self.cell_heads[idx];
+        let new_idx = self.entries.len() as i32;
+        self.entries.push(FlatGridEntry { entity, next });
+        self.cell_heads[idx] = new_idx;
     }
 
     /// Tìm mục tiêu kẻ địch thuộc phe khác gần nhất trong bán kính max_range (Ưu tiên đe dọa vũ trang: lính, tháp pháo, CC)
@@ -140,7 +146,10 @@ impl SpatialGrid {
         for r in min_r..=max_r {
             for c in min_c..=max_c {
                 let idx = self.cell_index(c, r);
-                for entity in &self.cells[idx] {
+                let mut cur = self.cell_heads[idx];
+                while cur >= 0 {
+                    let entry = &self.entries[cur as usize];
+                    let entity = &entry.entity;
                     if entity.faction != my_faction {
                         let d_sq = pos.distance_squared(entity.pos);
                         let total_range = max_range + entity.radius;
@@ -151,14 +160,13 @@ impl SpatialGrid {
                                     best_threat =
                                         Some((entity.id, entity.is_building, d_sq.sqrt()));
                                 }
-                            } else {
-                                if d_sq < best_other_dist_sq {
-                                    best_other_dist_sq = d_sq;
-                                    best_other = Some((entity.id, entity.is_building, d_sq.sqrt()));
-                                }
+                            } else if d_sq < best_other_dist_sq {
+                                best_other_dist_sq = d_sq;
+                                best_other = Some((entity.id, entity.is_building, d_sq.sqrt()));
                             }
                         }
                     }
+                    cur = entry.next;
                 }
             }
         }
@@ -186,7 +194,10 @@ impl SpatialGrid {
         for r in min_r..=max_r {
             for c in min_c..=max_c {
                 let idx = self.cell_index(c, r);
-                for entity in &self.cells[idx] {
+                let mut cur = self.cell_heads[idx];
+                while cur >= 0 {
+                    let entry = &self.entries[cur as usize];
+                    let entity = &entry.entity;
                     if entity.team != my_team {
                         let d_sq = pos.distance_squared(entity.pos);
                         let total_range = max_range + entity.radius;
@@ -197,14 +208,13 @@ impl SpatialGrid {
                                     best_threat =
                                         Some((entity.id, entity.is_building, d_sq.sqrt()));
                                 }
-                            } else {
-                                if d_sq < best_other_dist_sq {
-                                    best_other_dist_sq = d_sq;
-                                    best_other = Some((entity.id, entity.is_building, d_sq.sqrt()));
-                                }
+                            } else if d_sq < best_other_dist_sq {
+                                best_other_dist_sq = d_sq;
+                                best_other = Some((entity.id, entity.is_building, d_sq.sqrt()));
                             }
                         }
                     }
+                    cur = entry.next;
                 }
             }
         }
@@ -226,7 +236,10 @@ impl SpatialGrid {
         for r in min_r..=max_r {
             for c in min_c..=max_c {
                 let idx = self.cell_index(c, r);
-                for entity in &self.cells[idx] {
+                let mut cur = self.cell_heads[idx];
+                while cur >= 0 {
+                    let entry = &self.entries[cur as usize];
+                    let entity = &entry.entity;
                     if entity.faction != my_faction {
                         let d_sq = pos.distance_squared(entity.pos);
                         let reach = radius + entity.radius;
@@ -234,6 +247,7 @@ impl SpatialGrid {
                             f(entity, d_sq.sqrt());
                         }
                     }
+                    cur = entry.next;
                 }
             }
         }
@@ -250,7 +264,10 @@ impl SpatialGrid {
         for r in min_r..=max_r {
             for c in min_c..=max_c {
                 let idx = self.cell_index(c, r);
-                for entity in &self.cells[idx] {
+                let mut cur = self.cell_heads[idx];
+                while cur >= 0 {
+                    let entry = &self.entries[cur as usize];
+                    let entity = &entry.entity;
                     if entity.faction != my_faction {
                         let d_sq = pos.distance_squared(entity.pos);
                         let reach = radius + entity.radius;
@@ -258,6 +275,7 @@ impl SpatialGrid {
                             return true;
                         }
                     }
+                    cur = entry.next;
                 }
             }
         }
@@ -272,17 +290,20 @@ impl SpatialGrid {
         let max_r = (((pos.y + radius) / CELL_SIZE).max(0.0) as usize).min(ROWS - 1);
 
         let mut results = Vec::new();
-        let _r_sq = radius * radius;
 
         for r in min_r..=max_r {
             for c in min_c..=max_c {
                 let idx = self.cell_index(c, r);
-                for entity in &self.cells[idx] {
+                let mut cur = self.cell_heads[idx];
+                while cur >= 0 {
+                    let entry = &self.entries[cur as usize];
+                    let entity = &entry.entity;
                     let d_sq = pos.distance_squared(entity.pos);
                     let reach = radius + entity.radius;
                     if d_sq <= reach * reach {
                         results.push(*entity);
                     }
+                    cur = entry.next;
                 }
             }
         }

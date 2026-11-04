@@ -20,6 +20,9 @@ fn main() {
             "shared",
             "-Xcompiler",
             "-fPIC",
+            "-O3",
+            "-DNDEBUG",
+            "--use_fast_math",
             "-c",
             "src/cuda/rl_kernel.cu",
             "-o",
@@ -37,7 +40,25 @@ fn main() {
                 if ar_s.success() {
                     println!("cargo:rustc-link-search=native={}", out_dir);
                     println!("cargo:rustc-link-lib=static=rl_cuda");
-                    println!("cargo:rustc-link-search=native=/usr/lib64");
+
+                    // Tự động quét và liên kết các đường dẫn CUDA chuẩn trên Google Colab / Ubuntu / RHEL
+                    let potential_cuda_paths = [
+                        std::env::var("CUDA_HOME").map(|h| format!("{}/lib64", h)).ok(),
+                        std::env::var("CUDA_PATH").map(|p| format!("{}/lib64", p)).ok(),
+                        Some("/usr/local/cuda/lib64".to_string()),
+                        Some("/usr/local/cuda/targets/x86_64-linux/lib".to_string()),
+                        Some("/usr/local/cuda-12/lib64".to_string()),
+                        Some("/usr/local/cuda-11/lib64".to_string()),
+                        Some("/usr/lib/x86_64-linux-gnu".to_string()),
+                        Some("/usr/lib64".to_string()),
+                    ];
+
+                    for dir in potential_cuda_paths.into_iter().flatten() {
+                        if std::path::Path::new(&dir).exists() {
+                            println!("cargo:rustc-link-search=native={}", dir);
+                        }
+                    }
+
                     println!("cargo:rustc-link-lib=dylib=cudart");
                     println!("cargo:rustc-link-lib=dylib=stdc++");
                     println!("cargo:rustc-cfg=has_cuda");

@@ -104,16 +104,32 @@ pub struct TacticalSnapshot {
     pub opp_heavy_tanks: usize,
     pub opp_artillery: usize,
     pub opp_aoe_threat: usize,
+    pub opp_reactors: usize,
+    pub opp_converters: usize,
 
     pub ally_combat: usize,
     pub nearest_enemy_dist: f32,
     pub base_threat: bool,
     pub active_hostile_factions: usize,
+
+    // Construction & queues (Consolidated Single-Pass)
+    pub my_idle_workers: usize,
+    pub my_reactors_under_construction: usize,
+    pub my_converters_under_construction: usize,
+    pub my_barracks_under_construction: usize,
+    pub my_turrets_under_construction: usize,
+    pub my_barracks_queue_total: usize,
+
+    // Nearby minerals metrics
+    pub nearby_minerals_count: usize,
+    pub nearby_minerals_amount: f32,
+    pub dist_mineral_to_enemy: f32,
 }
 
 pub fn create_tactical_snapshot(engine: &GameEngine, team: Team) -> TacticalSnapshot {
     let _my_faction = engine.get_faction(team);
     let my_base = engine.base_pos(team);
+    let opp_team = find_primary_hostile_team(engine, team);
 
     let mut snap = TacticalSnapshot {
         my_workers: 0,
@@ -139,14 +155,28 @@ pub fn create_tactical_snapshot(engine: &GameEngine, team: Team) -> TacticalSnap
         opp_heavy_tanks: 0,
         opp_artillery: 0,
         opp_aoe_threat: 0,
+        opp_reactors: 0,
+        opp_converters: 0,
 
         ally_combat: 0,
         nearest_enemy_dist: crate::map::MAP_WIDTH,
         base_threat: false,
         active_hostile_factions: 0,
+
+        my_idle_workers: 0,
+        my_reactors_under_construction: 0,
+        my_converters_under_construction: 0,
+        my_barracks_under_construction: 0,
+        my_turrets_under_construction: 0,
+        my_barracks_queue_total: 0,
+
+        nearby_minerals_count: 0,
+        nearby_minerals_amount: 0.0,
+        dist_mineral_to_enemy: f32::INFINITY,
     };
 
-    let mut hostile_factions = std::collections::HashSet::new();
+    // Mặt nạ bit phe phái (Zero Heap Allocation thay thế HashSet)
+    let mut hostile_factions_mask: u8 = 0;
 
     // 1 lượt quét duy nhất toàn bộ Units
     for u in &engine.units {
@@ -154,6 +184,9 @@ pub fn create_tactical_snapshot(engine: &GameEngine, team: Team) -> TacticalSnap
         if u.team == team {
             if u.unit_type == UnitType::Engineer {
                 snap.my_workers += 1;
+                if u.order == UnitOrder::Idle {
+                    snap.my_idle_workers += 1;
+                }
             } else {
                 snap.my_combat += 1;
                 snap.my_combat_total_hp += u.hp;
@@ -175,7 +208,8 @@ pub fn create_tactical_snapshot(engine: &GameEngine, team: Team) -> TacticalSnap
                 }
             }
         } else if is_hostile {
-            hostile_factions.insert(engine.get_faction(u.team));
+            let faction = engine.get_faction(u.team);
+            hostile_factions_mask |= 1 << (faction.min(7));
             if u.unit_type == UnitType::Engineer {
                 snap.opp_workers += 1;
             } else {
@@ -219,6 +253,16 @@ pub fn create_tactical_snapshot(engine: &GameEngine, team: Team) -> TacticalSnap
     for b in &engine.buildings {
         let is_hostile = engine.are_hostile(team, b.team);
         if u_or_b_is_my_team(b.team, team) {
+            let is_under_construction = b.build_progress < 1.0;
+            if is_under_construction {
+                match b.building_type {
+                    BuildingType::PowerReactor => snap.my_reactors_under_construction += 1,
+                    BuildingType::EnergyConverter => snap.my_converters_under_construction += 1,
+                    BuildingType::Barracks => snap.my_barracks_under_construction += 1,
+                    BuildingType::TurretTower => snap.my_turrets_under_construction += 1,
+                    _ => {}
+                }
+            }
             match b.building_type {
                 BuildingType::CommandCenter => {
                     snap.my_ccs += 1;
@@ -227,12 +271,25 @@ pub fn create_tactical_snapshot(engine: &GameEngine, team: Team) -> TacticalSnap
                 }
                 BuildingType::PowerReactor => snap.my_reactors += 1,
                 BuildingType::EnergyConverter => snap.my_converters += 1,
-                BuildingType::Barracks => snap.my_barracks += 1,
+                BuildingType::Barracks => {
+                    snap.my_barracks += 1;
+                    if !is_under_construction {
+                        snap.my_barracks_queue_total += b.training_queue.len();
+                    }
+                }
                 BuildingType::TurretTower => snap.my_turrets += 1,
                 _ => {}
             }
         } else if is_hostile {
-            hostile_factions.insert(engine.get_faction(b.team));
+            let faction = engine.get_faction(b.team);
+            hostile_factions_mask |= 1 << (faction.min(7));
+            if b.team == opp_team {
+                match b.building_type {
+                    BuildingType::PowerReactor => snap.opp_reactors += 1,
+                    BuildingType::EnergyConverter => snap.opp_converters += 1,
+                    _ => {}
+                }
+            }
             if b.building_type == BuildingType::CommandCenter {
                 snap.opp_ccs += 1;
             } else if b.building_type == BuildingType::TurretTower {
@@ -241,7 +298,23 @@ pub fn create_tactical_snapshot(engine: &GameEngine, team: Team) -> TacticalSnap
         }
     }
 
-    snap.active_hostile_factions = hostile_factions.len();
+    // 1 lượt quét duy nhất mỏ khoáng sản
+    let r_sq_900 = 900.0 * 900.0;
+    for m in &engine.minerals {
+        if m.amount > 0.0 {
+            let d_sq = (m.x - my_base.0).powi(2) + (m.y - my_base.1).powi(2);
+            if d_sq < r_sq_900 {
+                snap.nearby_minerals_count += 1;
+                snap.nearby_minerals_amount += m.amount;
+            }
+        }
+    }
+
+    if snap.nearest_enemy_dist < crate::map::MAP_WIDTH {
+        snap.dist_mineral_to_enemy = (snap.nearest_enemy_dist - 300.0).max(0.0);
+    }
+
+    snap.active_hostile_factions = hostile_factions_mask.count_ones() as usize;
     snap
 }
 
@@ -431,20 +504,10 @@ pub fn extract_state_vector_for_team(engine: &GameEngine, team: Team) -> Vec<f32
     });
 
     // 48. Số lượng PowerReactor của đối thủ
-    let opp_reactors = engine
-        .buildings
-        .iter()
-        .filter(|b| b.team == opp_team && b.building_type == BuildingType::PowerReactor)
-        .count();
-    s.push((opp_reactors as f32 / 20.0).clamp(0.0, 2.0));
+    s.push((snap.opp_reactors as f32 / 20.0).clamp(0.0, 2.0));
 
     // 49. Số lượng EnergyConverter của đối thủ
-    let opp_converters = engine
-        .buildings
-        .iter()
-        .filter(|b| b.team == opp_team && b.building_type == BuildingType::EnergyConverter)
-        .count();
-    s.push((opp_converters as f32 / 10.0).clamp(0.0, 2.0));
+    s.push((snap.opp_converters as f32 / 10.0).clamp(0.0, 2.0));
 
     // 50. Chênh lệch sản lượng năng lượng giữa phe mình và đối thủ
     let opp_eco = engine.team_eco(opp_team);
@@ -458,116 +521,36 @@ pub fn extract_state_vector_for_team(engine: &GameEngine, team: Team) -> Vec<f32
     s.push(min_flow_diff);
 
     // 52. Số lượng mỏ khoáng còn trữ lượng trong bán kính 900px quanh căn cứ phe mình
-    let my_base = engine.base_pos(team);
-    let nearby_minerals_count = engine
-        .minerals
-        .iter()
-        .filter(|m| {
-            m.amount > 0.0
-                && ((m.x - my_base.0).powi(2) + (m.y - my_base.1).powi(2)) < 900.0_f32.powi(2)
-        })
-        .count();
-    s.push((nearby_minerals_count as f32 / 12.0).clamp(0.0, 1.5));
+    s.push((snap.nearby_minerals_count as f32 / 12.0).clamp(0.0, 1.5));
 
     // 53. Tổng lượng khoáng sản còn lại quanh căn cứ
-    let nearby_minerals_amount: f32 = engine
-        .minerals
-        .iter()
-        .filter(|m| {
-            m.amount > 0.0
-                && ((m.x - my_base.0).powi(2) + (m.y - my_base.1).powi(2)) < 900.0_f32.powi(2)
-        })
-        .map(|m| m.amount)
-        .sum();
-    s.push((nearby_minerals_amount / 20000.0).clamp(0.0, 2.0));
+    s.push((snap.nearby_minerals_amount / 20000.0).clamp(0.0, 2.0));
 
     // 54. Đang có PowerReactor đang xây dở không
-    let reactors_under_construction = engine
-        .buildings
-        .iter()
-        .filter(|b| {
-            b.team == team
-                && b.building_type == BuildingType::PowerReactor
-                && b.build_progress < 1.0
-        })
-        .count();
-    s.push((reactors_under_construction as f32 / 3.0).clamp(0.0, 1.0));
+    s.push((snap.my_reactors_under_construction as f32 / 3.0).clamp(0.0, 1.0));
 
     // 55. Đang có EnergyConverter đang xây dở không
-    let converters_under_construction = engine
-        .buildings
-        .iter()
-        .filter(|b| {
-            b.team == team
-                && b.building_type == BuildingType::EnergyConverter
-                && b.build_progress < 1.0
-        })
-        .count();
-    s.push((converters_under_construction as f32 / 2.0).clamp(0.0, 1.0));
+    s.push((snap.my_converters_under_construction as f32 / 2.0).clamp(0.0, 1.0));
 
     // 56. Tỷ lệ thợ mỏ đang rảnh rỗi (idle workers)
-    let idle_workers = engine
-        .units
-        .iter()
-        .filter(|u| {
-            u.team == team && u.unit_type == UnitType::Engineer && u.order == UnitOrder::Idle
-        })
-        .count();
-    s.push((idle_workers as f32 / (snap.my_workers.max(1) as f32)).clamp(0.0, 1.0));
+    s.push((snap.my_idle_workers as f32 / (snap.my_workers.max(1) as f32)).clamp(0.0, 1.0));
 
     // 57. Số lượng nhà Barracks đang xây dở
-    let barracks_under_construction = engine
-        .buildings
-        .iter()
-        .filter(|b| {
-            b.team == team && b.building_type == BuildingType::Barracks && b.build_progress < 1.0
-        })
-        .count();
-    s.push((barracks_under_construction as f32 / 3.0).clamp(0.0, 1.0));
+    s.push((snap.my_barracks_under_construction as f32 / 3.0).clamp(0.0, 1.0));
 
     // 58. Tỷ lệ % tải của các hàng đợi sản xuất quân lính
-    let barracks_queue_load: f32 = engine
-        .buildings
-        .iter()
-        .filter(|b| {
-            b.team == team && b.building_type == BuildingType::Barracks && b.build_progress >= 1.0
-        })
-        .map(|b| b.training_queue.len() as f32)
-        .sum::<f32>()
-        / (snap.my_barracks.max(1) as f32 * 2.0);
+    let barracks_queue_load =
+        snap.my_barracks_queue_total as f32 / (snap.my_barracks.max(1) as f32 * 2.0);
     s.push(barracks_queue_load.clamp(0.0, 1.0));
 
     // 59. Số lượng tháp pháo đang xây dở
-    let turrets_under_construction = engine
-        .buildings
-        .iter()
-        .filter(|b| {
-            b.team == team && b.building_type == BuildingType::TurretTower && b.build_progress < 1.0
-        })
-        .count();
-    s.push((turrets_under_construction as f32 / 4.0).clamp(0.0, 1.0));
+    s.push((snap.my_turrets_under_construction as f32 / 4.0).clamp(0.0, 1.0));
 
     // 60. Khoảng cách an toàn của mỏ khoáng gần nhất so với quân địch
-    let dist_mineral_to_enemy = engine
-        .minerals
-        .iter()
-        .filter(|m| {
-            m.amount > 0.0
-                && ((m.x - my_base.0).powi(2) + (m.y - my_base.1).powi(2)) < 900.0_f32.powi(2)
-        })
-        .map(|m| {
-            engine
-                .units
-                .iter()
-                .filter(|u| engine.are_hostile(team, u.team))
-                .map(|u| ((u.x - m.x).powi(2) + (u.y - m.y).powi(2)).sqrt())
-                .fold(f32::INFINITY, f32::min)
-        })
-        .fold(f32::INFINITY, f32::min);
-    let norm_safe_dist = if dist_mineral_to_enemy.is_infinite() {
+    let norm_safe_dist = if snap.dist_mineral_to_enemy.is_infinite() {
         1.0
     } else {
-        (dist_mineral_to_enemy / 2000.0).clamp(0.0, 1.0)
+        (snap.dist_mineral_to_enemy / 2000.0).clamp(0.0, 1.0)
     };
     s.push(norm_safe_dist);
 

@@ -32,10 +32,10 @@ pub fn apply_damage_to_unit(unit: &mut Unit, taken: f32) -> f32 {
 }
 
 pub fn update_magic_circles(engine: &mut GameEngine, dt: f32) {
+    if engine.magic_circles.is_empty() {
+        return;
+    }
     let factions = engine.team_factions();
-    engine
-        .spatial_grid
-        .rebuild_with_factions(&engine.units, &engine.buildings, &factions);
     let has_corrosive: [bool; 8] =
         std::array::from_fn(|i| engine.team_tech(Team::from_index(i)).corrosive_curse);
     let mut new_texts = Vec::new();

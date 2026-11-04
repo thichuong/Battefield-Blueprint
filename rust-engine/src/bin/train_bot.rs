@@ -246,6 +246,7 @@ struct TrainConfig {
     time_scale_dt: f32,
     max_game_time: f32,
     num_threads: usize,
+    drive_backup_dir: Option<String>,
 }
 
 fn main() {
@@ -260,6 +261,9 @@ fn main() {
     let mut num_threads = default_threads;
     let mut resume_training = true; // Mặc định tiếp tục từ model kết quả trước đó
     let mut specific_mode: Option<String> = None;
+    let mut drive_backup_dir: Option<String> = env::var("DRIVE_BACKUP_DIR")
+        .ok()
+        .or_else(|| env::var("GOOGLE_DRIVE_DIR").ok());
 
     let mut i = 1;
     let mut positional_idx = 0;
@@ -305,6 +309,12 @@ fn main() {
             "--scratch" | "--from-scratch" | "--fresh" => {
                 resume_training = false;
             }
+            "--drive-backup-dir" | "--drive-dir" | "--backup-dir" => {
+                if i + 1 < args.len() {
+                    drive_backup_dir = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            }
             "--mode" | "-m" => {
                 if i + 1 < args.len() {
                     specific_mode = Some(args[i + 1].clone());
@@ -315,7 +325,7 @@ fn main() {
                 num_threads = 1;
             }
             arg if !arg.starts_with('-') => {
-                // Hỗ trợ truyền theo thứ tự tham số: [EPISODES] [DT] [MAX_TIME] [THREADS] [RESUME]
+                // Hỗ trợ truyền theo thứ tự tham số: [EPISODES] [DT] [MAX_TIME] [THREADS] [RESUME] [DRIVE_DIR]
                 match positional_idx {
                     0 => {
                         if let Ok(ep) = arg.parse::<usize>() {
@@ -341,6 +351,9 @@ fn main() {
                     }
                     4 => {
                         resume_training = !matches!(arg, "false" | "0" | "scratch" | "no");
+                    }
+                    5 => {
+                        drive_backup_dir = Some(arg.to_string());
                     }
                     _ => {}
                 }
@@ -435,6 +448,9 @@ fn main() {
     println!("   Action Dimension:   {} strategic actions", ACTION_DIM);
     println!("   Formation Dimension:{} formations", FORMATION_DIM);
     println!("   Unified Model File: rl_model.json");
+    if let Some(ref d_dir) = drive_backup_dir {
+        println!("   Google Drive Backup:📂 {} (Tự động đồng bộ sau mỗi kịch bản)", d_dir);
+    }
     println!(
         "   Scenarios Included: {:?}",
         target_scenarios
@@ -450,11 +466,34 @@ fn main() {
         time_scale_dt,
         max_game_time,
         num_threads,
+        drive_backup_dir: drive_backup_dir.clone(),
     };
 
-    // Khởi tạo hoặc nạp trọng số dựa trên tùy chọn resume_training
+    // Khởi tạo hoặc nạp trọng số dựa trên tùy chọn resume_training (ưu tiên Google Drive nếu có)
     let mut unified_brain = if resume_training {
-        if let Some(loaded) = RlBrain::load_saved_model() {
+        let loaded_from_drive = if let Some(ref b_dir) = drive_backup_dir {
+            let drive_path = format!("{}/rl_model.json", b_dir);
+            if let Ok(data) = std::fs::read_to_string(&drive_path) {
+                if let Ok(b) = serde_json::from_str::<RlBrain>(&data) {
+                    println!(
+                        "☁️ [Google Drive] Đã nạp thành công model từ Google Drive: {} ({} tham số).",
+                        drive_path,
+                        b.total_parameters()
+                    );
+                    Some(b)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if let Some(b) = loaded_from_drive {
+            b
+        } else if let Some(loaded) = RlBrain::load_saved_model() {
             println!(
                 "🔄 [Resume] Đã nạp thành công model đã có từ file đĩa ({} tham số).",
                 loaded.total_parameters()
@@ -514,7 +553,11 @@ fn main() {
             config.episodes_per_mode
         );
         unified_brain = train_scenario_with_brain(scenario, &config, unified_brain);
-        save_unified_model(&unified_brain);
+        save_unified_model_with_backup(
+            &unified_brain,
+            config.drive_backup_dir.as_deref(),
+            Some(scenario.name()),
+        );
     }
 
     println!("\n============================================================");
@@ -561,6 +604,12 @@ fn main() {
         overall_winrate, total_eval_wins, total_eval_matches
     );
 
+    save_unified_model_with_backup(
+        &unified_brain,
+        config.drive_backup_dir.as_deref(),
+        Some("final"),
+    );
+
     println!("============================================================");
     println!("🎉 HOÀN THÀNH HUẤN LUYỆN TOÀN DIỆN CHO 1 MODEL AI DUY NHẤT!");
     println!(
@@ -568,6 +617,9 @@ fn main() {
         start_wall_time.elapsed().as_secs_f32()
     );
     println!("💾 File model cập nhật: assets/rl_model.json");
+    if let Some(ref d_dir) = config.drive_backup_dir {
+        println!("☁️ Google Drive:       {}/rl_model.json", d_dir);
+    }
     println!("============================================================");
 }
 
@@ -653,24 +705,25 @@ fn simulate_single_episode(
     let mut action_counts = [0usize; ACTION_DIM];
     let mut formation_counts = [0usize; FORMATION_DIM];
 
-    while !engine.game_over && engine.game_time < max_game_time {
-        let prev_state = extract_state_vector_for_team(&engine, learner_team);
-        let prev_snap = RewardSnapshot::capture(&engine, learner_team);
+    // Trích xuất trạng thái và snapshot ban đầu đúng 1 lần trước vòng lặp
+    let mut prev_state = extract_state_vector_for_team(&engine, learner_team);
+    let mut prev_snap = RewardSnapshot::capture(&engine, learner_team);
 
-        // Ghi nhận state trước bước nhảy cho các bot AI khác trong self-play
-        let mut other_prev_states: [Option<Vec<f32>>; MAX_PLAYERS] = Default::default();
-        if matches!(opponent_style, OpponentStyle::BotSelfPlay) {
-            for (slot_idx, state_slot) in other_prev_states.iter_mut().enumerate() {
-                let t = Team::from_index(slot_idx);
-                if engine.is_slot_active(t)
-                    && t != learner_team
-                    && !engine.team_autoplay(t).config.enabled
-                {
-                    *state_slot = Some(extract_state_vector_for_team(&engine, t));
-                }
+    // Ghi nhận state ban đầu cho các bot AI khác trong self-play
+    let mut other_prev_states: [Option<Vec<f32>>; MAX_PLAYERS] = Default::default();
+    if matches!(opponent_style, OpponentStyle::BotSelfPlay) {
+        for (slot_idx, state_slot) in other_prev_states.iter_mut().enumerate() {
+            let t = Team::from_index(slot_idx);
+            if engine.is_slot_active(t)
+                && t != learner_team
+                && !engine.team_autoplay(t).config.enabled
+            {
+                *state_slot = Some(extract_state_vector_for_team(&engine, t));
             }
         }
+    }
 
+    while !engine.game_over && engine.game_time < max_game_time {
         mid_adapt_timer += time_scale_dt;
         if mid_adapt_timer >= 2.0 {
             mid_adapt_timer = 0.0;
@@ -684,29 +737,32 @@ fn simulate_single_episode(
 
         rust_engine::simulation::step(&mut engine, time_scale_dt);
 
-        let cur_state = extract_state_vector_for_team(&engine, learner_team);
-        let cur_snap = RewardSnapshot::capture(&engine, learner_team);
         let action = engine.team_ai(learner_team).current_action;
         let formation = engine.team_ai(learner_team).current_formation;
         action_counts[action.to_index()] += 1;
         formation_counts[formation.to_index()] += 1;
 
-        let step_reward = compute_ai_step_reward(
-            &prev_snap,
-            &cur_snap,
-            action,
-            formation,
-            engine.game_over,
-            engine.game_time,
-            max_game_time,
-        );
-
-        let is_done = engine.game_over || engine.game_time >= max_game_time;
-        ep_reward += step_reward;
-
         decision_sample_timer += time_scale_dt;
+        let is_done = engine.game_over || engine.game_time >= max_game_time;
+
+        // Lazy Extraction: Chỉ trích xuất vector 64 chiều và snapshot khi đến chu kỳ lấy mẫu quyết định hoặc kết thúc trận
         if decision_sample_timer >= 1.0 || is_done {
             decision_sample_timer = 0.0;
+
+            let cur_state = extract_state_vector_for_team(&engine, learner_team);
+            let cur_snap = RewardSnapshot::capture(&engine, learner_team);
+
+            let step_reward = compute_ai_step_reward(
+                &prev_snap,
+                &cur_snap,
+                action,
+                formation,
+                engine.game_over,
+                engine.game_time,
+                max_game_time,
+            );
+            ep_reward += step_reward;
+
             transitions.push(TransitionSample {
                 state: prev_state,
                 action: action.to_index(),
@@ -718,9 +774,9 @@ fn simulate_single_episode(
 
             // Multi-Agent Sharing: Các slot AI khác trong BotSelfPlay cùng học từ kinh nghiệm
             if matches!(opponent_style, OpponentStyle::BotSelfPlay) {
-                for (slot_idx, other_prev_opt) in other_prev_states.iter().enumerate() {
+                for (slot_idx, other_prev_opt) in other_prev_states.iter_mut().enumerate() {
                     let other_team = Team::from_index(slot_idx);
-                    if let Some(other_prev) = other_prev_opt {
+                    if let Some(other_prev) = other_prev_opt.take() {
                         let other_next = extract_state_vector_for_team(&engine, other_team);
                         let other_act = engine.team_ai(other_team).current_action;
                         let other_form = engine.team_ai(other_team).current_formation;
@@ -731,16 +787,20 @@ fn simulate_single_episode(
                             step_reward * 0.9
                         };
                         transitions.push(TransitionSample {
-                            state: other_prev.clone(),
+                            state: other_prev,
                             action: other_act.to_index(),
                             formation: other_form.to_index(),
                             reward: other_reward,
-                            next_state: other_next,
+                            next_state: other_next.clone(),
                             done: is_done,
                         });
+                        *other_prev_opt = Some(other_next);
                     }
                 }
             }
+
+            prev_state = cur_state;
+            prev_snap = cur_snap;
         }
 
         if is_done {
@@ -996,6 +1056,14 @@ fn evaluate_model_on_scenario(
 }
 
 fn save_unified_model(brain: &RlBrain) {
+    save_unified_model_with_backup(brain, None, None);
+}
+
+fn save_unified_model_with_backup(
+    brain: &RlBrain,
+    backup_dir: Option<&str>,
+    scenario_tag: Option<&str>,
+) {
     let mut safe_brain = brain.clone();
     safe_brain.sanitize();
 
@@ -1015,6 +1083,28 @@ fn save_unified_model(brain: &RlBrain) {
             if let Ok(mut file) = File::create(&path) {
                 let _ = file.write_all(model_json.as_bytes());
                 println!("💾 [Unified Model] Đã lưu model: {}", path);
+            }
+        }
+    }
+
+    if let Some(backup) = backup_dir {
+        let trimmed = backup.trim();
+        if !trimmed.is_empty() {
+            if let Err(e) = std::fs::create_dir_all(trimmed) {
+                eprintln!("⚠️ [Google Drive] Không thể tạo thư mục backup {}: {}", trimmed, e);
+            } else {
+                let main_backup_path = format!("{}/{}", trimmed, filename);
+                if let Ok(mut file) = File::create(&main_backup_path) {
+                    let _ = file.write_all(model_json.as_bytes());
+                    println!("☁️ [Google Drive Auto-Sync] Đã đồng bộ an toàn: {}", main_backup_path);
+                }
+                if let Some(tag) = scenario_tag {
+                    let snap_backup_path = format!("{}/rl_model_checkpoint_{}.json", trimmed, tag);
+                    if let Ok(mut file) = File::create(&snap_backup_path) {
+                        let _ = file.write_all(model_json.as_bytes());
+                        println!("📦 [Checkpoint Snapshot] Đã lưu mốc giai đoạn: {}", snap_backup_path);
+                    }
+                }
             }
         }
     }

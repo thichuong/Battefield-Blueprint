@@ -17,12 +17,13 @@ set -e
 #     + Từ ván 8 trở đi: Ngắt Auto, chuyển hẳn sang Bot vs Bot tự đối kháng (Self-Play).
 #
 # Cú pháp sử dụng:
-#   ./train_bot.sh [EPISODES] [DT] [MAX_TIME] [THREADS] [RESUME]
+#   ./train_bot.sh [EPISODES] [DT] [MAX_TIME] [THREADS] [RESUME] [DRIVE_BACKUP_DIR]
 #
 # Ví dụ:
 #   ./train_bot.sh                          # Mặc định (128 ván, dt=0.25s, max_time=1800s, max threads/4, resume)
 #   ./train_bot.sh 128 0.25 1800 null       # Dùng threads mặc định (max threads/4)
 #   ./train_bot.sh 128 0.25 1800 null false # Huấn luyện từ đầu (không nạp kết quả cũ)
+#   ./train_bot.sh 128 0.25 1800 null true /content/drive/MyDrive/BattlefieldBlueprint # Tự động sao lưu sang Google Drive
 # ==============================================================================
 
 TOTAL_CORES=$(nproc 2>/dev/null || echo 8)
@@ -53,6 +54,11 @@ else
     MODE_DESC="🔄 Tiếp tục huấn luyện lũy kế từ kết quả trước đó (assets/rl_model.json)"
 fi
 
+DRIVE_DIR=${6:-${DRIVE_BACKUP_DIR:-$GOOGLE_DRIVE_DIR}}
+if [ -n "$DRIVE_DIR" ]; then
+    EXTRA_FLAGS+=(--drive-backup-dir "$DRIVE_DIR")
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/rust-engine"
 
@@ -61,13 +67,16 @@ echo "🧠 BATTLEFIELD BLUEPRINT // HUẤN LUYỆN 1 MODEL AI DUY NHẤT TRÊN G
 echo "   - Kiến trúc Neural:     Deep Dual-Head MLP (64 -> 512 -> 256 -> 15 + 6)"
 echo "   - Số Neurons ẩn:        768 (512 L1 + 256 L2)"
 echo "   - Tổng tham số:         170,005 weights & biases"
-echo "   - Tăng tốc phần cứng:   NVIDIA CUDA GPU (RTX 3060 Persistent VRAM Buffer)"
+echo "   - Tăng tốc phần cứng:   NVIDIA CUDA GPU (Persistent VRAM Buffer)"
 echo "   - Đa luồng mô phỏng:    $THREADS parallel CPU worker threads (Tổng $TOTAL_CORES cores / 4)"
 echo "   - Số ván (Episodes):    $EPISODES ván"
 echo "   - Tốc độ tua nhanh (dt): ${DT}s / step"
 echo "   - Max Game Time:        ${MAX_TIME}s (30 phút game)"
 echo "   - Quy luật Auto:        1 vòng đầu (7 ván) đủ 7 Archetypes -> Bot vs Bot tự đối kháng"
 echo "   - Chế độ tiếp tục:      $MODE_DESC"
+if [ -n "$DRIVE_DIR" ]; then
+    echo "   - Google Drive Sync:    $DRIVE_DIR (Tự động sao lưu sau mỗi kịch bản)"
+fi
 echo "   - Model duy nhất:       assets/rl_model.json"
 echo "============================================================"
 
@@ -82,4 +91,7 @@ echo ""
 echo "✅ Huấn luyện hoàn tất! Model AI duy nhất 170k tham số đã được cập nhật:"
 echo "   - assets/rl_model.json"
 echo "   - rust-engine/assets/rl_model.json"
+if [ -n "$DRIVE_DIR" ]; then
+    echo "   - $DRIVE_DIR/rl_model.json (Đã đồng bộ lên Google Drive)"
+fi
 echo "============================================================"
