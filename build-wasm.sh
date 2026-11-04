@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
 set -e
+if ! command -v cargo &> /dev/null; then
+    if [ -f "src/wasm-pkg/rust_engine_bg.wasm" ]; then
+        echo "Cargo not found, using existing pre-built WASM in src/wasm-pkg/."
+        exit 0
+    else
+        echo "Error: cargo is not installed and prebuilt WASM not found."
+        exit 1
+    fi
+fi
 echo "Compiling Rust engine to WebAssembly..."
 cargo build -p rust-engine --target wasm32-unknown-unknown --release
 mkdir -p src/wasm-pkg

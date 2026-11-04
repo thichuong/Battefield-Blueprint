@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { X, Volume2, Compass, Play, RotateCcw, Grid, Home, Gauge } from 'lucide-react';
 import { soundEngine } from '../audio/soundEngine';
+import { ConfirmModal } from './ConfirmModal';
 
 export type FpsLimit = 'vsync' | 60 | 90 | 120 | 240 | 'unlimited';
 
@@ -46,18 +47,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onRestartGame,
   onBackToMenu,
 }) => {
+  const [confirmAction, setConfirmAction] = useState<'restart' | 'menu' | null>(null);
+
   if (!isOpen) return null;
 
+  const handleClose = () => {
+    setConfirmAction(null);
+    onClose();
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="bg-[#030d1a] border-2 border-slate-700 rounded-xl w-full max-w-md shadow-2xl flex flex-col font-mono text-slate-200">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/40">
-          <h2 className="text-base font-bold text-cyan-400 tracking-wider">GAME SETTINGS // CÀI ĐẶT</h2>
-          <button onClick={onClose} className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-white">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div className="bg-[#030d1a] border-2 border-slate-700 rounded-xl w-full max-w-md shadow-2xl flex flex-col font-mono text-slate-200">
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/40">
+            <h2 className="text-base font-bold text-cyan-400 tracking-wider">GAME SETTINGS // CÀI ĐẶT</h2>
+            <button
+              onClick={() => {
+                soundEngine.playSound('click');
+                handleClose();
+              }}
+              className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-white transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
 
         {/* Content */}
         <div className="p-6 flex flex-col gap-5 text-sm">
@@ -236,36 +251,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </span>
               </span>
             )}
-            {isInGame && onRestartGame && (
+            {isInGame && (
               <button
+                type="button"
                 onClick={() => {
-                  if (confirm('Bạn có chắc muốn chơi lại từ đầu trận này?')) {
-                    onRestartGame();
-                    onClose();
-                  }
+                  soundEngine.playSound('click');
+                  setConfirmAction('restart');
                 }}
-                className="flex items-center gap-1.5 px-3 py-2 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded text-xs font-bold transition-colors cursor-pointer"
+                className="group flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-rose-950/90 via-rose-900/70 to-rose-950/90 hover:from-rose-900 hover:to-rose-800 active:scale-95 border border-rose-700/80 hover:border-rose-400 text-rose-300 hover:text-white rounded-lg text-xs font-bold tracking-wide transition-all shadow-[0_0_12px_rgba(244,63,94,0.2)] hover:shadow-[0_0_20px_rgba(244,63,94,0.45)] cursor-pointer"
               >
-                <RotateCcw className="w-4 h-4" /> CHƠI LẠI TRẬN
+                <RotateCcw className="w-4 h-4 text-rose-400 group-hover:text-rose-200 transition-transform duration-300 group-hover:-rotate-90" />
+                <span>CHƠI LẠI TRẬN</span>
               </button>
             )}
             {isInGame && onBackToMenu && (
               <button
+                type="button"
                 onClick={() => {
-                  if (confirm('Bạn có muốn thoát về Menu chính không?')) {
-                    onBackToMenu();
-                    onClose();
-                  }
+                  soundEngine.playSound('click');
+                  setConfirmAction('menu');
                 }}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 rounded text-xs font-bold transition-colors cursor-pointer"
+                className="group flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-slate-900/90 via-slate-800/80 to-slate-900/90 hover:from-slate-800 hover:to-slate-700 active:scale-95 border border-slate-700/90 hover:border-cyan-500/80 text-slate-300 hover:text-cyan-200 rounded-lg text-xs font-bold tracking-wide transition-all shadow-[0_0_12px_rgba(15,23,42,0.4)] hover:shadow-[0_0_18px_rgba(6,182,212,0.3)] cursor-pointer"
               >
-                <Home className="w-4 h-4" /> VỀ MENU
+                <Home className="w-4 h-4 text-slate-400 group-hover:text-cyan-300 transition-transform duration-200 group-hover:scale-110" />
+                <span>VỀ MENU</span>
               </button>
             )}
           </div>
           <button
-            onClick={onClose}
-            className="flex items-center gap-1.5 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded text-xs font-bold transition-colors cursor-pointer"
+            type="button"
+            onClick={() => {
+              soundEngine.playSound('click');
+              handleClose();
+            }}
+            className="flex items-center gap-1.5 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white rounded-lg text-xs font-bold transition-all shadow-[0_0_12px_rgba(6,182,212,0.3)] hover:shadow-[0_0_18px_rgba(6,182,212,0.5)] cursor-pointer"
           >
             {isInGame ? (
               <>
@@ -278,6 +297,50 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
       </div>
     </div>
-  );
+
+    {/* Bảng thông báo xác nhận tái sử dụng cho cả 2 thao tác */}
+    <ConfirmModal
+      isOpen={confirmAction !== null}
+      title={
+        confirmAction === 'restart'
+          ? 'XÁC NHẬN CHƠI LẠI TRẬN'
+          : 'XÁC NHẬN VỀ MENU CHÍNH'
+      }
+      subtitle={
+        confirmAction === 'restart'
+          ? 'TACTICAL RESET // KHỞI ĐỘNG LẠI'
+          : 'ABORT MISSION // RỜI CHIẾN TRƯỜNG'
+      }
+      message={
+        confirmAction === 'restart'
+          ? 'Bạn có chắc chắn muốn chơi lại ván này từ đầu không?'
+          : 'Bạn có chắc chắn muốn kết thúc trận đấu và quay về Menu chính không?'
+      }
+      detailNote={
+        confirmAction === 'restart'
+          ? 'Toàn bộ tài nguyên, công trình, lực lượng quân đội và thời gian trận đấu sẽ được đặt lại về trạng thái ban đầu.'
+          : 'Tiến trình tác chiến hiện tại sẽ không được lưu. Trận đấu sẽ kết thúc ngay lập tức.'
+      }
+      confirmText={confirmAction === 'restart' ? 'CHƠI LẠI NGAY' : 'VỀ MENU CHÍNH'}
+      cancelText={confirmAction === 'restart' ? 'TIẾP TỤC TRẬN' : 'Ở LẠI TRẬN ĐẤU'}
+      variant={confirmAction === 'restart' ? 'danger' : 'warning'}
+      iconType={confirmAction === 'restart' ? 'restart' : 'home'}
+      onConfirm={() => {
+        if (confirmAction === 'restart') {
+          setConfirmAction(null);
+          onRestartGame();
+          onClose();
+        } else if (confirmAction === 'menu') {
+          setConfirmAction(null);
+          onBackToMenu?.();
+          onClose();
+        }
+      }}
+      onCancel={() => {
+        setConfirmAction(null);
+      }}
+    />
+  </>
+);
 };
 
