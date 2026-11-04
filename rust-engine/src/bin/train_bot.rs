@@ -1058,10 +1058,6 @@ fn evaluate_model_on_scenario(
     (wins, losses, draws, avg_time)
 }
 
-fn save_unified_model(brain: &RlBrain) {
-    save_unified_model_with_backup(brain, None, None);
-}
-
 fn save_unified_model_with_backup(
     brain: &RlBrain,
     backup_dir: Option<&str>,
