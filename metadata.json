@@ -1,0 +1,6 @@
+{
+  "name": "Battlefield Blueprint",
+  "description": "Tactical Stickman RTS with real-time Rust/Wasm simulation, custom autoplay loops, tech tree upgrades, and responsive WebGPU rendering.",
+  "requestFramePermissions": [],
+  "capabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -65,11 +65,7 @@ export const UnitType = Object.freeze({
 });
 
 /**
- * Vòng lặp tối ưu hóa hợp nhất: 1 lần gọi duy nhất mỗi frame giữa JS và Wasm!
- * - Gom tọa độ chuột (mouse_x, mouse_y)
- * - Quản lý Fixed Timestep Simulation bên trong Wasm (không cần JS loop nhiều lần)
- * - Đo FPS và thời gian từ now_ms truyền từ JS (không gọi window.performance.now() qua FFI)
- * - Trả về bitmask u32: Bit 0 = 1 nếu có sự kiện mới cần JS poll
+ * Hàm kết hợp giữ tương thích ngược (đã sửa lỗi clamp dương gây tăng tốc theo FPS)
  * @param {number} now_ms
  * @param {number} mouse_x
  * @param {number} mouse_y
@@ -88,6 +84,30 @@ export function engine_frame(now_ms, mouse_x, mouse_y, should_render) {
  */
 export function engine_render(alpha) {
     wasm.engine_render(isLikeNone(alpha) ? Number.MAX_SAFE_INTEGER : Math.fround(alpha));
+}
+
+/**
+ * Vòng lặp 2 (Độc lập): Chỉ dựng hình (Render) và nội suy khung hình mượt mà theo FPS
+ * Hoàn toàn không can thiệp hay cộng dồn vào bộ đếm thời gian mô phỏng!
+ * @param {number} now_ms
+ * @param {number} mouse_x
+ * @param {number} mouse_y
+ * @returns {number}
+ */
+export function engine_render_frame(now_ms, mouse_x, mouse_y) {
+    const ret = wasm.engine_render_frame(now_ms, mouse_x, mouse_y);
+    return ret >>> 0;
+}
+
+/**
+ * Vòng lặp 1 (Độc lập): Cập nhật mô phỏng logic cố định 60Hz theo thời gian thực đơn điệu `now_ms`
+ * Hoàn toàn tách rời khỏi vòng lặp Render — tốc độ game luôn chuẩn 1x ở mọi mức FPS.
+ * @param {number} now_ms
+ * @returns {number}
+ */
+export function engine_sim_step(now_ms) {
+    const ret = wasm.engine_sim_step(now_ms);
+    return ret >>> 0;
 }
 
 /**
@@ -1186,7 +1206,7 @@ function __wbg_get_imports() {
                     const a = state0.a;
                     state0.a = 0;
                     try {
-                        return wasm_bindgen__convert__closures_____invoke__h509e45764cc1d72b(a, state0.b, arg0, arg1);
+                        return wasm_bindgen_5c431ffeb548c0b3___convert__closures_____invoke___js_sys_2f752c9715bc8a40___Function_fn_wasm_bindgen_5c431ffeb548c0b3___JsValue_____wasm_bindgen_5c431ffeb548c0b3___sys__Undefined___js_sys_2f752c9715bc8a40___Function_fn_wasm_bindgen_5c431ffeb548c0b3___JsValue_____wasm_bindgen_5c431ffeb548c0b3___sys__Undefined_______true_(a, state0.b, arg0, arg1);
                     } finally {
                         state0.a = a;
                     }
@@ -2140,8 +2160,8 @@ function __wbg_get_imports() {
             arg0.writeTexture(arg1, arg2, arg3, arg4);
         }, arguments); },
         __wbindgen_cast_0000000000000001: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 2115, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
-            const ret = makeMutClosure(arg0, arg1, wasm_bindgen__convert__closures_____invoke__h9ab8d67cabe58c97);
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 2114, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
+            const ret = makeMutClosure(arg0, arg1, wasm_bindgen_5c431ffeb548c0b3___convert__closures_____invoke___wasm_bindgen_5c431ffeb548c0b3___JsValue__core_37ee0ce0c4cd57d5___result__Result_____wasm_bindgen_5c431ffeb548c0b3___JsError___true_);
             return ret;
         },
         __wbindgen_cast_0000000000000002: function(arg0) {
@@ -2205,15 +2225,15 @@ function __wbg_get_imports() {
     };
 }
 
-function wasm_bindgen__convert__closures_____invoke__h9ab8d67cabe58c97(arg0, arg1, arg2) {
-    const ret = wasm.wasm_bindgen__convert__closures_____invoke__h9ab8d67cabe58c97(arg0, arg1, arg2);
+function wasm_bindgen_5c431ffeb548c0b3___convert__closures_____invoke___wasm_bindgen_5c431ffeb548c0b3___JsValue__core_37ee0ce0c4cd57d5___result__Result_____wasm_bindgen_5c431ffeb548c0b3___JsError___true_(arg0, arg1, arg2) {
+    const ret = wasm.wasm_bindgen_5c431ffeb548c0b3___convert__closures_____invoke___wasm_bindgen_5c431ffeb548c0b3___JsValue__core_37ee0ce0c4cd57d5___result__Result_____wasm_bindgen_5c431ffeb548c0b3___JsError___true_(arg0, arg1, arg2);
     if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
     }
 }
 
-function wasm_bindgen__convert__closures_____invoke__h509e45764cc1d72b(arg0, arg1, arg2, arg3) {
-    wasm.wasm_bindgen__convert__closures_____invoke__h509e45764cc1d72b(arg0, arg1, arg2, arg3);
+function wasm_bindgen_5c431ffeb548c0b3___convert__closures_____invoke___js_sys_2f752c9715bc8a40___Function_fn_wasm_bindgen_5c431ffeb548c0b3___JsValue_____wasm_bindgen_5c431ffeb548c0b3___sys__Undefined___js_sys_2f752c9715bc8a40___Function_fn_wasm_bindgen_5c431ffeb548c0b3___JsValue_____wasm_bindgen_5c431ffeb548c0b3___sys__Undefined_______true_(arg0, arg1, arg2, arg3) {
+    wasm.wasm_bindgen_5c431ffeb548c0b3___convert__closures_____invoke___js_sys_2f752c9715bc8a40___Function_fn_wasm_bindgen_5c431ffeb548c0b3___JsValue_____wasm_bindgen_5c431ffeb548c0b3___sys__Undefined___js_sys_2f752c9715bc8a40___Function_fn_wasm_bindgen_5c431ffeb548c0b3___JsValue_____wasm_bindgen_5c431ffeb548c0b3___sys__Undefined_______true_(arg0, arg1, arg2, arg3);
 }
 
 

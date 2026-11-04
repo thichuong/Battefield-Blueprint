@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -e
+export PATH="$HOME/.cargo/bin:/root/.cargo/bin:$PATH"
 if ! command -v cargo &> /dev/null; then
     if [ -f "src/wasm-pkg/rust_engine_bg.wasm" ]; then
         echo "Cargo not found, using existing pre-built WASM in src/wasm-pkg/."

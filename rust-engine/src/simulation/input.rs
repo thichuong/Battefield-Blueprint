@@ -240,6 +240,8 @@ pub fn handle_hotkeys(engine: &mut GameEngine, key: &str) {
             // Mở Modal Cây Công Nghệ trong React
             if engine.settings.auto_pause_on_tech {
                 engine.is_paused = true;
+                engine.sim_accumulator = 0.0;
+                engine.last_frame_time = 0.0;
             }
             engine
                 .outgoing_events
@@ -296,6 +298,8 @@ pub fn handle_hotkeys(engine: &mut GameEngine, key: &str) {
         "Space" => {
             // Tạm dừng / Tiếp tục
             engine.is_paused = !engine.is_paused;
+            engine.sim_accumulator = 0.0;
+            engine.last_frame_time = 0.0;
         }
         _ => {}
     }

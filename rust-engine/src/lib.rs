@@ -162,13 +162,10 @@ fn get_performance_now() -> f64 {
         .unwrap_or(0.0)
 }
 
-/// Vòng lặp tối ưu hóa hợp nhất: 1 lần gọi duy nhất mỗi frame giữa JS và Wasm!
-/// - Gom tọa độ chuột (mouse_x, mouse_y)
-/// - Quản lý Fixed Timestep Simulation bên trong Wasm (không cần JS loop nhiều lần)
-/// - Đo FPS và thời gian từ now_ms truyền từ JS (không gọi window.performance.now() qua FFI)
-/// - Trả về bitmask u32: Bit 0 = 1 nếu có sự kiện mới cần JS poll
+/// Vòng lặp 1 (Độc lập): Cập nhật mô phỏng logic cố định 60Hz theo thời gian thực đơn điệu `now_ms`
+/// Hoàn toàn tách rời khỏi vòng lặp Render — tốc độ game luôn chuẩn 1x ở mọi mức FPS.
 #[wasm_bindgen]
-pub fn engine_frame(now_ms: f64, mouse_x: f32, mouse_y: f32, should_render: bool) -> u32 {
+pub fn engine_sim_step(now_ms: f64) -> u32 {
     ENGINE_STATE.with(|state| {
         let mut borrowed = state.borrow_mut();
         let engine = match borrowed.as_mut() {
@@ -176,37 +173,36 @@ pub fn engine_frame(now_ms: f64, mouse_x: f32, mouse_y: f32, should_render: bool
             None => return 0,
         };
 
-        // 1. Gom chuột (Mouse Coalescing)
-        if (engine.mouse_screen_x - mouse_x).abs() > 0.5
-            || (engine.mouse_screen_y - mouse_y).abs() > 0.5
-        {
-            let old_hover = engine.hovered_command_button;
-            simulation::handle_mouse_move(engine, mouse_x, mouse_y);
-            if engine.selection_box.is_some()
-                || engine.is_attack_move_mode
-                || engine.is_minimap_dragging
-                || engine.hovered_command_button != old_hover
-            {
-                engine.hud_dirty = true;
-            }
+        // Luôn xử lý hàng đợi lệnh từ React ngay lập tức (kể cả khi đang tạm dừng)
+        if !engine.is_headless {
+            simulation::process_commands(engine);
         }
 
-        // 2. Tính Delta Time chính xác cho mô phỏng từ last_frame_time (không phụ thuộc should_render)
+        if engine.is_paused || engine.game_over {
+            engine.sim_accumulator = 0.0;
+            engine.last_frame_time = now_ms;
+            return if engine.outgoing_events.is_empty() {
+                0
+            } else {
+                1
+            };
+        }
+
+        // Tính Delta Time đơn điệu chuẩn xác (TUYỆT ĐỐI không ép clamp dương khi dt <= 0)
         let delta_sec = if engine.last_frame_time > 0.0 {
-            let dt = (now_ms - engine.last_frame_time) / 1000.0;
-            dt.clamp(0.00001, 0.25) as f32
+            if now_ms > engine.last_frame_time {
+                ((now_ms - engine.last_frame_time) / 1000.0).min(0.1) as f32
+            } else {
+                0.0
+            }
         } else {
             1.0 / 60.0
         };
-        engine.last_frame_time = now_ms;
 
-        if should_render && engine.last_render_time > 0.0 {
-            let dt_ms = (now_ms - engine.last_render_time).max(0.01);
-            let instant_fps = (1000.0 / dt_ms).min(5000.0) as f32;
-            engine.fps = engine.fps * 0.90 + instant_fps * 0.10;
+        if engine.last_frame_time <= 0.0 || now_ms > engine.last_frame_time {
+            engine.last_frame_time = now_ms;
         }
 
-        // 3. Vòng lặp mô phỏng Fixed Timestep Accumulator (60Hz)
         const FIXED_TIMESTEP: f32 = 1.0 / 60.0;
         const MAX_SUB_STEPS: usize = 5;
         engine.sim_accumulator += delta_sec;
@@ -224,6 +220,9 @@ pub fn engine_frame(now_ms: f64, mouse_x: f32, mouse_y: f32, should_render: bool
             engine.sim_accumulator -= FIXED_TIMESTEP;
             sub_steps += 1;
         }
+        if sub_steps == MAX_SUB_STEPS {
+            engine.sim_accumulator = 0.0;
+        }
 
         if sub_steps > 0 {
             engine.top_bar_dirty = true;
@@ -233,35 +232,103 @@ pub fn engine_frame(now_ms: f64, mouse_x: f32, mouse_y: f32, should_render: bool
             engine.hud_dirty = true;
         }
 
-        if measure_debug {
+        if measure_debug && sub_steps > 0 {
             let t1 = get_performance_now();
             engine.sim_time_ms = (t1 - t0) as f32;
         }
 
-        // 4. Render nếu đến lượt khung hình
-        if should_render {
-            engine.last_render_time = now_ms;
-            let alpha = (engine.sim_accumulator / FIXED_TIMESTEP).clamp(0.0, 1.0);
-            engine.render_alpha = alpha;
-            let rt0 = if measure_debug {
-                get_performance_now()
-            } else {
-                0.0
-            };
-            renderer::render(engine);
-            if measure_debug {
-                let rt1 = get_performance_now();
-                engine.render_time_ms = (rt1 - rt0) as f32;
-            }
-        }
-
-        // 5. Trả về cờ bitmask: bit 0 = có sự kiện mới
         if engine.outgoing_events.is_empty() {
             0
         } else {
             1
         }
     })
+}
+
+/// Vòng lặp 2 (Độc lập): Chỉ dựng hình (Render) và nội suy khung hình mượt mà theo FPS
+/// Hoàn toàn không can thiệp hay cộng dồn vào bộ đếm thời gian mô phỏng!
+#[wasm_bindgen]
+pub fn engine_render_frame(now_ms: f64, mouse_x: f32, mouse_y: f32) -> u32 {
+    ENGINE_STATE.with(|state| {
+        let mut borrowed = state.borrow_mut();
+        let engine = match borrowed.as_mut() {
+            Some(e) => e,
+            None => return 0,
+        };
+
+        // 1. Gom tọa độ chuột phục vụ hover, kéo khung chọn, minimap mượt ở FPS cao
+        if (engine.mouse_screen_x - mouse_x).abs() > 0.5
+            || (engine.mouse_screen_y - mouse_y).abs() > 0.5
+        {
+            let old_hover = engine.hovered_command_button;
+            simulation::handle_mouse_move(engine, mouse_x, mouse_y);
+            if engine.hovered_command_button != old_hover {
+                engine.command_card_dirty = true;
+            }
+            if engine.selection_box.is_some() || engine.is_attack_move_mode {
+                engine.overlay_dirty = true;
+            }
+            if engine.is_minimap_dragging {
+                engine.minimap_dirty = true;
+            }
+            engine.hud_dirty = true;
+        }
+
+        // 2. Đo FPS thực tế của vòng lặp Render
+        if engine.last_render_time > 0.0 && now_ms > engine.last_render_time {
+            let dt_ms = (now_ms - engine.last_render_time).max(0.1);
+            let instant_fps = (1000.0 / dt_ms).min(2000.0) as f32;
+            engine.fps = engine.fps * 0.90 + instant_fps * 0.10;
+        }
+        if engine.last_render_time <= 0.0 || now_ms > engine.last_render_time {
+            engine.last_render_time = now_ms;
+        }
+
+        // 3. Tính hệ số nội suy khung hình (alpha) từ thời gian trôi qua kể từ tick 60Hz gần nhất
+        const FIXED_TIMESTEP: f32 = 1.0 / 60.0;
+        let extra_sec = if !engine.is_paused
+            && !engine.game_over
+            && engine.last_frame_time > 0.0
+            && now_ms > engine.last_frame_time
+        {
+            (((now_ms - engine.last_frame_time) / 1000.0) as f32).min(FIXED_TIMESTEP)
+        } else {
+            0.0
+        };
+        let alpha = ((engine.sim_accumulator + extra_sec) / FIXED_TIMESTEP).clamp(0.0, 1.0);
+        engine.render_alpha = alpha;
+
+        // 4. Dựng hình WebGPU / Canvas 2D
+        let measure_debug = engine.show_debug_overlay;
+        let rt0 = if measure_debug {
+            get_performance_now()
+        } else {
+            0.0
+        };
+        renderer::render(engine);
+        if measure_debug {
+            let rt1 = get_performance_now();
+            engine.render_time_ms = (rt1 - rt0) as f32;
+        }
+
+        if engine.outgoing_events.is_empty() {
+            0
+        } else {
+            1
+        }
+    })
+}
+
+/// Hàm kết hợp giữ tương thích ngược (đã sửa lỗi clamp dương gây tăng tốc theo FPS)
+#[wasm_bindgen]
+pub fn engine_frame(now_ms: f64, mouse_x: f32, mouse_y: f32, should_render: bool) -> u32 {
+    let sim_flags = engine_sim_step(now_ms);
+    let render_flags = if should_render {
+        engine_render_frame(now_ms, mouse_x, mouse_y)
+    } else {
+        0
+    };
+    sim_flags | render_flags
 }
 
 /// Vòng lặp 1: Cập nhật mô phỏng logic (AI, kinh tế, di chuyển, va chạm, đạn)
@@ -271,6 +338,11 @@ pub fn engine_tick(dt: f32) {
         if let Some(ref mut engine) = *state.borrow_mut() {
             let t0 = get_performance_now();
             simulation::step(engine, dt);
+            engine.top_bar_dirty = true;
+            engine.minimap_dirty = true;
+            engine.selection_dirty = true;
+            engine.command_card_dirty = true;
+            engine.hud_dirty = true;
             let t1 = get_performance_now();
             engine.sim_time_ms = (t1 - t0) as f32;
         }
@@ -285,7 +357,7 @@ pub fn engine_render(alpha: Option<f32>) {
     ENGINE_STATE.with(|state| {
         if let Some(ref mut engine) = *state.borrow_mut() {
             let now = get_performance_now();
-            if engine.last_render_time > 0.0 {
+            if engine.last_render_time > 0.0 && now > engine.last_render_time {
                 let dt_ms = (now - engine.last_render_time).max(0.1);
                 let instant_fps = (1000.0 / dt_ms).min(2000.0) as f32;
                 engine.fps = engine.fps * 0.90 + instant_fps * 0.10;

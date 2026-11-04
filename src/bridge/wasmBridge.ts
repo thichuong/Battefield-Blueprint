@@ -2,6 +2,8 @@ import init, {
   init_engine,
   init_engine_webgpu,
   engine_frame,
+  engine_sim_step,
+  engine_render_frame,
   engine_step,
   engine_tick,
   engine_render,
@@ -266,7 +268,29 @@ class WasmBridge {
   }
 
   /**
-   * Vòng lặp tối ưu hóa: 1 lần gọi duy nhất mỗi frame giữa JS và Wasm!
+   * Vòng lặp 1 (Độc lập): Cập nhật logic mô phỏng cố định 60Hz theo thời gian thực.
+   */
+  public simStep(nowMs: number) {
+    if (!this.isInitialized) return;
+    const flags = engine_sim_step(nowMs);
+    if (flags !== 0) {
+      this.pollEvents();
+    }
+  }
+
+  /**
+   * Vòng lặp 2 (Độc lập): Chỉ dựng hình (Render) và nội suy vị trí theo FPS.
+   */
+  public renderFrame(nowMs: number) {
+    if (!this.isInitialized) return;
+    const flags = engine_render_frame(nowMs, this.mouseX, this.mouseY);
+    if (flags !== 0) {
+      this.pollEvents();
+    }
+  }
+
+  /**
+   * Vòng lặp kết hợp (giữ tương thích ngược)
    */
   public frame(nowMs: number, shouldRender: boolean) {
     if (!this.isInitialized) return;

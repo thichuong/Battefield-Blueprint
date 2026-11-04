@@ -743,6 +743,9 @@ impl GameEngine {
         // 7. Reset bộ đếm thời gian và ID, nạp bộ não phù hợp theo chế độ chơi
         self.next_id = 100;
         self.game_time = 0.0;
+        self.sim_accumulator = 0.0;
+        self.last_frame_time = 0.0;
+        self.render_alpha = 1.0;
         self.is_paused = false;
         self.game_over = false;
         self.ai_think_timer = 0.0;

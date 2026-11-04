@@ -51,11 +51,7 @@ export enum UnitType {
 }
 
 /**
- * Vòng lặp tối ưu hóa hợp nhất: 1 lần gọi duy nhất mỗi frame giữa JS và Wasm!
- * - Gom tọa độ chuột (mouse_x, mouse_y)
- * - Quản lý Fixed Timestep Simulation bên trong Wasm (không cần JS loop nhiều lần)
- * - Đo FPS và thời gian từ now_ms truyền từ JS (không gọi window.performance.now() qua FFI)
- * - Trả về bitmask u32: Bit 0 = 1 nếu có sự kiện mới cần JS poll
+ * Hàm kết hợp giữ tương thích ngược (đã sửa lỗi clamp dương gây tăng tốc theo FPS)
  */
 export function engine_frame(now_ms: number, mouse_x: number, mouse_y: number, should_render: boolean): number;
 
@@ -64,6 +60,18 @@ export function engine_frame(now_ms: number, mouse_x: number, mouse_y: number, s
  * Nhận hệ số `alpha` [0.0..1.0] để nội suy vị trí mượt mà giữa 2 tick mô phỏng
  */
 export function engine_render(alpha?: number | null): void;
+
+/**
+ * Vòng lặp 2 (Độc lập): Chỉ dựng hình (Render) và nội suy khung hình mượt mà theo FPS
+ * Hoàn toàn không can thiệp hay cộng dồn vào bộ đếm thời gian mô phỏng!
+ */
+export function engine_render_frame(now_ms: number, mouse_x: number, mouse_y: number): number;
+
+/**
+ * Vòng lặp 1 (Độc lập): Cập nhật mô phỏng logic cố định 60Hz theo thời gian thực đơn điệu `now_ms`
+ * Hoàn toàn tách rời khỏi vòng lặp Render — tốc độ game luôn chuẩn 1x ở mọi mức FPS.
+ */
+export function engine_sim_step(now_ms: number): number;
 
 /**
  * Giữ lại hàm cũ để đảm bảo tính tương thích ngược
@@ -105,6 +113,8 @@ export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly engine_frame: (a: number, b: number, c: number, d: number) => number;
     readonly engine_render: (a: number) => void;
+    readonly engine_render_frame: (a: number, b: number, c: number) => number;
+    readonly engine_sim_step: (a: number) => number;
     readonly engine_tick: (a: number) => void;
     readonly get_game_config_json: () => [number, number];
     readonly handle_key_down: (a: number, b: number) => void;
@@ -115,12 +125,12 @@ export interface InitOutput {
     readonly resize_canvas: (a: number, b: number, c: number) => void;
     readonly send_command_to_engine: (a: number, b: number) => void;
     readonly engine_step: (a: number) => void;
-    readonly handle_mouse_down: (a: number, b: number, c: number) => void;
-    readonly handle_mouse_up: (a: number, b: number, c: number) => void;
     readonly handle_mouse_wheel: (a: number) => void;
     readonly handle_mouse_move: (a: number, b: number) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h9ab8d67cabe58c97: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen__convert__closures_____invoke__h509e45764cc1d72b: (a: number, b: number, c: any, d: any) => void;
+    readonly handle_mouse_down: (a: number, b: number, c: number) => void;
+    readonly handle_mouse_up: (a: number, b: number, c: number) => void;
+    readonly wasm_bindgen_5c431ffeb548c0b3___convert__closures_____invoke___wasm_bindgen_5c431ffeb548c0b3___JsValue__core_37ee0ce0c4cd57d5___result__Result_____wasm_bindgen_5c431ffeb548c0b3___JsError___true_: (a: number, b: number, c: any) => [number, number];
+    readonly wasm_bindgen_5c431ffeb548c0b3___convert__closures_____invoke___js_sys_2f752c9715bc8a40___Function_fn_wasm_bindgen_5c431ffeb548c0b3___JsValue_____wasm_bindgen_5c431ffeb548c0b3___sys__Undefined___js_sys_2f752c9715bc8a40___Function_fn_wasm_bindgen_5c431ffeb548c0b3___JsValue_____wasm_bindgen_5c431ffeb548c0b3___sys__Undefined_______true_: (a: number, b: number, c: any, d: any) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_exn_store: (a: number) => void;

@@ -23,6 +23,8 @@ pub fn process_commands(engine: &mut GameEngine) {
             }
             ReactToEngineCommand::SetPaused { paused } => {
                 engine.is_paused = paused;
+                engine.sim_accumulator = 0.0;
+                engine.last_frame_time = 0.0;
                 send_sync_event(engine);
             }
             ReactToEngineCommand::UpgradeTech { tech_id } => {

@@ -230,11 +230,12 @@ export const App: React.FC = () => {
   const fpsLimitRef = useRef<FpsLimit>(settings.fpsLimit);
   fpsLimitRef.current = settings.fpsLimit;
 
-  // Khởi tạo Wasm và Canvas
+  // Khởi tạo Wasm và 2 vòng lặp tách biệt: Logic 60Hz cố định & Render độc lập
   useEffect(() => {
     let isRunning = true;
+    let simTimerId: number | null = null;
     let animationFrameId: number | null = null;
-    let timerId: number | null = null;
+    let renderTimerId: number | null = null;
     let lastRenderTime = performance.now();
 
     const initEngine = async () => {
@@ -318,18 +319,31 @@ export const App: React.FC = () => {
         setGameConfig(cfg);
       }
 
-      // Vòng lặp tối ưu hóa: 1 lệnh gọi Wasm duy nhất mỗi frame (Zero JS-Wasm boundary overhead)
-      // Dùng MessageChannel thay vì setTimeout(..., 0) để không bị HTML5 4ms clamping khóa cứng ở ~200 FPS!
+      // ============================================================================
+      // VÒNG LẶP 1: GAME LOGIC / SIMULATION LOOP (Cố định 60Hz - Chuẩn 1x thực tế)
+      // Hoàn toàn tách biệt khỏi vòng lặp Render, không bị ảnh hưởng bởi FPS.
+      // ============================================================================
+      wasmBridge.simStep(performance.now());
+      simTimerId = window.setInterval(() => {
+        if (!isRunning) return;
+        wasmBridge.simStep(performance.now());
+      }, 8);
+
+      // ============================================================================
+      // VÒNG LẶP 2: RENDER LOOP (Độc lập theo giới hạn FPS: V-Sync / 60..240 / Max)
+      // Chỉ gọi xuống Wasm khi thực sự vẽ khung hình, dùng alpha nội suy mượt mà.
+      // ============================================================================
       const channel = new MessageChannel();
       channel.port1.onmessage = () => {
-        loop();
+        renderLoop();
       };
 
-      const scheduleNext = () => {
+      const scheduleNextRender = () => {
         if (!isRunning) return;
         const limit = fpsLimitRef.current;
+
         if (limit === 'vsync') {
-          animationFrameId = requestAnimationFrame(loop);
+          animationFrameId = requestAnimationFrame(() => renderLoop());
         } else if (limit === 'unlimited') {
           channel.port2.postMessage(null);
         } else {
@@ -339,55 +353,51 @@ export const App: React.FC = () => {
           const remaining = interval - elapsed;
 
           if (limit <= 60) {
-            animationFrameId = requestAnimationFrame(loop);
-          } else if (remaining <= 4.0) {
-            // Khi thời gian chờ còn lại <= 4ms, postMessage ngay để tránh bị dính HTML5 4ms clamp
+            animationFrameId = requestAnimationFrame(() => renderLoop());
+          } else if (remaining <= 3.5) {
             channel.port2.postMessage(null);
           } else {
-            // Ngủ phần lớn thời gian (trừ đi 3ms buffer) rồi kích hoạt qua postMessage
-            timerId = window.setTimeout(() => {
+            renderTimerId = window.setTimeout(() => {
               if (isRunning) {
                 channel.port2.postMessage(null);
               }
-            }, Math.floor(remaining - 3.0));
+            }, Math.floor(remaining - 2.5));
           }
         }
       };
 
-      const loop = (timestamp?: number) => {
+      const renderLoop = () => {
         if (!isRunning) return;
 
-        const now = timestamp || performance.now();
+        // Luôn dùng duy nhất đồng hồ đơn điệu performance.now()
+        const now = performance.now();
         const limit = fpsLimitRef.current;
-        let shouldRender = false;
 
         if (limit === 'vsync' || limit === 'unlimited') {
-          shouldRender = true;
           lastRenderTime = now;
+          wasmBridge.renderFrame(now);
         } else {
           const interval = 1000 / limit;
-          // Bù sai số 0.5ms để khung hình ổn định
-          if (now - lastRenderTime >= interval - 0.5) {
-            shouldRender = true;
-            lastRenderTime = now;
+          const elapsed = now - lastRenderTime;
+          if (elapsed >= interval - 0.5) {
+            lastRenderTime = now - (elapsed % interval);
+            wasmBridge.renderFrame(now);
           }
         }
 
-        // 1 LỆNH GỌI DUY NHẤT: Wasm tự lo fixed 60Hz tick + gom chuột + render GPU cache!
-        wasmBridge.frame(now, shouldRender);
-
-        scheduleNext();
+        scheduleNextRender();
       };
 
-      scheduleNext();
+      scheduleNextRender();
     };
 
     initEngine();
 
     return () => {
       isRunning = false;
+      if (simTimerId !== null) clearInterval(simTimerId);
       if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
-      if (timerId !== null) clearTimeout(timerId);
+      if (renderTimerId !== null) clearTimeout(renderTimerId);
     };
   }, []);
 

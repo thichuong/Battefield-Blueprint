@@ -27,6 +27,7 @@ pub fn step(engine: &mut GameEngine, dt: f32) {
     }
 
     if engine.is_paused || engine.game_over {
+        engine.sim_accumulator = 0.0;
         return;
     }
 
