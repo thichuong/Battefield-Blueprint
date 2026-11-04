@@ -449,7 +449,10 @@ fn main() {
     println!("   Formation Dimension:{} formations", FORMATION_DIM);
     println!("   Unified Model File: rl_model.json");
     if let Some(ref d_dir) = drive_backup_dir {
-        println!("   Google Drive Backup:📂 {} (Tự động đồng bộ sau mỗi kịch bản)", d_dir);
+        println!(
+            "   Google Drive Backup:📂 {} (Tự động đồng bộ sau mỗi kịch bản)",
+            d_dir
+        );
     }
     println!(
         "   Scenarios Included: {:?}",
@@ -1091,18 +1094,27 @@ fn save_unified_model_with_backup(
         let trimmed = backup.trim();
         if !trimmed.is_empty() {
             if let Err(e) = std::fs::create_dir_all(trimmed) {
-                eprintln!("⚠️ [Google Drive] Không thể tạo thư mục backup {}: {}", trimmed, e);
+                eprintln!(
+                    "⚠️ [Google Drive] Không thể tạo thư mục backup {}: {}",
+                    trimmed, e
+                );
             } else {
                 let main_backup_path = format!("{}/{}", trimmed, filename);
                 if let Ok(mut file) = File::create(&main_backup_path) {
                     let _ = file.write_all(model_json.as_bytes());
-                    println!("☁️ [Google Drive Auto-Sync] Đã đồng bộ an toàn: {}", main_backup_path);
+                    println!(
+                        "☁️ [Google Drive Auto-Sync] Đã đồng bộ an toàn: {}",
+                        main_backup_path
+                    );
                 }
                 if let Some(tag) = scenario_tag {
                     let snap_backup_path = format!("{}/rl_model_checkpoint_{}.json", trimmed, tag);
                     if let Ok(mut file) = File::create(&snap_backup_path) {
                         let _ = file.write_all(model_json.as_bytes());
-                        println!("📦 [Checkpoint Snapshot] Đã lưu mốc giai đoạn: {}", snap_backup_path);
+                        println!(
+                            "📦 [Checkpoint Snapshot] Đã lưu mốc giai đoạn: {}",
+                            snap_backup_path
+                        );
                     }
                 }
             }

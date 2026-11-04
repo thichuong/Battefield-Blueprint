@@ -43,8 +43,12 @@ fn main() {
 
                     // Tự động quét và liên kết các đường dẫn CUDA chuẩn trên Google Colab / Ubuntu / RHEL
                     let potential_cuda_paths = [
-                        std::env::var("CUDA_HOME").map(|h| format!("{}/lib64", h)).ok(),
-                        std::env::var("CUDA_PATH").map(|p| format!("{}/lib64", p)).ok(),
+                        std::env::var("CUDA_HOME")
+                            .map(|h| format!("{}/lib64", h))
+                            .ok(),
+                        std::env::var("CUDA_PATH")
+                            .map(|p| format!("{}/lib64", p))
+                            .ok(),
                         Some("/usr/local/cuda/lib64".to_string()),
                         Some("/usr/local/cuda/targets/x86_64-linux/lib".to_string()),
                         Some("/usr/local/cuda-12/lib64".to_string()),
