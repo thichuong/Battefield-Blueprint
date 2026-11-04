@@ -1,6 +1,19 @@
-import React, { useState, useMemo } from 'react';
-import { Play, Users, Crosshair, ChevronDown, Check, Swords, BookOpen, Settings } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import {
+  Play,
+  Users,
+  Crosshair,
+  ChevronDown,
+  Check,
+  Swords,
+  BookOpen,
+  Settings,
+  Zap,
+  Sparkles,
+  Radio,
+} from 'lucide-react';
 import { PlayerSlotConfig } from '../bridge/wasmBridge';
+import { soundEngine } from '../audio/soundEngine';
 
 interface MainMenuProps {
   onStartGame: (difficulty: string, slots: PlayerSlotConfig[]) => void;
@@ -14,21 +27,24 @@ interface SlotUIData {
   index: number;
   name: string;
   location: string;
+  shortLoc: string;
+  radarX: number; // Tỉ lệ % trên radar 0..100
+  radarY: number; // Tỉ lệ % trên radar 0..100
   active: boolean;
   faction: number;
   isHuman: boolean;
   color: string;
 }
 
-const SLOT_LOCATIONS = [
-  'Tây-Nam (Gốc dưới trái)',
-  'Đông-Bắc (Gốc trên phải)',
-  'Tây-Bắc (Gốc trên trái)',
-  'Đông-Nam (Gốc dưới phải)',
-  'Bắc (Cạnh trên giữa)',
-  'Nam (Cạnh dưới giữa)',
-  'Tây (Cạnh trái giữa)',
-  'Đông (Cạnh phải giữa)',
+export const SLOT_CONFIGS = [
+  { name: 'Chỉ Huy (Bạn)', location: 'Tây-Nam (Gốc dưới trái)', shortLoc: 'Tây-Nam', x: 22, y: 78 },
+  { name: 'AI Đối Thủ 1', location: 'Đông-Bắc (Gốc trên phải)', shortLoc: 'Đông-Bắc', x: 78, y: 22 },
+  { name: 'AI Đồng Minh 1', location: 'Tây-Bắc (Gốc trên trái)', shortLoc: 'Tây-Bắc', x: 22, y: 22 },
+  { name: 'AI Đối Thủ 2', location: 'Đông-Nam (Gốc dưới phải)', shortLoc: 'Đông-Nam', x: 78, y: 78 },
+  { name: 'AI Đồng Minh 2', location: 'Bắc (Cạnh trên giữa)', shortLoc: 'Bắc', x: 50, y: 16 },
+  { name: 'AI Đối Thủ 3', location: 'Nam (Cạnh dưới giữa)', shortLoc: 'Nam', x: 50, y: 84 },
+  { name: 'AI Đồng Minh 3', location: 'Tây (Cạnh trái giữa)', shortLoc: 'Tây', x: 16, y: 50 },
+  { name: 'AI Đối Thủ 4', location: 'Đông (Cạnh phải giữa)', shortLoc: 'Đông', x: 84, y: 50 },
 ];
 
 export const PLAYER_COLORS = [
@@ -53,24 +69,41 @@ export const PLAYER_COLOR_NAMES = [
   'Vàng Gold',
 ];
 
+export const FACTION_NAMES = [
+  'Phe 1 (Liên Minh)',
+  'Phe 2 (Đối Lập)',
+  'Phe 3 (Độc Lập)',
+  'Phe 4 (Kháng Chiến)',
+  'Phe 5 (Lực Lượng 5)',
+  'Phe 6 (Lực Lượng 6)',
+  'Phe 7 (Lực Lượng 7)',
+  'Phe 8 (Lực Lượng 8)',
+];
+
 export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, onOpenSettings }) => {
   const [difficulty, setDifficulty] = useState<string>('normal');
   const [preset, setPreset] = useState<MatchPreset>('4v4');
+  const [hoveredSlot, setHoveredSlot] = useState<number | null>(null);
 
   // Khởi tạo trạng thái 8 slots
-  const [slots, setSlots] = useState<SlotUIData[]>([
-    { index: 0, name: 'Chỉ Huy (Bạn)', location: SLOT_LOCATIONS[0], active: true, faction: 0, isHuman: true, color: PLAYER_COLORS[0] },
-    { index: 1, name: 'AI Đối Thủ 1', location: SLOT_LOCATIONS[1], active: true, faction: 1, isHuman: false, color: PLAYER_COLORS[1] },
-    { index: 2, name: 'AI Đồng Minh 1', location: SLOT_LOCATIONS[2], active: true, faction: 0, isHuman: false, color: PLAYER_COLORS[2] },
-    { index: 3, name: 'AI Đối Thủ 2', location: SLOT_LOCATIONS[3], active: true, faction: 1, isHuman: false, color: PLAYER_COLORS[3] },
-    { index: 4, name: 'AI Đồng Minh 2', location: SLOT_LOCATIONS[4], active: true, faction: 0, isHuman: false, color: PLAYER_COLORS[4] },
-    { index: 5, name: 'AI Đối Thủ 3', location: SLOT_LOCATIONS[5], active: true, faction: 1, isHuman: false, color: PLAYER_COLORS[5] },
-    { index: 6, name: 'AI Đồng Minh 3', location: SLOT_LOCATIONS[6], active: true, faction: 0, isHuman: false, color: PLAYER_COLORS[6] },
-    { index: 7, name: 'AI Đối Thủ 4', location: SLOT_LOCATIONS[7], active: true, faction: 1, isHuman: false, color: PLAYER_COLORS[7] },
-  ]);
+  const [slots, setSlots] = useState<SlotUIData[]>(() =>
+    SLOT_CONFIGS.map((cfg, idx) => ({
+      index: idx,
+      name: cfg.name,
+      location: cfg.location,
+      shortLoc: cfg.shortLoc,
+      radarX: cfg.x,
+      radarY: cfg.y,
+      active: true,
+      faction: idx % 2 === 0 ? 0 : 1,
+      isHuman: idx === 0,
+      color: PLAYER_COLORS[idx],
+    }))
+  );
 
   // Áp dụng Preset nhanh
   const applyPreset = (p: MatchPreset) => {
+    soundEngine.playSound('click');
     setPreset(p);
     setSlots((prev) => {
       const next = prev.map((s) => ({ ...s, isHuman: s.index === 0 }));
@@ -100,7 +133,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
         case '4v4':
           for (let i = 0; i < 8; i++) {
             next[i].active = true;
-            next[i].faction = (i % 2 === 0) ? 0 : 1;
+            next[i].faction = i % 2 === 0 ? 0 : 1;
           }
           break;
         case '3factions':
@@ -121,7 +154,6 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
           }
           break;
         case 'custom':
-          // Giữ nguyên hiện trạng
           break;
       }
       return next;
@@ -130,7 +162,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
 
   // Toggle active slot
   const toggleSlotActive = (index: number) => {
-    if (index === 0) return; // Slot 0 của Player luôn bật
+    if (index === 0) return; // Slot 0 luôn bật
+    soundEngine.playSound('click');
     setPreset('custom');
     setSlots((prev) =>
       prev.map((s) => (s.index === index ? { ...s, active: !s.active } : s))
@@ -140,6 +173,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
   // Thay đổi phe của slot
   const cycleSlotFaction = (index: number) => {
     if (index === 0) return; // Slot 0 luôn là Phe 0
+    soundEngine.playSound('order');
     setPreset('custom');
     setSlots((prev) =>
       prev.map((s) =>
@@ -158,6 +192,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
   }, [slots]);
 
   const handleStart = () => {
+    soundEngine.playSound('order');
     const payloadSlots: PlayerSlotConfig[] = slots.map((s) => ({
       slot_index: s.index,
       active: s.active,
@@ -167,224 +202,491 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
     onStartGame(difficulty, payloadSlots);
   };
 
+  // Lắng nghe phím tắt điều khiển nhanh từ màn hình chính
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Tránh bắt phím khi đang gõ vào input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        handleStart();
+      } else if (e.key === 'g' || e.key === 'G') {
+        e.preventDefault();
+        onOpenGuide();
+      } else if (e.key === 's' || e.key === 'S') {
+        e.preventDefault();
+        onOpenSettings();
+      } else if (e.key === '1') {
+        applyPreset('1v1');
+      } else if (e.key === '2') {
+        applyPreset('2v2');
+      } else if (e.key === '3') {
+        applyPreset('3v3');
+      } else if (e.key === '4') {
+        applyPreset('4v4');
+      } else if (e.key === '5') {
+        applyPreset('3factions');
+      } else if (e.key === '6') {
+        applyPreset('ffa8');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [difficulty, slots, onOpenGuide, onOpenSettings]);
+
+  // Các đường nối liên minh giữa các căn cứ cùng phe
+  const allianceLines = useMemo(() => {
+    const lines: { x1: number; y1: number; x2: number; y2: number; color: string; faction: number }[] = [];
+    const active = slots.filter((s) => s.active);
+
+    for (let i = 0; i < active.length; i++) {
+      for (let j = i + 1; j < active.length; j++) {
+        if (active[i].faction === active[j].faction) {
+          lines.push({
+            x1: active[i].radarX,
+            y1: active[i].radarY,
+            x2: active[j].radarX,
+            y2: active[j].radarY,
+            color: PLAYER_COLORS[active[i].faction % PLAYER_COLORS.length],
+            faction: active[i].faction,
+          });
+        }
+      }
+    }
+    return lines;
+  }, [slots]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#030d1a] text-slate-100 font-mono p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#020813]/95 text-slate-100 font-mono p-2 sm:p-4 md:p-6 overflow-y-auto select-none backdrop-blur-sm">
       {/* Background blueprint grid */}
-      <div className="fixed inset-0 bg-[linear-gradient(to_right,#0a223e_1px,transparent_1px),linear-gradient(to_bottom,#0a223e_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-70 pointer-events-none" />
+      <div className="fixed inset-0 bg-[linear-gradient(to_right,#071e3d_1px,transparent_1px),linear-gradient(to_bottom,#071e3d_1px,transparent_1px)] bg-[size:3.5rem_3.5rem] [mask-image:radial-gradient(ellipse_75%_65%_at_50%_50%,#000_70%,transparent_100%)] opacity-80 pointer-events-none" />
 
-      <div className="relative z-10 max-w-4xl w-full flex flex-col items-center text-center p-6 md:p-8 border-2 border-cyan-500/60 rounded-2xl bg-slate-950/90 shadow-[0_0_60px_rgba(0,229,255,0.25)] my-auto">
-        {/* Badge header */}
-        <div className="flex items-center gap-2 px-3.5 py-1 rounded-full bg-cyan-950/80 border border-cyan-500 text-cyan-400 text-xs font-bold tracking-widest uppercase mb-3 shadow-sm">
-          <Crosshair className="w-3.5 h-3.5 animate-spin" /> Battlefield Blueprint // Grand Tactical RTS
-        </div>
-
-        <h1 className="text-3xl md:text-5xl font-black tracking-tight text-white mb-2 drop-shadow-[0_0_20px_rgba(0,229,255,0.6)]">
-          BATTLEFIELD <span className="text-cyan-400">BLUEPRINT</span>
-        </h1>
-        <p className="text-xs md:text-sm text-slate-400 max-w-2xl mb-6 leading-relaxed">
-          Bản đồ mở rộng quy mô lớn <span className="text-cyan-300 font-bold">4800 x 4800</span>. Hỗ trợ tối đa{' '}
-          <span className="text-amber-300 font-bold">8 Người chơi</span> với tùy chọn Đồng minh, Kẻ địch và Chia phe chiến thuật đa dạng!
-        </p>
-
-        {/* Cụm tùy chọn Kịch bản nhanh (Presets) */}
-        <div className="w-full mb-6 text-left">
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-              <Swords className="w-4 h-4 text-cyan-400" /> Chế độ chơi & Thiết lập trận đấu:
-            </label>
-            <span className="text-[11px] text-cyan-400 bg-cyan-950/60 border border-cyan-800/80 px-2 py-0.5 rounded">
-              {summary.total} Người chơi • {summary.allies} Đồng minh • {summary.enemies} Kẻ địch • {summary.factionsCount} Phe
-            </span>
+      {/* Main Tactical Command Console (Landscape 16:9 / Widescreen Optimized) */}
+      <div className="relative z-10 w-full max-w-7xl max-h-[96vh] flex flex-col border-2 border-cyan-500/70 rounded-2xl bg-slate-950/95 shadow-[0_0_80px_rgba(0,229,255,0.28)] p-3 sm:p-5 md:p-6 my-auto overflow-hidden">
+        {/* =========================================================================
+            TOP BAR HUD: Title, Status Pill & Quick Action Buttons
+        ========================================================================= */}
+        <header className="flex items-center justify-between gap-3 pb-3 border-b border-cyan-900/70 shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 sm:p-2.5 rounded-xl bg-cyan-950/80 border border-cyan-500/80 text-cyan-400 shadow-[0_0_15px_rgba(0,229,255,0.35)] shrink-0">
+              <Crosshair className="w-5 h-5 sm:w-6 sm:h-6 animate-spin-slow" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-lg sm:text-2xl md:text-3xl font-black tracking-tight text-white drop-shadow-[0_0_18px_rgba(0,229,255,0.6)] truncate">
+                  BATTLEFIELD <span className="text-cyan-400">BLUEPRINT</span>
+                </h1>
+                <span className="hidden md:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-cyan-950/90 border border-cyan-500/70 text-cyan-300 text-[10px] font-bold tracking-widest uppercase shadow-sm">
+                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping inline-block" />
+                  RTS 4800x4800 // RUST WASM 60FPS
+                </span>
+              </div>
+              <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5 hidden sm:block truncate">
+                Trung tâm chỉ huy chiến thuật đa phe • Mô phỏng thời gian thực • Deep RL Bot & AutoPlay
+              </p>
+            </div>
           </div>
 
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
-            {[
-              { id: '1v1', label: '1 vs 1', desc: 'Đối đầu' },
-              { id: '2v2', label: '2 vs 2', desc: 'Song đấu' },
-              { id: '3v3', label: '3 vs 3', desc: 'Chiến đoàn' },
-              { id: '4v4', label: '4 vs 4', desc: 'Đại chiến 8P' },
-              { id: '3factions', label: '2v2v2', desc: 'Tam giác phe' },
-              { id: 'ffa8', label: '8-FFA', desc: 'Hỗn chiến 8 phe' },
-            ].map((p) => (
-              <button
-                key={p.id}
-                onClick={() => applyPreset(p.id as MatchPreset)}
-                className={`py-2 px-2.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
-                  preset === p.id
-                    ? 'bg-cyan-950/90 border-cyan-400 text-cyan-300 shadow-[0_0_12px_rgba(0,229,255,0.35)] scale-[1.02]'
-                    : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                }`}
-              >
-                <span className="text-xs font-bold">{p.label}</span>
-                <span className="text-[10px] text-slate-500">{p.desc}</span>
-              </button>
-            ))}
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Quick Status Pill */}
+            <div className="hidden lg:flex items-center gap-2 bg-slate-900/90 border border-cyan-900/80 px-3 py-1.5 rounded-xl text-xs text-slate-300 shadow-inner">
+              <span className="text-cyan-400 font-bold">{summary.total}/8</span> Căn cứ •{' '}
+              <span className="text-emerald-400 font-bold">{summary.allies}</span> Đồng minh •{' '}
+              <span className="text-rose-400 font-bold">{summary.enemies}</span> Đối thủ •{' '}
+              <span className="text-amber-400 font-bold">{summary.factionsCount}</span> Phe
+            </div>
+
+            {/* Guide Button */}
+            <button
+              onClick={() => {
+                soundEngine.playSound('click');
+                onOpenGuide();
+              }}
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-slate-900/90 hover:bg-cyan-950/80 border border-slate-700 hover:border-cyan-400 text-cyan-300 font-bold text-xs uppercase tracking-wider transition-all cursor-pointer shadow-sm hover:shadow-[0_0_12px_rgba(0,229,255,0.25)]"
+              title="Xem cẩm nang chiến thuật [Phím tắt: G]"
+            >
+              <BookOpen className="w-4 h-4 text-cyan-400" />
+              <span className="hidden sm:inline">HƯỚNG DẪN</span>
+              <span className="text-[10px] text-cyan-500 font-normal">[G]</span>
+            </button>
+
+            {/* Settings Button */}
+            <button
+              onClick={() => {
+                soundEngine.playSound('click');
+                onOpenSettings();
+              }}
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 hover:border-slate-500 text-slate-300 hover:text-white font-bold text-xs uppercase tracking-wider transition-all cursor-pointer shadow-sm"
+              title="Cài đặt game [Phím tắt: S]"
+            >
+              <Settings className="w-4 h-4 text-slate-400" />
+              <span className="hidden sm:inline">CÀI ĐẶT</span>
+              <span className="text-[10px] text-slate-500 font-normal">[S]</span>
+            </button>
           </div>
-        </div>
+        </header>
 
-        {/* Danh sách 8 Slots Roster */}
-        <div className="w-full bg-slate-900/50 p-3.5 rounded-xl border border-slate-800/80 mb-6 text-left">
-          <div className="flex items-center justify-between mb-2.5">
-            <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-              <Users className="w-4 h-4 text-amber-400" /> Bảng phân bố 8 Căn cứ trên Bản đồ:
-            </span>
-            <span className="text-[10px] text-slate-400 italic">
-              * Click để bật/tắt slot hoặc click đổi Phe của AI
-            </span>
-          </div>
+        {/* =========================================================================
+            MAIN 2-COLUMN WAR ROOM LAYOUT (Optimized for Horizontal Displays)
+        ========================================================================= */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 md:gap-5 flex-1 min-h-0 pt-3 overflow-y-auto lg:overflow-visible">
+          {/* -----------------------------------------------------------------------
+              LEFT COLUMN (5 Cols): Presets, Radar Map & AI Difficulty
+          ----------------------------------------------------------------------- */}
+          <div className="lg:col-span-5 flex flex-col justify-between gap-3 min-h-0">
+            {/* 1. Presets Grid */}
+            <div className="bg-slate-900/60 p-3 rounded-xl border border-slate-800/80 text-left shrink-0">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Swords className="w-4 h-4 text-cyan-400" /> Kịch Bản & Chế Độ Chiến Đấu:
+                </label>
+                <span className="text-[10px] text-cyan-400 bg-cyan-950/70 border border-cyan-800/80 px-2 py-0.5 rounded font-mono">
+                  Preset: {preset.toUpperCase()}
+                </span>
+              </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-            {slots.map((slot) => {
-              const isPlayer = slot.index === 0;
-              const isAlly = !isPlayer && slot.faction === 0;
-              const playerColor = PLAYER_COLORS[slot.index];
-              const factionColor = PLAYER_COLORS[slot.faction % PLAYER_COLORS.length];
+              <div className="grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-3 gap-1.5">
+                {[
+                  { id: '1v1', label: '1 vs 1', desc: 'Đối đầu', key: '1' },
+                  { id: '2v2', label: '2 vs 2', desc: 'Song đấu', key: '2' },
+                  { id: '3v3', label: '3 vs 3', desc: 'Chiến đoàn', key: '3' },
+                  { id: '4v4', label: '4 vs 4', desc: 'Đại chiến 8P', key: '4' },
+                  { id: '3factions', label: '2v2v2', desc: 'Tam giác phe', key: '5' },
+                  { id: 'ffa8', label: '8-FFA', desc: 'Hỗn chiến 8 phe', key: '6' },
+                ].map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => applyPreset(p.id as MatchPreset)}
+                    className={`py-1.5 px-2 rounded-lg border text-center transition-all cursor-pointer flex flex-col items-center justify-center relative overflow-hidden ${
+                      preset === p.id
+                        ? 'bg-cyan-950/90 border-cyan-400 text-cyan-300 shadow-[0_0_12px_rgba(0,229,255,0.35)] scale-[1.02]'
+                        : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs font-bold">{p.label}</span>
+                      <span className="text-[9px] text-cyan-600 font-mono">[{p.key}]</span>
+                    </div>
+                    <span className="text-[9px] text-slate-500 truncate w-full">{p.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
 
-              return (
-                <div
-                  key={slot.index}
-                  className={`p-2.5 rounded-lg border flex items-center justify-between transition-all ${
-                    !slot.active
-                      ? 'bg-slate-950/40 border-slate-900 opacity-40'
-                      : isPlayer
-                      ? 'bg-cyan-950/40 border-cyan-500/70 shadow-[0_0_8px_rgba(0,229,255,0.2)]'
-                      : isAlly
-                      ? 'bg-slate-950/80 border-slate-800'
-                      : 'bg-slate-950/70 border-slate-800'
-                  }`}
-                  style={slot.active ? { borderColor: `${playerColor}66` } : undefined}
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    {/* Checkbox toggle slot */}
-                    <button
+            {/* 2. Interactive Holographic Radar Mini-Map */}
+            <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800/80 flex flex-col justify-between flex-1 min-h-[170px] sm:min-h-[190px] relative overflow-hidden">
+              <div className="flex items-center justify-between mb-1.5 z-10 shrink-0">
+                <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                  <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse" /> Sơ Đồ Radar Tác Chiến 4800x4800:
+                </span>
+                <span className="text-[10px] text-slate-400 italic">
+                  * Click trực tiếp vào điểm căn cứ để bật/tắt
+                </span>
+              </div>
+
+              {/* Radar Screen Area */}
+              <div className="relative w-full flex-1 rounded-lg bg-[#010915] border border-cyan-900/60 overflow-hidden flex items-center justify-center min-h-[140px]">
+                {/* Radar Grid Circles */}
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="w-[85%] h-[85%] rounded-full border border-cyan-500/15" />
+                  <div className="w-[60%] h-[60%] rounded-full border border-cyan-500/20" />
+                  <div className="w-[35%] h-[35%] rounded-full border border-cyan-500/25" />
+                  {/* Axis Crosshairs */}
+                  <div className="absolute w-full h-[1px] bg-cyan-500/20" />
+                  <div className="absolute h-full w-[1px] bg-cyan-500/20" />
+                  {/* Diagonal guides */}
+                  <div className="absolute w-[90%] h-[1px] bg-cyan-500/10 rotate-45" />
+                  <div className="absolute w-[90%] h-[1px] bg-cyan-500/10 -rotate-45" />
+                </div>
+
+                {/* Rotating Radar Scanner Sweep */}
+                <div className="absolute inset-0 pointer-events-none overflow-hidden flex items-center justify-center">
+                  <div className="w-full h-full rounded-full opacity-20 bg-[conic-gradient(from_0deg_at_50%_50%,rgba(0,229,255,0.4)_0deg,transparent_60deg)] animate-spin-slow" />
+                </div>
+
+                {/* Central Contested Zone indicator */}
+                <div className="absolute z-10 flex flex-col items-center pointer-events-none">
+                  <div className="w-3.5 h-3.5 rounded-full bg-cyan-500/20 border border-cyan-400/50 flex items-center justify-center shadow-[0_0_10px_rgba(0,229,255,0.4)]">
+                    <Sparkles className="w-2 h-2 text-cyan-300" />
+                  </div>
+                  <span className="text-[8px] text-cyan-500/80 font-bold uppercase tracking-tighter mt-0.5">
+                    TÂM CHIẾN SỰ
+                  </span>
+                </div>
+
+                {/* SVG Alliance Lines */}
+                <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
+                  {allianceLines.map((line, idx) => (
+                    <line
+                      key={idx}
+                      x1={`${line.x1}%`}
+                      y1={`${line.y1}%`}
+                      x2={`${line.x2}%`}
+                      y2={`${line.y2}%`}
+                      stroke={line.color}
+                      strokeWidth="1.2"
+                      strokeDasharray="3 3"
+                      strokeOpacity="0.45"
+                    />
+                  ))}
+                </svg>
+
+                {/* 8 Base Nodes on Radar */}
+                {slots.map((slot) => {
+                  const isPlayer = slot.index === 0;
+                  const isAlly = !isPlayer && slot.faction === 0;
+                  const playerColor = PLAYER_COLORS[slot.index];
+                  const factionColor = PLAYER_COLORS[slot.faction % PLAYER_COLORS.length];
+                  const isHovered = hoveredSlot === slot.index;
+
+                  return (
+                    <div
+                      key={slot.index}
                       onClick={() => toggleSlotActive(slot.index)}
-                      disabled={isPlayer}
-                      className={`w-5 h-5 rounded flex items-center justify-center border transition-all ${
-                        isPlayer
-                          ? 'bg-cyan-500 border-cyan-400 text-slate-950 cursor-not-allowed'
-                          : slot.active
-                          ? 'bg-cyan-600 border-cyan-400 text-white cursor-pointer'
-                          : 'bg-slate-900 border-slate-700 cursor-pointer'
+                      onMouseEnter={() => setHoveredSlot(slot.index)}
+                      onMouseLeave={() => setHoveredSlot(null)}
+                      className={`absolute z-20 -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-all ${
+                        slot.active ? 'scale-100 hover:scale-125' : 'scale-90 opacity-40 hover:opacity-75'
+                      }`}
+                      style={{
+                        left: `${slot.radarX}%`,
+                        top: `${slot.radarY}%`,
+                      }}
+                      title={`Slot ${slot.index + 1}: ${slot.name} (${slot.shortLoc}) - ${
+                        slot.active ? `Phe ${slot.faction + 1}` : 'Tắt'
                       }`}
                     >
-                      {slot.active && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                    </button>
-
-                    <div className="truncate">
-                      <div className="flex items-center gap-2">
-                        {/* Player Color Swatch */}
-                        <span
-                          className="w-2.5 h-2.5 rounded-full inline-block shrink-0"
-                          style={{
-                            backgroundColor: playerColor,
-                            boxShadow: slot.active ? `0 0 6px ${playerColor}` : 'none',
-                          }}
-                          title={`Màu người chơi: ${PLAYER_COLOR_NAMES[slot.index]}`}
+                      {/* Pulse Ping effect when active */}
+                      {slot.active && (
+                        <div
+                          className="absolute inset-0 rounded-full animate-ping opacity-60 pointer-events-none"
+                          style={{ backgroundColor: playerColor }}
                         />
-                        <span className="font-bold text-slate-200">
-                          Slot {slot.index + 1}: {slot.name}
-                        </span>
-                        {isPlayer && (
-                          <span className="bg-cyan-500 text-slate-950 text-[9px] px-1.5 py-0.2 rounded font-black">
-                            BẠN
-                          </span>
-                        )}
-                        {isAlly && slot.active && (
-                          <span className="bg-emerald-500 text-slate-950 text-[9px] px-1.5 py-0.2 rounded font-black">
-                            ĐỒNG MINH
-                          </span>
-                        )}
+                      )}
+
+                      {/* Node Circle */}
+                      <div
+                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center font-bold text-[10px] transition-all shadow-md ${
+                          isHovered ? 'ring-2 ring-white ring-offset-1 ring-offset-slate-950' : ''
+                        }`}
+                        style={{
+                          backgroundColor: slot.active ? `${playerColor}33` : '#0f172a',
+                          borderColor: slot.active ? playerColor : '#475569',
+                          color: slot.active ? '#ffffff' : '#94a3b8',
+                          boxShadow: slot.active ? `0 0 10px ${playerColor}88` : 'none',
+                        }}
+                      >
+                        {slot.index + 1}
                       </div>
-                      <div className="text-[10px] text-slate-400 flex items-center gap-1.5">
-                        <span style={{ color: playerColor }}>● {PLAYER_COLOR_NAMES[slot.index]}</span>
-                        <span>•</span>
-                        <span>{slot.location}</span>
+
+                      {/* Mini Tag */}
+                      <div
+                        className="absolute top-full left-1/2 -translate-x-1/2 mt-0.5 px-1 py-0.2 rounded text-[8px] font-bold whitespace-nowrap shadow pointer-events-none"
+                        style={{
+                          backgroundColor: slot.active ? '#030d1aee' : '#0f172aee',
+                          borderColor: slot.active ? factionColor : '#334155',
+                          borderWidth: '1px',
+                          color: slot.active ? factionColor : '#64748b',
+                        }}
+                      >
+                        {isPlayer ? 'BẠN' : isAlly && slot.active ? 'MINH' : slot.active ? `P${slot.faction + 1}` : 'TẮT'}
                       </div>
                     </div>
-                  </div>
+                  );
+                })}
+              </div>
+            </div>
 
-                  {/* Faction selector badge */}
-                  {slot.active ? (
-                    <button
-                      onClick={() => cycleSlotFaction(slot.index)}
-                      disabled={isPlayer}
-                      className="px-2 py-1 rounded text-[11px] font-bold border transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
-                      style={{
-                        borderColor: factionColor,
-                        backgroundColor: `${factionColor}22`,
-                        color: factionColor,
-                      }}
-                      title={isPlayer ? 'Phe của bạn cố định là Phe 1 (Allies)' : 'Click để đổi Phe'}
+            {/* 3. AI Difficulty Selector */}
+            <div className="bg-slate-900/60 p-2.5 sm:p-3 rounded-xl border border-slate-800/80 text-left shrink-0">
+              <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider block mb-1.5 flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5 text-amber-400" /> Độ Khó Trí Tuệ Nhân Tạo (AI Difficulty):
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: 'easy', label: 'TÂN BINH', desc: '-20% T/Nguyên', badgeColor: 'text-sky-400' },
+                  { id: 'normal', label: 'TIÊU CHUẨN', desc: 'Chuẩn 100%', badgeColor: 'text-emerald-400' },
+                  { id: 'hard', label: 'CHUYÊN GIA', desc: '+20% T/Nguyên', badgeColor: 'text-rose-400' },
+                ].map((diff) => (
+                  <button
+                    key={diff.id}
+                    onClick={() => {
+                      soundEngine.playSound('click');
+                      setDifficulty(diff.id);
+                    }}
+                    className={`py-1.5 px-2 rounded-lg text-center transition-all border cursor-pointer flex flex-col items-center justify-center ${
+                      difficulty === diff.id
+                        ? 'bg-cyan-950/90 border-cyan-400 text-cyan-300 shadow-[0_0_10px_rgba(0,229,255,0.3)]'
+                        : 'bg-slate-950/50 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                    }`}
+                  >
+                    <span className="text-xs font-bold">{diff.label}</span>
+                    <span className={`text-[10px] ${diff.badgeColor}`}>{diff.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* -----------------------------------------------------------------------
+              RIGHT COLUMN (7 Cols): 8 Base Roster Slots Grid & Launch Button
+          ----------------------------------------------------------------------- */}
+          <div className="lg:col-span-7 flex flex-col justify-between gap-3 min-h-0">
+            {/* 1. 8 Slots Roster Grid */}
+            <div className="bg-slate-900/60 p-3 sm:p-3.5 rounded-xl border border-slate-800/80 flex flex-col flex-1 min-h-0 text-left">
+              <div className="flex items-center justify-between mb-2 shrink-0">
+                <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                  <Users className="w-4 h-4 text-amber-400" /> Phân Bố 8 Căn Cứ Chiến Lược:
+                </span>
+                <span className="text-[10px] text-slate-400 italic hidden sm:inline">
+                  * Checkbox để bật/tắt • Click huy hiệu Phe để đổi liên minh
+                </span>
+              </div>
+
+              {/* Grid 4 rows x 2 cols (Compact & Sleek for landscape) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs flex-1 min-h-0 overflow-y-auto pr-0.5">
+                {slots.map((slot) => {
+                  const isPlayer = slot.index === 0;
+                  const isAlly = !isPlayer && slot.faction === 0;
+                  const playerColor = PLAYER_COLORS[slot.index];
+                  const factionColor = PLAYER_COLORS[slot.faction % PLAYER_COLORS.length];
+                  const isHovered = hoveredSlot === slot.index;
+
+                  return (
+                    <div
+                      key={slot.index}
+                      onMouseEnter={() => setHoveredSlot(slot.index)}
+                      onMouseLeave={() => setHoveredSlot(null)}
+                      className={`p-2 rounded-xl border flex items-center justify-between gap-2 transition-all ${
+                        !slot.active
+                          ? 'bg-slate-950/40 border-slate-900/90 opacity-45'
+                          : isPlayer
+                          ? 'bg-cyan-950/40 border-cyan-500/80 shadow-[0_0_10px_rgba(0,229,255,0.22)]'
+                          : isAlly
+                          ? 'bg-slate-950/90 border-emerald-900/60'
+                          : 'bg-slate-950/80 border-slate-800'
+                      } ${isHovered && slot.active ? 'ring-1 ring-cyan-400/50 bg-slate-900/80' : ''}`}
+                      style={slot.active ? { borderColor: `${playerColor}77` } : undefined}
                     >
-                      <span
-                        className="w-2 h-2 rounded-full inline-block"
-                        style={{ backgroundColor: factionColor }}
-                      />
-                      Phe {slot.faction + 1}
-                      {!isPlayer && <ChevronDown className="w-3 h-3 opacity-70" />}
-                    </button>
-                  ) : (
-                    <span className="text-[10px] text-slate-600 italic">Trống</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+                      <div className="flex items-center gap-2 min-w-0">
+                        {/* Checkbox toggle slot */}
+                        <button
+                          type="button"
+                          onClick={() => toggleSlotActive(slot.index)}
+                          disabled={isPlayer}
+                          className={`w-5 h-5 rounded flex items-center justify-center border transition-all shrink-0 ${
+                            isPlayer
+                              ? 'bg-cyan-500 border-cyan-400 text-slate-950 cursor-not-allowed shadow-[0_0_6px_rgba(0,229,255,0.5)]'
+                              : slot.active
+                              ? 'bg-cyan-600 border-cyan-400 text-white cursor-pointer hover:bg-cyan-500'
+                              : 'bg-slate-900 border-slate-700 cursor-pointer hover:border-slate-500'
+                          }`}
+                          title={isPlayer ? 'Chỉ Huy luôn tham chiến' : 'Bật/Tắt Căn cứ này'}
+                        >
+                          {slot.active && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                        </button>
 
-        {/* Cấu hình độ khó AI */}
-        <div className="w-full mb-6 text-left">
-          <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">
-            Độ khó trí tuệ nhân tạo (AI Difficulty):
-          </label>
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { id: 'easy', label: 'TÂN BINH', desc: 'Bot -20% tài nguyên' },
-              { id: 'normal', label: 'TIÊU CHUẨN', desc: 'Tài nguyên bình thường' },
-              { id: 'hard', label: 'CHUYÊN GIA', desc: 'Bot +20% tài nguyên' },
-            ].map((diff) => (
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {/* Color Dot Swatch */}
+                            <span
+                              className="w-2.5 h-2.5 rounded-full inline-block shrink-0"
+                              style={{
+                                backgroundColor: playerColor,
+                                boxShadow: slot.active ? `0 0 8px ${playerColor}` : 'none',
+                              }}
+                              title={`Màu người chơi: ${PLAYER_COLOR_NAMES[slot.index]}`}
+                            />
+                            <span className="font-bold text-slate-200 truncate">
+                              Slot {slot.index + 1}: {slot.name}
+                            </span>
+
+                            {isPlayer && (
+                              <span className="bg-cyan-500 text-slate-950 text-[9px] px-1.5 py-0.2 rounded font-black shrink-0">
+                                BẠN
+                              </span>
+                            )}
+                            {isAlly && slot.active && (
+                              <span className="bg-emerald-500 text-slate-950 text-[9px] px-1.5 py-0.2 rounded font-black shrink-0">
+                                ĐỒNG MINH
+                              </span>
+                            )}
+                            {!isPlayer && !isAlly && slot.active && (
+                              <span className="bg-rose-950/80 border border-rose-600 text-rose-300 text-[9px] px-1.5 py-0.2 rounded font-bold shrink-0">
+                                ĐỐI THỦ
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5 truncate">
+                            <span style={{ color: playerColor }}>{PLAYER_COLOR_NAMES[slot.index]}</span>
+                            <span>•</span>
+                            <span className="truncate">{slot.shortLoc}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Faction selector badge */}
+                      {slot.active ? (
+                        <button
+                          type="button"
+                          onClick={() => cycleSlotFaction(slot.index)}
+                          disabled={isPlayer}
+                          className={`px-2 py-1 rounded text-[11px] font-bold border transition-all flex items-center gap-1.5 shrink-0 ${
+                            isPlayer
+                              ? 'cursor-not-allowed opacity-90'
+                              : 'cursor-pointer hover:brightness-125 hover:scale-105 active:scale-95'
+                          }`}
+                          style={{
+                            borderColor: factionColor,
+                            backgroundColor: `${factionColor}22`,
+                            color: factionColor,
+                            boxShadow: `0 0 8px ${factionColor}33`,
+                          }}
+                          title={isPlayer ? 'Phe của bạn cố định là Phe 1 (Liên Minh)' : 'Click để đổi Phe'}
+                        >
+                          <span
+                            className="w-2 h-2 rounded-full inline-block"
+                            style={{ backgroundColor: factionColor }}
+                          />
+                          <span>Phe {slot.faction + 1}</span>
+                          {!isPlayer && <ChevronDown className="w-3 h-3 opacity-80" />}
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-slate-600 italic shrink-0 px-2 py-1">Trống</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 2. Tactical Launch Action Bar */}
+            <div className="bg-slate-900/60 p-3 rounded-xl border border-slate-800/80 shrink-0">
               <button
-                key={diff.id}
-                onClick={() => setDifficulty(diff.id)}
-                className={`py-2 px-3 rounded text-center transition-all border cursor-pointer flex flex-col items-center justify-center ${
-                  difficulty === diff.id
-                    ? 'bg-cyan-950/80 border-cyan-400 text-cyan-300 shadow-[0_0_10px_rgba(0,229,255,0.3)]'
-                    : 'bg-slate-900/40 border-slate-800 text-slate-400 hover:border-slate-700'
-                }`}
+                type="button"
+                onClick={handleStart}
+                className="group relative flex items-center justify-center gap-3 w-full py-3.5 sm:py-4 px-6 rounded-xl bg-gradient-to-r from-cyan-500 via-sky-400 to-cyan-500 hover:from-cyan-400 hover:via-sky-300 hover:to-cyan-400 text-slate-950 font-black text-sm sm:text-base tracking-wider uppercase shadow-[0_0_35px_rgba(0,229,255,0.45)] transition-all transform hover:scale-[1.01] active:scale-[0.99] cursor-pointer overflow-hidden border border-cyan-300"
               >
-                <span className="text-xs font-bold">{diff.label}</span>
-                <span className="text-[10px] text-slate-400">{diff.desc}</span>
+                {/* Glowing light streak */}
+                <div className="absolute inset-0 bg-white/20 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 pointer-events-none" />
+
+                <Play className="w-5 h-5 fill-current shrink-0" />
+                <span className="truncate">XUẤT QUÂN // BẮT ĐẦU CHIẾN TRƯỜNG ĐA PHE</span>
+                <span className="hidden sm:inline-block text-xs font-mono text-slate-950/80 bg-cyan-300/60 px-2 py-0.5 rounded ml-1">
+                  [ENTER]
+                </span>
               </button>
-            ))}
+
+              <div className="flex items-center justify-between text-[10px] text-slate-400 mt-2 px-1">
+                <span>⚡ Phím tắt nhanh: [Enter] Xuất quân • [G] Hướng dẫn • [S] Cài đặt • [1..6] Chọn Kịch bản</span>
+                <span className="text-cyan-400 font-bold hidden sm:inline">Mô phỏng 60 FPS • Đồ họa Vector WebGPU</span>
+              </div>
+            </div>
           </div>
         </div>
-
-        {/* Hàng nút chức năng phụ: Hướng Dẫn & Cài Đặt */}
-        <div className="grid grid-cols-2 gap-3 w-full mb-3">
-          <button
-            type="button"
-            onClick={onOpenGuide}
-            className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-slate-900/90 hover:bg-cyan-950/80 border border-slate-700 hover:border-cyan-400 text-cyan-300 font-bold text-xs uppercase tracking-wider transition-all cursor-pointer shadow-sm hover:shadow-[0_0_15px_rgba(0,229,255,0.25)]"
-          >
-            <BookOpen className="w-4 h-4 text-cyan-400" /> HƯỚNG DẪN CHƠI [GUIDE]
-          </button>
-
-          <button
-            type="button"
-            onClick={onOpenSettings}
-            className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 hover:border-slate-500 text-slate-300 hover:text-white font-bold text-xs uppercase tracking-wider transition-all cursor-pointer shadow-sm"
-          >
-            <Settings className="w-4 h-4 text-slate-400" /> CÀI ĐẶT GAME [SETTINGS]
-          </button>
-        </div>
-
-        {/* Nút Bắt đầu trận đấu */}
-        <button
-          onClick={handleStart}
-          className="flex items-center justify-center gap-2.5 w-full py-4 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-base tracking-wider uppercase shadow-[0_0_30px_rgba(0,229,255,0.4)] transition-all transform hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
-        >
-          <Play className="w-5 h-5 fill-current" /> XUẤT QUÂN // BẮT ĐẦU CHIẾN TRƯỜNG ĐA PHE
-        </button>
       </div>
     </div>
   );

@@ -107,7 +107,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-150">
       <div
         className={`bg-[#030d1a] border-2 ${styles.border} ${styles.glow} rounded-xl w-full max-w-md shadow-2xl flex flex-col font-mono text-slate-200 overflow-hidden relative`}
       >
