@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build:wasm": "./build-wasm.sh",
+    "build:wasm": "bash ./build-wasm.sh",
     "build": "npm run build:wasm && tsc -b && vite build",
     "preview": "vite preview",
     "lint": "tsc -b --noEmit"
