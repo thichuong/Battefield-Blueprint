@@ -121,8 +121,8 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
               {renderIcon()}
             </div>
             <div>
-              <h3 className={`text-sm font-bold tracking-wider ${styles.titleColor}`}>{title}</h3>
-              {subtitle && <p className="text-[10px] text-slate-400 tracking-widest uppercase">{subtitle}</p>}
+              <h3 className={`text-base font-bold tracking-wider ${styles.titleColor}`}>{title}</h3>
+              {subtitle && <p className="text-[13px] text-slate-300 tracking-widest uppercase">{subtitle}</p>}
             </div>
           </div>
           <button
@@ -139,18 +139,18 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
         {/* Body Content */}
         <div className="p-5 flex flex-col gap-4 text-sm">
-          <div className="text-slate-100 font-semibold leading-relaxed text-sm bg-slate-900/60 p-3 rounded-lg border border-slate-800/90">
+          <div className="text-slate-100 font-semibold leading-relaxed text-sm bg-slate-900/60 p-3.5 rounded-lg border border-slate-800/90">
             {message}
           </div>
 
           {detailNote && (
-            <div className="flex items-start gap-2.5 text-xs text-slate-400 bg-slate-950/70 p-3 rounded-lg border border-slate-800/60 leading-relaxed">
+            <div className="flex items-start gap-2.5 text-[13px] text-slate-300 bg-slate-950/70 p-3 rounded-lg border border-slate-800/60 leading-relaxed">
               <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
               <span>{detailNote}</span>
             </div>
           )}
 
-          <div className="text-[11px] text-slate-500 font-mono flex items-center justify-between pt-1">
+          <div className="text-[13px] text-slate-400 font-mono flex items-center justify-between pt-1">
             <span>[Enter]: Đồng ý</span>
             <span>[Esc]: Hủy bỏ</span>
           </div>
@@ -163,7 +163,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
               soundEngine.playSound('click');
               onCancel();
             }}
-            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 active:scale-95 border border-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-bold transition-all cursor-pointer"
+            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 active:scale-95 border border-slate-700 text-slate-200 hover:text-white rounded-lg text-sm font-bold transition-all cursor-pointer"
           >
             {cancelText}
           </button>
@@ -172,7 +172,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
               soundEngine.playSound('order');
               onConfirm();
             }}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer active:scale-95 ${styles.confirmBtn}`}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold transition-all cursor-pointer active:scale-95 ${styles.confirmBtn}`}
           >
             <Check className="w-4 h-4" />
             {confirmText}

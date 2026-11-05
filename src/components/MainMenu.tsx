@@ -41,8 +41,8 @@ export const SLOT_CONFIGS = [
   { name: 'AI Đối Thủ 1', location: 'Đông-Bắc (Gốc trên phải)', shortLoc: 'Đông-Bắc', x: 78, y: 22 },
   { name: 'AI Đồng Minh 1', location: 'Tây-Bắc (Gốc trên trái)', shortLoc: 'Tây-Bắc', x: 22, y: 22 },
   { name: 'AI Đối Thủ 2', location: 'Đông-Nam (Gốc dưới phải)', shortLoc: 'Đông-Nam', x: 78, y: 78 },
-  { name: 'AI Đồng Minh 2', location: 'Bắc (Cạnh trên giữa)', shortLoc: 'Bắc', x: 50, y: 16 },
-  { name: 'AI Đối Thủ 3', location: 'Nam (Cạnh dưới giữa)', shortLoc: 'Nam', x: 50, y: 84 },
+  { name: 'AI Đồng Minh 2', location: 'Nam (Cạnh dưới giữa)', shortLoc: 'Nam', x: 50, y: 84 },
+  { name: 'AI Đối Thủ 3', location: 'Bắc (Cạnh trên giữa)', shortLoc: 'Bắc', x: 50, y: 16 },
   { name: 'AI Đồng Minh 3', location: 'Tây (Cạnh trái giữa)', shortLoc: 'Tây', x: 16, y: 50 },
   { name: 'AI Đối Thủ 4', location: 'Đông (Cạnh phải giữa)', shortLoc: 'Đông', x: 84, y: 50 },
 ];
@@ -214,19 +214,19 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
     }
 
     const rect = e.currentTarget.getBoundingClientRect();
-    const dropdownHeight = 330;
-    const dropdownWidth = 340;
+    const dropdownHeight = 175;
+    const dropdownWidth = 240;
 
     const spaceBelow = window.innerHeight - rect.bottom;
     const showAbove = spaceBelow < dropdownHeight && rect.top > dropdownHeight;
     const top = showAbove
-      ? Math.max(12, rect.top - dropdownHeight - 6)
-      : Math.min(window.innerHeight - dropdownHeight - 12, rect.bottom + 6);
+      ? Math.max(8, rect.top - dropdownHeight - 4)
+      : Math.min(window.innerHeight - dropdownHeight - 8, rect.bottom + 4);
 
     let left = rect.right - dropdownWidth;
-    if (left < 12) left = 12;
-    if (left + dropdownWidth > window.innerWidth - 12) {
-      left = window.innerWidth - dropdownWidth - 12;
+    if (left < 8) left = 8;
+    if (left + dropdownWidth > window.innerWidth - 8) {
+      left = window.innerWidth - dropdownWidth - 8;
     }
 
     setOpenFactionDropdown({
@@ -356,40 +356,12 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
 
           <div className="flex items-center gap-2.5 shrink-0">
             {/* Quick Status Pill */}
-            <div className="hidden lg:flex items-center gap-2 bg-slate-900/90 border border-cyan-900/80 px-3.5 py-1.5 rounded-xl text-sm text-slate-200 shadow-inner">
+            <div className="flex items-center gap-2 bg-slate-900/90 border border-cyan-900/80 px-3.5 py-1.5 rounded-xl text-xs sm:text-sm text-slate-200 shadow-inner">
               <span className="text-cyan-400 font-bold">{summary.total}/8</span> Căn cứ •{' '}
               <span className="text-emerald-400 font-bold">{summary.allies}</span> Đồng minh •{' '}
               <span className="text-rose-400 font-bold">{summary.enemies}</span> Đối thủ •{' '}
               <span className="text-amber-400 font-bold">{summary.factionsCount}</span> Phe
             </div>
-
-            {/* Guide Button */}
-            <button
-              onClick={() => {
-                soundEngine.playSound('click');
-                onOpenGuide();
-              }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900/90 hover:bg-cyan-950/80 border border-slate-700 hover:border-cyan-400 text-cyan-300 font-bold text-sm uppercase tracking-wider transition-all cursor-pointer shadow-sm hover:shadow-[0_0_12px_rgba(0,229,255,0.25)]"
-              title="Xem cẩm nang chiến thuật [Phím tắt: G]"
-            >
-              <BookOpen className="w-4 h-4 text-cyan-400" />
-              <span className="hidden sm:inline">HƯỚNG DẪN</span>
-              <span className="text-[13px] text-cyan-400 font-medium">[G]</span>
-            </button>
-
-            {/* Settings Button */}
-            <button
-              onClick={() => {
-                soundEngine.playSound('click');
-                onOpenSettings();
-              }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 hover:border-slate-500 text-slate-200 hover:text-white font-bold text-sm uppercase tracking-wider transition-all cursor-pointer shadow-sm"
-              title="Cài đặt game [Phím tắt: S]"
-            >
-              <Settings className="w-4 h-4 text-slate-400" />
-              <span className="hidden sm:inline">CÀI ĐẶT</span>
-              <span className="text-[13px] text-slate-400 font-medium">[S]</span>
-            </button>
           </div>
         </header>
 
@@ -468,6 +440,39 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* 3. Phím Chức Năng: Hướng Dẫn & Cài Đặt */}
+            <div className="grid grid-cols-2 gap-2.5 shrink-0">
+              {/* Guide Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  soundEngine.playSound('click');
+                  onOpenGuide();
+                }}
+                className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-slate-900/90 hover:bg-cyan-950/80 border border-slate-700/90 hover:border-cyan-400 text-cyan-300 font-bold text-sm uppercase tracking-wider transition-all cursor-pointer shadow-sm hover:shadow-[0_0_15px_rgba(0,229,255,0.25)]"
+                title="Xem cẩm nang chiến thuật [Phím tắt: G]"
+              >
+                <BookOpen className="w-4 h-4 text-cyan-400" />
+                <span>HƯỚNG DẪN</span>
+                <span className="text-[12px] text-cyan-400/90 font-mono font-medium">[G]</span>
+              </button>
+
+              {/* Settings Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  soundEngine.playSound('click');
+                  onOpenSettings();
+                }}
+                className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/90 hover:border-slate-500 text-slate-200 hover:text-white font-bold text-sm uppercase tracking-wider transition-all cursor-pointer shadow-sm hover:shadow-[0_0_12px_rgba(148,163,184,0.2)]"
+                title="Cài đặt game [Phím tắt: S]"
+              >
+                <Settings className="w-4 h-4 text-slate-400" />
+                <span>CÀI ĐẶT</span>
+                <span className="text-[12px] text-slate-400 font-mono font-medium">[S]</span>
+              </button>
             </div>
           </div>
 
@@ -647,61 +652,35 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
       </div>
 
       {/* =========================================================================
-          POPOVER: Floating Faction Selection Grid (Guaranteed all 8 factions visible)
+          POPOVER: Floating Faction Selection Grid (Nhỏ gọn & Đơn giản)
       ========================================================================= */}
       {openFactionDropdown && (
         <div
-          className="fixed z-[9999] p-3.5 bg-slate-950/98 border-2 border-cyan-500/80 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.95),0_0_35px_rgba(0,229,255,0.35)] backdrop-blur-xl w-[340px] select-none animate-in fade-in zoom-in-95 duration-150"
+          className="fixed z-[9999] p-2 bg-slate-950/98 border border-cyan-500/70 rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.9),0_0_20px_rgba(0,229,255,0.25)] backdrop-blur-md w-[240px] select-none animate-in fade-in zoom-in-95 duration-100"
           style={{
             top: `${openFactionDropdown.top}px`,
             left: `${openFactionDropdown.left}px`,
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Header */}
-          <div className="flex items-center justify-between pb-2 mb-2.5 border-b border-cyan-900/70">
-            <div className="flex items-center gap-2">
-              <Shield className="w-4 h-4 text-cyan-400" />
-              <span className="text-xs font-black tracking-wider text-cyan-300 uppercase">
-                CHỌN PHE TÁC CHIẾN
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-400">
-                #{openFactionDropdown.slotIndex + 1}
-              </span>
-              <button
-                type="button"
-                onClick={() => setOpenFactionDropdown(null)}
-                className="w-5 h-5 rounded-md flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
-                title="Đóng"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-
-          {/* Subheader info: Target base location & name */}
-          <div className="flex items-center justify-between px-2.5 py-1.5 mb-2.5 rounded-lg bg-cyan-950/40 border border-cyan-900/50 text-xs">
-            <div className="flex items-center gap-2 min-w-0">
-              <span
-                className="w-2.5 h-2.5 rounded-full shrink-0"
-                style={{
-                  backgroundColor: PLAYER_COLORS[openFactionDropdown.slotIndex],
-                  boxShadow: `0 0 6px ${PLAYER_COLORS[openFactionDropdown.slotIndex]}`,
-                }}
-              />
-              <span className="font-bold text-slate-100 truncate">
-                {slots[openFactionDropdown.slotIndex]?.name}
-              </span>
-            </div>
-            <span className="text-cyan-400 font-mono text-[11px] shrink-0 font-semibold">
-              {slots[openFactionDropdown.slotIndex]?.shortLoc}
+          {/* Header nhỏ gọn */}
+          <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-cyan-900/60 px-0.5">
+            <span className="text-[11px] font-bold tracking-wider text-cyan-300 uppercase flex items-center gap-1.5">
+              <Shield className="w-3.5 h-3.5 text-cyan-400" />
+              Chọn Phe (#{openFactionDropdown.slotIndex + 1})
             </span>
+            <button
+              type="button"
+              onClick={() => setOpenFactionDropdown(null)}
+              className="w-4 h-4 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              title="Đóng"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
 
-          {/* 8 Factions Grid - 2 columns x 4 rows, EVERY SINGLE FACTION 100% VISIBLE */}
-          <div className="grid grid-cols-2 gap-2">
+          {/* 8 Phe dạng lưới 2 cột gọn gàng */}
+          <div className="grid grid-cols-2 gap-1.5">
             {[0, 1, 2, 3, 4, 5, 6, 7].map((fIndex) => {
               const fColor = PLAYER_COLORS[fIndex];
               const isSelected = slots[openFactionDropdown.slotIndex]?.faction === fIndex;
@@ -709,82 +688,52 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenGuide, on
               const playerFaction = slots[0]?.faction ?? 0;
               const isAlliedWithPlayer = isPlayerSlot ? true : fIndex === playerFaction;
 
-              // Đếm số lượng căn cứ đang thuộc phe này
-              const basesInFaction = slots.filter((s) => s.active && s.faction === fIndex).length;
-
               return (
                 <button
                   key={fIndex}
                   type="button"
                   onClick={() => selectSlotFaction(openFactionDropdown.slotIndex, fIndex)}
-                  className={`group relative p-2 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between overflow-hidden ${
+                  className={`px-2 py-1.5 rounded-lg border text-left transition-all cursor-pointer flex items-center justify-between gap-1 ${
                     isSelected
-                      ? 'border-2 shadow-[0_0_14px_rgba(0,229,255,0.35)] scale-[1.02]'
-                      : 'border-slate-800/90 hover:border-slate-700 bg-slate-900/60 hover:bg-slate-900/90 hover:scale-[1.01]'
+                      ? 'border-cyan-400 bg-cyan-950/60 shadow-[0_0_8px_rgba(0,229,255,0.3)]'
+                      : 'border-slate-800 bg-slate-900/60 hover:bg-slate-800/80 hover:border-slate-700'
                   }`}
-                  style={{
-                    borderColor: isSelected ? fColor : undefined,
-                    backgroundColor: isSelected ? `${fColor}20` : undefined,
-                  }}
+                  style={
+                    isSelected
+                      ? { borderColor: fColor, backgroundColor: `${fColor}25` }
+                      : undefined
+                  }
                 >
-                  <div className="flex items-center justify-between gap-1 mb-1">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span
-                        className="w-3 h-3 rounded-full shrink-0 transition-transform group-hover:scale-110"
-                        style={{
-                          backgroundColor: fColor,
-                          boxShadow: `0 0 8px ${fColor}`,
-                        }}
-                      />
-                      <span
-                        className="font-black text-xs truncate"
-                        style={{ color: isSelected ? '#ffffff' : fColor }}
-                      >
-                        Phe {fIndex + 1}
-                      </span>
-                    </div>
-                    {isSelected && (
-                      <span
-                        className="p-0.5 rounded-full text-slate-950 flex items-center justify-center shrink-0"
-                        style={{ backgroundColor: fColor }}
-                      >
-                        <Check className="w-2.5 h-2.5 stroke-[3.5]" />
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex items-center justify-between text-[10px] mt-0.5">
-                    <span className="text-slate-400 truncate font-medium">
-                      {FACTION_SHORT_LABELS[fIndex]}
-                    </span>
+                  <div className="flex items-center gap-1.5 min-w-0">
                     <span
-                      className={`px-1 py-0.2 rounded font-bold text-[9px] shrink-0 ${
-                        isPlayerSlot
-                          ? 'bg-cyan-950/80 border border-cyan-500/60 text-cyan-300'
-                          : isAlliedWithPlayer
-                          ? 'bg-emerald-950/80 border border-emerald-600/60 text-emerald-300'
-                          : 'bg-rose-950/80 border border-rose-600/60 text-rose-300'
-                      }`}
+                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{
+                        backgroundColor: fColor,
+                        boxShadow: `0 0 5px ${fColor}`,
+                      }}
+                    />
+                    <span
+                      className="font-bold text-xs truncate"
+                      style={{ color: isSelected ? '#ffffff' : fColor }}
                     >
-                      {isPlayerSlot ? 'BẠN' : isAlliedWithPlayer ? 'MINH' : 'ĐỊCH'}
+                      Phe {fIndex + 1}
                     </span>
                   </div>
 
-                  <div className="text-[9px] text-slate-400 font-mono mt-1 pt-1 border-t border-slate-800/60 flex items-center justify-between">
-                    <span>Đang có:</span>
-                    <span className={`font-bold ${basesInFaction > 0 ? 'text-slate-200' : 'text-slate-500'}`}>
-                      {basesInFaction} căn cứ
-                    </span>
-                  </div>
+                  <span
+                    className={`text-[9px] font-bold px-1 py-0.2 rounded shrink-0 ${
+                      isPlayerSlot
+                        ? 'text-cyan-400 bg-cyan-950/80'
+                        : isAlliedWithPlayer
+                        ? 'text-emerald-400 bg-emerald-950/80'
+                        : 'text-rose-400 bg-rose-950/80'
+                    }`}
+                  >
+                    {isPlayerSlot ? 'BẠN' : isAlliedWithPlayer ? 'MINH' : 'ĐỊCH'}
+                  </span>
                 </button>
               );
             })}
-          </div>
-
-          {/* Tactical Tip / Helper */}
-          <div className="mt-2.5 pt-2 border-t border-slate-800/80 text-[10px] text-slate-400 flex items-center justify-between px-1">
-            <span className="text-cyan-400/90 font-mono">⚡ Đủ 8 Phe độc lập</span>
-            <span className="text-slate-400 font-mono">Cùng Phe = Đồng minh</span>
           </div>
         </div>
       )}

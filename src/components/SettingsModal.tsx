@@ -104,7 +104,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <h2 className="text-base sm:text-lg font-black text-cyan-300 tracking-wider flex items-center gap-2">
                   GAME SETTINGS <span className="text-slate-400 font-normal">// CÀI ĐẶT HỆ THỐNG</span>
                 </h2>
-                <p className="text-[11px] text-slate-400 hidden sm:block">
+                <p className="text-[13px] sm:text-sm text-slate-300 hidden sm:block">
                   Cấu hình hiệu năng GPU, giới hạn FPS, âm lượng, tốc độ camera và cơ chế trận đấu
                 </p>
               </div>
@@ -112,7 +112,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
             <div className="flex items-center gap-3">
               {isInGame && (
-                <div className="hidden sm:flex items-center gap-2 bg-slate-900/90 border border-slate-700/80 px-2.5 py-1 rounded-lg text-xs font-mono">
+                <div className="hidden sm:flex items-center gap-2 bg-slate-900/90 border border-slate-700/80 px-3 py-1.5 rounded-lg text-[13px] sm:text-sm font-mono">
                   <span
                     className={`w-2 h-2 rounded-full ${
                       autoPause ? 'bg-cyan-400 animate-pulse' : 'bg-emerald-400 animate-ping'
@@ -148,17 +148,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="md:col-span-6 flex flex-col justify-between gap-4 min-h-0">
               {/* Box 1: Âm lượng & Camera */}
               <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800/90 space-y-4">
-                <div className="text-xs font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b border-slate-800">
+                <div className="text-sm font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b border-slate-800">
                   <Volume2 className="w-4 h-4 text-cyan-400" /> Điều Khiển Âm Thanh & Camera:
                 </div>
 
                 {/* Âm lượng hiệu ứng */}
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs text-slate-300 flex items-center gap-1.5">
+                    <span className="text-sm text-slate-300 flex items-center gap-1.5">
                       Âm lượng âm thanh tổng:
                     </span>
-                    <span className="text-cyan-300 font-bold text-xs bg-cyan-950/80 border border-cyan-800 px-2 py-0.5 rounded">
+                    <span className="text-cyan-300 font-bold text-sm bg-cyan-950/80 border border-cyan-800 px-2.5 py-0.5 rounded">
                       {Math.round(soundVolume * 100)}%
                     </span>
                   </div>
@@ -191,10 +191,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           soundEngine.playSound('click');
                           onUpdateSettings({ soundVolume: btn.val, cameraSpeed, autoPause, showGrid, fpsLimit });
                         }}
-                        className={`py-1 text-[10px] font-bold rounded border transition-all ${
+                        className={`py-1.5 text-[13px] font-bold rounded border transition-all ${
                           Math.abs(soundVolume - btn.val) < 0.05
                             ? 'bg-cyan-950 border-cyan-400 text-cyan-300'
-                            : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                            : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
                         }`}
                       >
                         {btn.label}
@@ -206,10 +206,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {/* Tốc độ Camera */}
                 <div className="pt-2 border-t border-slate-800/80">
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs text-slate-300 flex items-center gap-1.5">
-                      <Compass className="w-3.5 h-3.5 text-cyan-400" /> Tốc độ di chuyển Camera:
+                    <span className="text-sm text-slate-300 flex items-center gap-1.5">
+                      <Compass className="w-4 h-4 text-cyan-400" /> Tốc độ di chuyển Camera:
                     </span>
-                    <span className="text-cyan-300 font-bold text-xs bg-cyan-950/80 border border-cyan-800 px-2 py-0.5 rounded">
+                    <span className="text-cyan-300 font-bold text-sm bg-cyan-950/80 border border-cyan-800 px-2.5 py-0.5 rounded">
                       {cameraSpeed.toFixed(1)}x
                     </span>
                   </div>
@@ -236,7 +236,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       { label: '0.8x Chậm', val: 0.8 },
                       { label: '1.0x Chuẩn', val: 1.0 },
                       { label: '1.5x Nhanh', val: 1.5 },
-                      { label: '2.0x Siêu tốc', val: 2.0 },
+                      { label: '2.0x Tốc độ', val: 2.0 },
                     ].map((btn) => (
                       <button
                         key={btn.label}
@@ -251,10 +251,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             fpsLimit,
                           });
                         }}
-                        className={`py-1 text-[10px] font-bold rounded border transition-all ${
+                        className={`py-1.5 px-1 text-[13px] font-bold rounded border transition-all text-center leading-tight ${
                           Math.abs(cameraSpeed - btn.val) < 0.05
                             ? 'bg-cyan-950 border-cyan-400 text-cyan-300'
-                            : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                            : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
                         }`}
                       >
                         {btn.label}
@@ -267,10 +267,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {/* Box 2: Giới hạn FPS */}
               <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800/90 space-y-2.5">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-                  <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="text-sm font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
                     <Gauge className="w-4 h-4 text-cyan-400" /> Tần Số Quét & Giới Hạn FPS:
                   </span>
-                  <span className="text-cyan-300 font-bold text-xs bg-cyan-950/90 border border-cyan-800 px-2 py-0.5 rounded uppercase">
+                  <span className="text-cyan-300 font-bold text-sm bg-cyan-950/90 border border-cyan-800 px-2.5 py-0.5 rounded uppercase">
                     {fpsLimit === 'vsync'
                       ? 'V-Sync (Auto)'
                       : fpsLimit === 'unlimited'
@@ -296,10 +296,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             fpsLimit: opt.value,
                           });
                         }}
-                        className={`py-2 px-2 rounded-lg text-xs font-bold transition-all border text-center cursor-pointer flex flex-col items-center justify-center ${
+                        className={`py-2 px-2 rounded-lg text-sm font-bold transition-all border text-center cursor-pointer flex flex-col items-center justify-center ${
                           isActive
                             ? 'bg-cyan-950/90 border-cyan-400 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.35)] scale-[1.02]'
-                            : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                            : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
                         }`}
                       >
                         <span>{opt.label}</span>
@@ -308,7 +308,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   })}
                 </div>
 
-                <div className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800/80 text-[11px] text-slate-400 leading-relaxed">
+                <div className="p-3 rounded-lg bg-slate-950/80 border border-slate-800/80 text-[13px] text-slate-300 leading-relaxed">
                   <span className="text-cyan-400 font-semibold">ℹ️ Chi tiết chế độ: </span>
                   {currentFpsDesc}
                 </div>
@@ -321,7 +321,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="md:col-span-6 flex flex-col justify-between gap-4 min-h-0">
               {/* Box 1: Gameplay Toggles */}
               <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800/90 space-y-3">
-                <div className="text-xs font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b border-slate-800">
+                <div className="text-sm font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b border-slate-800">
                   <Pause className="w-4 h-4 text-cyan-400" /> Cơ Chế Trận Đấu & Hiển Thị:
                 </div>
 
@@ -337,17 +337,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       fpsLimit,
                     });
                   }}
-                  className={`p-3 rounded-xl border flex items-center justify-between gap-3 cursor-pointer transition-all ${
+                  className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 cursor-pointer transition-all ${
                     autoPause
                       ? 'bg-cyan-950/30 border-cyan-500/60'
                       : 'bg-slate-950/50 border-slate-800 hover:border-slate-700'
                   }`}
                 >
                   <div className="min-w-0">
-                    <span className="text-xs font-bold text-slate-200 block">
+                    <span className="text-sm font-bold text-slate-100 block">
                       Tự động đóng băng trận đấu (Auto Pause)
                     </span>
-                    <span className="text-[11px] text-slate-400 block mt-0.5">
+                    <span className="text-[13px] text-slate-300 block mt-0.5">
                       {autoPause
                         ? 'Đóng băng thời gian khi mở Cây công nghệ, Cài đặt hoặc Hướng dẫn.'
                         : 'Trận đấu tiếp tục diễn ra theo thời gian thực khi mở bảng modal.'}
@@ -379,17 +379,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       fpsLimit,
                     });
                   }}
-                  className={`p-3 rounded-xl border flex items-center justify-between gap-3 cursor-pointer transition-all ${
+                  className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 cursor-pointer transition-all ${
                     showGrid
                       ? 'bg-cyan-950/30 border-cyan-500/60'
                       : 'bg-slate-950/50 border-slate-800 hover:border-slate-700'
                   }`}
                 >
                   <div className="min-w-0">
-                    <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                      <Grid className="w-3.5 h-3.5 text-cyan-400" /> Hiển thị lưới tọa độ Blueprint
+                    <span className="text-sm font-bold text-slate-100 flex items-center gap-1.5">
+                      <Grid className="w-4 h-4 text-cyan-400" /> Hiển thị lưới tọa độ Blueprint
                     </span>
-                    <span className="text-[11px] text-slate-400 block mt-0.5">
+                    <span className="text-[13px] text-slate-300 block mt-0.5">
                       {showGrid
                         ? 'Lưới ô vuông 100x100 phong cách bản vẽ thiết kế quân sự đang BẬT.'
                         : 'Lưới ô vuông tọa độ đang ẨN.'}
@@ -412,11 +412,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               {/* Box 2: Bảng phím tắt tác chiến */}
               <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800/90 flex flex-col justify-between flex-1 min-h-0">
-                <div className="text-xs font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b border-slate-800 mb-2.5">
+                <div className="text-sm font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b border-slate-800 mb-2.5">
                   <Keyboard className="w-4 h-4 text-cyan-400" /> Bảng Thao Tác Chuột & Phím Tắt:
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="grid grid-cols-2 gap-2 text-sm">
                   {[
                     { key: 'WASD / Mũi tên', desc: 'Di chuyển Camera' },
                     { key: 'Cuộn chuột', desc: 'Zoom phóng to/thu nhỏ' },
@@ -429,12 +429,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   ].map((hotkey) => (
                     <div
                       key={hotkey.key}
-                      className="p-2 rounded-lg bg-slate-950/70 border border-slate-800/80 flex flex-col justify-center"
+                      className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/80 flex flex-col justify-center"
                     >
-                      <span className="text-cyan-300 font-bold font-mono text-[11px] truncate">
+                      <span className="text-cyan-300 font-bold font-mono text-[13px] truncate">
                         {hotkey.key}
                       </span>
-                      <span className="text-[10px] text-slate-400 truncate">{hotkey.desc}</span>
+                      <span className="text-[13px] text-slate-300 truncate">{hotkey.desc}</span>
                     </div>
                   ))}
                 </div>
@@ -454,7 +454,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     soundEngine.playSound('click');
                     setConfirmAction('restart');
                   }}
-                  className="group flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-rose-950/90 via-rose-900/70 to-rose-950/90 hover:from-rose-900 hover:to-rose-800 active:scale-95 border border-rose-700/80 hover:border-rose-400 text-rose-300 hover:text-white rounded-xl text-xs font-bold tracking-wide transition-all shadow-[0_0_12px_rgba(244,63,94,0.2)] hover:shadow-[0_0_20px_rgba(244,63,94,0.45)] cursor-pointer"
+                  className="group flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-rose-950/90 via-rose-900/70 to-rose-950/90 hover:from-rose-900 hover:to-rose-800 active:scale-95 border border-rose-700/80 hover:border-rose-400 text-rose-300 hover:text-white rounded-xl text-sm font-bold tracking-wide transition-all shadow-[0_0_12px_rgba(244,63,94,0.2)] hover:shadow-[0_0_20px_rgba(244,63,94,0.45)] cursor-pointer"
                 >
                   <RotateCcw className="w-4 h-4 text-rose-400 group-hover:text-rose-200 transition-transform duration-300 group-hover:-rotate-90" />
                   <span>CHƠI LẠI TRẬN</span>
@@ -468,7 +468,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     soundEngine.playSound('click');
                     setConfirmAction('menu');
                   }}
-                  className="group flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-slate-900/90 via-slate-800/80 to-slate-900/90 hover:from-slate-800 hover:to-slate-700 active:scale-95 border border-slate-700/90 hover:border-cyan-500/80 text-slate-300 hover:text-cyan-200 rounded-xl text-xs font-bold tracking-wide transition-all shadow-[0_0_12px_rgba(15,23,42,0.4)] hover:shadow-[0_0_18px_rgba(6,182,212,0.3)] cursor-pointer"
+                  className="group flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-slate-900/90 via-slate-800/80 to-slate-900/90 hover:from-slate-800 hover:to-slate-700 active:scale-95 border border-slate-700/90 hover:border-cyan-500/80 text-slate-300 hover:text-cyan-200 rounded-xl text-sm font-bold tracking-wide transition-all shadow-[0_0_12px_rgba(15,23,42,0.4)] hover:shadow-[0_0_18px_rgba(6,182,212,0.3)] cursor-pointer"
                 >
                   <Home className="w-4 h-4 text-slate-400 group-hover:text-cyan-300 transition-transform duration-200 group-hover:scale-110" />
                   <span>VỀ MENU CHÍNH</span>
@@ -482,20 +482,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 soundEngine.playSound('click');
                 handleClose();
               }}
-              className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-cyan-600 to-sky-500 hover:from-cyan-500 hover:to-sky-400 active:scale-95 text-slate-950 font-black rounded-xl text-xs tracking-wider uppercase transition-all shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:shadow-[0_0_25px_rgba(6,182,212,0.6)] cursor-pointer"
+              className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-cyan-600 to-sky-500 hover:from-cyan-500 hover:to-sky-400 active:scale-95 text-slate-950 font-black rounded-xl text-sm tracking-wider uppercase transition-all shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:shadow-[0_0_25px_rgba(6,182,212,0.6)] cursor-pointer"
             >
               {isInGame ? (
                 <>
                   <Play className="w-4 h-4 fill-current" />
                   <span>TIẾP TỤC TRẬN ĐẤU</span>
-                  <span className="text-[10px] bg-cyan-300/60 text-slate-950 px-1.5 py-0.2 rounded font-mono">
+                  <span className="text-[13px] bg-cyan-300/60 text-slate-950 px-2 py-0.5 rounded font-mono font-bold">
                     [ESC]
                   </span>
                 </>
               ) : (
                 <>
                   <span>LƯU & ĐÓNG</span>
-                  <span className="text-[10px] bg-cyan-300/60 text-slate-950 px-1.5 py-0.2 rounded font-mono">
+                  <span className="text-[13px] bg-cyan-300/60 text-slate-950 px-2 py-0.5 rounded font-mono font-bold">
                     [ESC]
                   </span>
                 </>
