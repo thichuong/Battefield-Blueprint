@@ -21,9 +21,15 @@ pub fn calculate_building_construction_step(
 }
 
 pub fn update_buildings(engine: &mut GameEngine, dt: f32) {
-    let mut new_spawned_units = Vec::new();
-    let mut new_turret_projectiles = Vec::new();
     let factions = engine.team_factions();
+    engine
+        .spatial_grid
+        .ensure_synced(&engine.units, &engine.buildings, &factions);
+
+    let mut new_spawned_units = std::mem::take(&mut engine.scratchpad.new_spawned_units);
+    new_spawned_units.clear();
+    let mut new_turret_projectiles = std::mem::take(&mut engine.scratchpad.new_projectiles);
+    new_turret_projectiles.clear();
     let team_techs: [TechTreeState; 8] =
         std::array::from_fn(|i| engine.team_tech(Team::from_index(i)).clone());
 
@@ -32,16 +38,17 @@ pub fn update_buildings(engine: &mut GameEngine, dt: f32) {
 
     // Chỉ thu thập vị trí của Engineer khi có ít nhất 1 công trình chưa xây xong
     let has_incomplete_building = engine.buildings.iter().any(|b| b.build_progress < 1.0);
-    let engineer_pos: Vec<(Team, f32, f32)> = if has_incomplete_building {
-        engine
-            .units
-            .iter()
-            .filter(|u| u.unit_type == UnitType::Engineer)
-            .map(|u| (u.team, u.x, u.y))
-            .collect()
-    } else {
-        Vec::new()
-    };
+    let mut engineer_pos = std::mem::take(&mut engine.scratchpad.engineer_pos);
+    engineer_pos.clear();
+    if has_incomplete_building {
+        engineer_pos.extend(
+            engine
+                .units
+                .iter()
+                .filter(|u| u.unit_type == UnitType::Engineer)
+                .map(|u| (u.team, u.x, u.y)),
+        );
+    }
 
     let num_buildings = engine.buildings.len();
     for b_idx in 0..num_buildings {
@@ -219,7 +226,7 @@ pub fn update_buildings(engine: &mut GameEngine, dt: f32) {
         }
     }
 
-    for (team, u_type, sx, sy, rx, ry) in new_spawned_units {
+    for (team, u_type, sx, sy, rx, ry) in new_spawned_units.drain(..) {
         let u_id = engine.alloc_id();
         let mut unit = engine.config.create_unit(u_id, team, u_type, sx, sy);
         unit.target_x = rx;
@@ -280,42 +287,66 @@ pub fn update_buildings(engine: &mut GameEngine, dt: f32) {
         engine.units.push(unit);
     }
 
-    for mut p in new_turret_projectiles {
+    for mut p in new_turret_projectiles.drain(..) {
         p.id = engine.alloc_id();
         engine.projectiles.push(p);
     }
 
+    engineer_pos.clear();
+    engine.scratchpad.new_spawned_units = new_spawned_units;
+    engine.scratchpad.new_projectiles = new_turret_projectiles;
+    engine.scratchpad.engineer_pos = engineer_pos;
+
     // Hiệu ứng khói lửa bốc lên từ các công trình bị hư hại nặng (< 45% HP)
     if !engine.is_headless && fastrand::f32() < 0.3 {
-        let damaged_pos: Vec<(f32, f32)> = engine
-            .buildings
-            .iter()
-            .filter(|b| b.hp < b.max_hp * 0.45 && b.build_progress >= 1.0)
-            .map(|b| {
-                (
-                    b.x + (fastrand::f32() - 0.5) * b.width * 0.5,
-                    b.y - b.height * 0.2,
-                )
-            })
-            .collect();
-        for (rx, ry) in damaged_pos {
+        let mut damaged_pos = std::mem::take(&mut engine.scratchpad.damaged_building_pos);
+        damaged_pos.clear();
+        damaged_pos.extend(
+            engine
+                .buildings
+                .iter()
+                .filter(|b| b.hp < b.max_hp * 0.45 && b.build_progress >= 1.0)
+                .map(|b| {
+                    (
+                        b.x + (fastrand::f32() - 0.5) * b.width * 0.5,
+                        b.y - b.height * 0.2,
+                    )
+                }),
+        );
+        for &(rx, ry) in &damaged_pos {
             engine.spawn_particles(rx, ry, 1, "#f97316", 30.0, 2.2, 0.45);
             engine.spawn_particles(rx, ry, 1, "#475569", 22.0, 3.0, 0.65);
         }
+        damaged_pos.clear();
+        engine.scratchpad.damaged_building_pos = damaged_pos;
+    }
+
+    cleanup_dead_buildings(engine);
+}
+
+/// Sinh hiệu ứng vụ nổ và dọn dẹp các công trình đã sập (`hp <= 0.0`), đồng thời đánh dấu `SpatialGrid` cần đồng bộ lại.
+pub fn cleanup_dead_buildings(engine: &mut GameEngine) {
+    if !engine.buildings.iter().any(|b| b.hp <= 0.0) {
+        return;
     }
 
     // Sinh vụ nổ lớn và rung chấn màn hình khi công trình bị sập
     if !engine.is_headless {
-        let dead_buildings: Vec<(f32, f32)> = engine
-            .buildings
-            .iter()
-            .filter(|b| b.hp <= 0.0)
-            .map(|b| (b.x, b.y))
-            .collect();
-        for (x, y) in dead_buildings {
+        let mut dead_buildings = std::mem::take(&mut engine.scratchpad.dead_buildings);
+        dead_buildings.clear();
+        dead_buildings.extend(
+            engine
+                .buildings
+                .iter()
+                .filter(|b| b.hp <= 0.0)
+                .map(|b| (b.x, b.y)),
+        );
+        for &(x, y) in &dead_buildings {
             engine.spawn_particles(x, y, 24, "#ea580c", 170.0, 3.8, 0.55);
             engine.spawn_particles(x, y, 14, "#94a3b8", 110.0, 2.8, 0.5);
         }
+        dead_buildings.clear();
+        engine.scratchpad.dead_buildings = dead_buildings;
     }
 
     // Xóa nhà sập
@@ -327,6 +358,7 @@ pub fn update_buildings(engine: &mut GameEngine, dt: f32) {
             engine.command_card_dirty = true;
         }
     }
+    engine.spatial_grid.invalidate();
 }
 
 pub fn process_building_combat(

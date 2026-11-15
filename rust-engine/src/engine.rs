@@ -10,6 +10,51 @@ use crate::resources::*;
 use crate::simulation;
 use crate::spatial_grid::SpatialGrid;
 
+/// Bộ đệm tái sử dụng trong vòng lặp mô phỏng (Zero-Allocation Tick Loop)
+pub struct SimScratchpad {
+    pub new_projectiles: Vec<Projectile>,
+    pub new_floating_texts: Vec<FloatingText>,
+    pub new_magic_circles: Vec<MagicCircle>,
+    pub mineral_deliveries: Vec<(Team, f32, f32, f32)>,
+    pub mineral_nodes: Vec<(u32, f32, f32)>,
+    pub cc_targets: Vec<(Team, f32, f32)>,
+    pub engineer_pos: Vec<(Team, f32, f32)>,
+    pub new_spawned_units: Vec<(Team, UnitType, f32, f32, f32, f32)>,
+    pub affected_units: Vec<(usize, f32)>,
+    pub affected_buildings: Vec<(usize, f32)>,
+    pub explosions: Vec<(f32, f32, ProjectileVisual, bool)>,
+    pub dead_units: Vec<(f32, f32, Team, UnitType)>,
+    pub dead_buildings: Vec<(f32, f32)>,
+    pub damaged_building_pos: Vec<(f32, f32)>,
+}
+
+impl Default for SimScratchpad {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SimScratchpad {
+    pub fn new() -> Self {
+        Self {
+            new_projectiles: Vec::with_capacity(128),
+            new_floating_texts: Vec::with_capacity(128),
+            new_magic_circles: Vec::with_capacity(32),
+            mineral_deliveries: Vec::with_capacity(64),
+            mineral_nodes: Vec::with_capacity(64),
+            cc_targets: Vec::with_capacity(16),
+            engineer_pos: Vec::with_capacity(64),
+            new_spawned_units: Vec::with_capacity(32),
+            affected_units: Vec::with_capacity(64),
+            affected_buildings: Vec::with_capacity(16),
+            explosions: Vec::with_capacity(64),
+            dead_units: Vec::with_capacity(64),
+            dead_buildings: Vec::with_capacity(16),
+            damaged_building_pos: Vec::with_capacity(32),
+        }
+    }
+}
+
 pub struct GameEngine {
     pub context: Option<CanvasRenderingContext2d>,
     pub canvas: Option<HtmlCanvasElement>,
@@ -29,6 +74,7 @@ pub struct GameEngine {
     pub floating_texts: Vec<FloatingText>,
     pub particles: Vec<Particle>,
     pub spatial_grid: SpatialGrid,
+    pub scratchpad: SimScratchpad,
 
     // Trạng thái kinh tế & công nghệ 2 phe chính (giữ nguyên để tương thích ngược)
     pub player_eco: PlayerEconomy,
@@ -213,6 +259,7 @@ impl GameEngine {
             floating_texts: Vec::new(),
             particles: Vec::new(),
             spatial_grid: SpatialGrid::new(),
+            scratchpad: SimScratchpad::new(),
 
             player_eco,
             enemy_eco,
@@ -340,6 +387,7 @@ impl GameEngine {
             floating_texts: Vec::new(),
             particles: Vec::new(),
             spatial_grid: SpatialGrid::new(),
+            scratchpad: SimScratchpad::new(),
 
             player_eco,
             enemy_eco,
@@ -687,6 +735,7 @@ impl GameEngine {
         self.projectiles.clear();
         self.magic_circles.clear();
         self.floating_texts.clear();
+        self.particles.clear();
         self.spatial_grid.clear();
 
         // 3. Reset toàn bộ sương mù chiến trận (Fog of War)

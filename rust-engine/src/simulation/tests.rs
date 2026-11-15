@@ -991,3 +991,79 @@ fn test_hud_canvas_content_visibility() {
     assert!(!engine.has_selection_info_content());
     assert!(!engine.has_command_card_content());
 }
+
+#[test]
+fn test_unit_death_and_acid_baneling_spawn_particles_and_reset_clears() {
+    let cfg = GameConfig::default();
+    let mut engine = GameEngine::new_headless();
+    engine.is_headless = false; // Bật chế độ sinh hạt hiệu ứng
+    engine.units.clear();
+    engine.buildings.clear();
+    engine.projectiles.clear();
+    engine.particles.clear();
+
+    // 1. AcidBaneling tự nổ cảm tử phải sinh 18 hạt axit màu xanh lá (#84cc16)
+    let mut baneling = cfg.create_unit(1, Team::Player, UnitType::AcidBaneling, 200.0, 200.0);
+    let target_building = cfg.create_building(
+        2,
+        Team::Enemy,
+        BuildingType::SupplyDepot,
+        210.0,
+        200.0,
+        true,
+    );
+    baneling.order = UnitOrder::AttackTarget {
+        target_id: 2,
+        is_building: true,
+    };
+    engine.units.push(baneling);
+    engine.buildings.push(target_building);
+
+    update_units(&mut engine, 0.05);
+    assert_eq!(engine.units.len(), 0);
+    assert_eq!(engine.particles.len(), 18);
+    assert!(engine
+        .particles
+        .iter()
+        .all(|p| p.color == ParticleColor::Green));
+
+    // 2. Lính thường tử trận khi nhận sát thương đạn/phép phải sinh thêm 8 hạt theo màu phe
+    let mut enemy_unit = cfg.create_unit(3, Team::Enemy, UnitType::Rifleman, 300.0, 300.0);
+    enemy_unit.hp = 5.0;
+    engine.units.push(enemy_unit);
+
+    engine.projectiles.push(Projectile {
+        id: 10,
+        team: Team::Player,
+        x: 300.0,
+        y: 300.0,
+        prev_x: 300.0,
+        prev_y: 300.0,
+        target_x: 300.0,
+        target_y: 300.0,
+        speed: 750.0,
+        damage: 50.0,
+        damage_type: DamageType::Physical,
+        aoe_radius: 0.0,
+        is_laser: false,
+        lifetime: 0.0,
+        is_melee: true,
+        building_damage_mult: 1.0,
+        visual: ProjectileVisual::Bullet,
+        angle: 0.0,
+    });
+
+    update_projectiles(&mut engine, 0.05);
+    assert_eq!(engine.units.len(), 0);
+    assert_eq!(engine.particles.len(), 18 + 8);
+    let red_count = engine
+        .particles
+        .iter()
+        .filter(|p| p.color == ParticleColor::Red)
+        .count();
+    assert_eq!(red_count, 8);
+
+    // 3. reset_game() phải xóa sạch hạt nổ cũ
+    engine.reset_game();
+    assert!(engine.particles.is_empty());
+}

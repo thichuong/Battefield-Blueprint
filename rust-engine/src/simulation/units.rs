@@ -3,10 +3,14 @@ use crate::map::{MAP_HEIGHT, MAP_WIDTH};
 use crate::GameEngine;
 
 pub fn update_units(engine: &mut GameEngine, dt: f32) {
-    let mut new_projectiles = Vec::new();
-    let mut new_floating_texts = Vec::new();
-    let mut new_magic_circles = Vec::new();
-    let mut mineral_deliveries: Vec<(Team, f32, f32, f32)> = Vec::new();
+    let mut new_projectiles = std::mem::take(&mut engine.scratchpad.new_projectiles);
+    new_projectiles.clear();
+    let mut new_floating_texts = std::mem::take(&mut engine.scratchpad.new_floating_texts);
+    new_floating_texts.clear();
+    let mut new_magic_circles = std::mem::take(&mut engine.scratchpad.new_magic_circles);
+    new_magic_circles.clear();
+    let mut mineral_deliveries = std::mem::take(&mut engine.scratchpad.mineral_deliveries);
+    mineral_deliveries.clear();
     let factions = engine.team_factions();
 
     let has_exo: [bool; 8] =
@@ -26,20 +30,24 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
         .filter(|&p| p > 0.0)
         .unwrap_or(crate::config::VOID_WARLOCK_DEFAULT_MAX_HP_DPS);
 
+    let mut mineral_nodes = std::mem::take(&mut engine.scratchpad.mineral_nodes);
+    mineral_nodes.clear();
+    mineral_nodes.extend(engine.minerals.iter().map(|m| (m.id, m.x, m.y)));
+
+    let mut cc_targets = std::mem::take(&mut engine.scratchpad.cc_targets);
+    cc_targets.clear();
+    cc_targets.extend(
+        engine
+            .buildings
+            .iter()
+            .filter(|b| b.building_type == BuildingType::CommandCenter)
+            .map(|b| (b.team, b.x, b.y)),
+    );
+
     engine
         .spatial_grid
         .rebuild_with_factions(&engine.units, &engine.buildings, &factions);
     let spatial_grid = &engine.spatial_grid;
-
-    // Snapshot danh sách mỏ quặng và CCs (kích thước nhỏ: quặng ~30-40, CC ~8-16)
-    let mineral_nodes: Vec<(u32, f32, f32)> =
-        engine.minerals.iter().map(|m| (m.id, m.x, m.y)).collect();
-    let cc_targets: Vec<(Team, f32, f32)> = engine
-        .buildings
-        .iter()
-        .filter(|b| b.building_type == BuildingType::CommandCenter)
-        .map(|b| (b.team, b.x, b.y))
-        .collect();
 
     let num_units = engine.units.len();
     for u_idx in 0..num_units {
@@ -708,7 +716,7 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
     }
 
     // Giao khoáng sản vào kinh tế từng team
-    for (team, amount, fx, fy) in mineral_deliveries {
+    for (team, amount, fx, fy) in mineral_deliveries.drain(..) {
         let t_idx = team.index() % 8;
         let bot_mult = engine.bot_resource_multiplier(team);
         let actual_amount = amount * bot_mult;
@@ -735,9 +743,6 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
         eco.minerals += actual_amount;
     }
 
-    // Xóa lính chết do tự nổ
-    engine.units.retain(|u| u.hp > 0.0);
-
     // Hồi máu linh quang từ Kim cang hộ thể (3 HP/s)
     for u in engine.units.iter_mut() {
         let t_idx = u.team.index() % 8;
@@ -746,30 +751,53 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
         }
     }
 
-    for mut p in new_projectiles {
+    for mut p in new_projectiles.drain(..) {
         p.id = engine.alloc_id();
         engine.projectiles.push(p);
     }
 
-    for mut c in new_magic_circles {
+    for mut c in new_magic_circles.drain(..) {
         c.id = engine.alloc_id();
         engine.magic_circles.push(c);
     }
 
-    for mut ft in new_floating_texts {
+    for mut ft in new_floating_texts.drain(..) {
         ft.id = engine.alloc_id();
         engine.floating_texts.push(ft);
     }
 
+    engine.scratchpad.new_projectiles = new_projectiles;
+    engine.scratchpad.new_floating_texts = new_floating_texts;
+    engine.scratchpad.new_magic_circles = new_magic_circles;
+    engine.scratchpad.mineral_deliveries = mineral_deliveries;
+    engine.scratchpad.mineral_nodes = mineral_nodes;
+    engine.scratchpad.cc_targets = cc_targets;
+
+    // Xóa quặng đã khai thác hết
+    engine.minerals.retain(|m| m.amount > 0.0);
+
+    // Sinh hạt nổ & dọn dẹp lính tử trận (ví dụ AcidBaneling tự nổ)
+    cleanup_dead_units(engine);
+}
+
+/// Sinh hiệu ứng hạt tử trận và loại bỏ toàn bộ lính có `hp <= 0.0`, đồng thời đánh dấu `SpatialGrid` cần đồng bộ lại.
+pub fn cleanup_dead_units(engine: &mut GameEngine) {
+    if !engine.units.iter().any(|u| u.hp <= 0.0) {
+        return;
+    }
+
     // Sinh hiệu ứng hạt vụn tan biến khi lính tử trận
     if !engine.is_headless {
-        let dead_units: Vec<(f32, f32, Team, UnitType)> = engine
-            .units
-            .iter()
-            .filter(|u| u.hp <= 0.0)
-            .map(|u| (u.x, u.y, u.team, u.unit_type))
-            .collect();
-        for (x, y, team, u_type) in dead_units {
+        let mut dead_units = std::mem::take(&mut engine.scratchpad.dead_units);
+        dead_units.clear();
+        dead_units.extend(
+            engine
+                .units
+                .iter()
+                .filter(|u| u.hp <= 0.0)
+                .map(|u| (u.x, u.y, u.team, u.unit_type)),
+        );
+        for &(x, y, team, u_type) in &dead_units {
             let color = match team {
                 Team::Player => "#00e5ff",
                 _ => "#f43f5e",
@@ -780,10 +808,9 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
                 engine.spawn_particles(x, y, 8, color, 85.0, 2.0, 0.35);
             }
         }
+        dead_units.clear();
+        engine.scratchpad.dead_units = dead_units;
     }
-
-    // Xóa quặng đã khai thác hết
-    engine.minerals.retain(|m| m.amount > 0.0);
 
     // Xóa lính tử trận
     let pre_selected = engine.selected_unit_ids.len();
@@ -797,4 +824,5 @@ pub fn update_units(engine: &mut GameEngine, dt: f32) {
             engine.command_card_dirty = true;
         }
     }
+    engine.spatial_grid.invalidate();
 }

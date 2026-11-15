@@ -36,9 +36,16 @@ pub fn update_magic_circles(engine: &mut GameEngine, dt: f32) {
         return;
     }
     let factions = engine.team_factions();
+    engine
+        .spatial_grid
+        .ensure_synced(&engine.units, &engine.buildings, &factions);
+
     let has_corrosive: [bool; 8] =
         std::array::from_fn(|i| engine.team_tech(Team::from_index(i)).corrosive_curse);
-    let mut new_texts = Vec::new();
+    let mut new_texts = std::mem::take(&mut engine.scratchpad.new_floating_texts);
+    new_texts.clear();
+    let mut affected_units = std::mem::take(&mut engine.scratchpad.affected_units);
+    let mut affected_buildings = std::mem::take(&mut engine.scratchpad.affected_buildings);
     let default_dps = engine
         .config
         .get_unit(UnitType::VoidWarlock)
@@ -65,8 +72,8 @@ pub fn update_magic_circles(engine: &mut GameEngine, dt: f32) {
         let dmg_type = circle.damage_type;
 
         // 1. Sát thương lên lính & công trình địch qua SpatialGrid trong bán kính circle.radius
-        let mut affected_units = Vec::new();
-        let mut affected_buildings = Vec::new();
+        affected_units.clear();
+        affected_buildings.clear();
 
         engine.spatial_grid.for_each_hostile_in_radius(
             glam::Vec2::new(circle.x, circle.y),
@@ -81,7 +88,7 @@ pub fn update_magic_circles(engine: &mut GameEngine, dt: f32) {
             },
         );
 
-        for (u_idx, _dist) in affected_units {
+        for &(u_idx, _dist) in &affected_units {
             if u_idx < engine.units.len() {
                 let u = &mut engine.units[u_idx];
                 // Sát thương theo % máu tối đa mỗi giây từ config (mặc định 10% max HP/s)
@@ -114,7 +121,7 @@ pub fn update_magic_circles(engine: &mut GameEngine, dt: f32) {
             }
         }
 
-        for (b_idx, _dist) in affected_buildings {
+        for &(b_idx, _dist) in &affected_buildings {
             if b_idx < engine.buildings.len() {
                 let b = &mut engine.buildings[b_idx];
                 let b_rad = b.width.max(b.height) * 0.5;
@@ -141,20 +148,39 @@ pub fn update_magic_circles(engine: &mut GameEngine, dt: f32) {
         }
     }
 
-    for mut ft in new_texts {
+    for mut ft in new_texts.drain(..) {
         ft.id = engine.alloc_id();
         engine.floating_texts.push(ft);
     }
 
+    affected_units.clear();
+    affected_buildings.clear();
+    engine.scratchpad.new_floating_texts = new_texts;
+    engine.scratchpad.affected_units = affected_units;
+    engine.scratchpad.affected_buildings = affected_buildings;
+
     engine.magic_circles.retain(|c| c.lifetime > 0.0);
+    crate::simulation::cleanup_dead_units(engine);
+    crate::simulation::cleanup_dead_buildings(engine);
 }
 
 pub fn update_projectiles(engine: &mut GameEngine, dt: f32) {
+    if engine.projectiles.is_empty() {
+        return;
+    }
     let factions = engine.team_factions();
+    engine
+        .spatial_grid
+        .ensure_synced(&engine.units, &engine.buildings, &factions);
+
     let has_corrosive: [bool; 8] =
         std::array::from_fn(|i| engine.team_tech(Team::from_index(i)).corrosive_curse);
-    let mut new_texts = Vec::new();
-    let mut explosions = Vec::new();
+    let mut new_texts = std::mem::take(&mut engine.scratchpad.new_floating_texts);
+    new_texts.clear();
+    let mut explosions = std::mem::take(&mut engine.scratchpad.explosions);
+    explosions.clear();
+    let mut hit_units = std::mem::take(&mut engine.scratchpad.affected_units);
+    let mut hit_buildings = std::mem::take(&mut engine.scratchpad.affected_buildings);
 
     for p in engine.projectiles.iter_mut() {
         p.lifetime -= dt;
@@ -178,8 +204,8 @@ pub fn update_projectiles(engine: &mut GameEngine, dt: f32) {
             let p_faction = factions[p_team_idx];
 
             // Sát thương lính & công trình địch bằng SpatialGrid (O(1) vùng nổ thay vì O(U+B))
-            let mut hit_units = Vec::new();
-            let mut hit_buildings = Vec::new();
+            hit_units.clear();
+            hit_buildings.clear();
 
             engine.spatial_grid.for_each_hostile_in_radius(
                 glam::Vec2::new(p.target_x, p.target_y),
@@ -195,7 +221,7 @@ pub fn update_projectiles(engine: &mut GameEngine, dt: f32) {
             );
 
             // Sát thương lính địch (hấp thụ vào Khiên trước nếu có)
-            for (u_idx, d) in hit_units {
+            for &(u_idx, d) in &hit_units {
                 if u_idx < engine.units.len() {
                     let u = &mut engine.units[u_idx];
                     let falloff = if is_aoe {
@@ -236,7 +262,7 @@ pub fn update_projectiles(engine: &mut GameEngine, dt: f32) {
             }
 
             // Sát thương công trình địch (áp dụng building_damage_mult, ví dụ AcidBaneling x2)
-            for (b_idx, _d) in hit_buildings {
+            for &(b_idx, _d) in &hit_buildings {
                 if b_idx < engine.buildings.len() {
                     let b = &mut engine.buildings[b_idx];
                     let b_rad = b.width.max(b.height) * 0.5;
@@ -273,7 +299,7 @@ pub fn update_projectiles(engine: &mut GameEngine, dt: f32) {
     }
 
     // Sinh hiệu ứng hạt khi đạn nổ trúng đích
-    for (ex, ey, visual, is_aoe) in explosions {
+    for (ex, ey, visual, is_aoe) in explosions.drain(..) {
         match visual {
             ProjectileVisual::Rocket => {
                 engine.spawn_particles(ex, ey, 14, "#f97316", 150.0, 3.2, 0.4);
@@ -292,12 +318,21 @@ pub fn update_projectiles(engine: &mut GameEngine, dt: f32) {
         }
     }
 
-    for mut ft in new_texts {
+    for mut ft in new_texts.drain(..) {
         ft.id = engine.alloc_id();
         engine.floating_texts.push(ft);
     }
 
+    hit_units.clear();
+    hit_buildings.clear();
+    engine.scratchpad.new_floating_texts = new_texts;
+    engine.scratchpad.explosions = explosions;
+    engine.scratchpad.affected_units = hit_units;
+    engine.scratchpad.affected_buildings = hit_buildings;
+
     engine.projectiles.retain(|p| p.lifetime > 0.0);
+    crate::simulation::cleanup_dead_units(engine);
+    crate::simulation::cleanup_dead_buildings(engine);
 }
 
 pub fn update_floating_texts(engine: &mut GameEngine, dt: f32) {

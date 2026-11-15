@@ -26,6 +26,8 @@ pub struct SpatialGrid {
     entries: Vec<FlatGridEntry>,
     pub unit_id_to_index: HashMap<u32, usize>,
     pub building_id_to_index: HashMap<u32, usize>,
+    indexed_unit_count: usize,
+    indexed_building_count: usize,
 }
 
 impl Default for SpatialGrid {
@@ -42,6 +44,8 @@ impl SpatialGrid {
             entries: Vec::with_capacity(512),
             unit_id_to_index: HashMap::with_capacity(512),
             building_id_to_index: HashMap::with_capacity(128),
+            indexed_unit_count: 0,
+            indexed_building_count: 0,
         }
     }
 
@@ -50,6 +54,30 @@ impl SpatialGrid {
         self.entries.clear();
         self.unit_id_to_index.clear();
         self.building_id_to_index.clear();
+        self.indexed_unit_count = 0;
+        self.indexed_building_count = 0;
+    }
+
+    /// Đánh dấu lưới không còn khớp chỉ mục (khi có thực thể bị xóa khỏi mảng)
+    #[inline]
+    pub fn invalidate(&mut self) {
+        self.indexed_unit_count = usize::MAX;
+        self.indexed_building_count = usize::MAX;
+    }
+
+    /// Đảm bảo lưới luôn đồng bộ với mảng units/buildings trước khi truy vấn bán kính
+    #[inline]
+    pub fn ensure_synced(
+        &mut self,
+        units: &[crate::components::Unit],
+        buildings: &[crate::components::Building],
+        factions: &[u8; 8],
+    ) {
+        if self.indexed_unit_count != units.len()
+            || self.indexed_building_count != buildings.len()
+        {
+            self.rebuild_with_factions(units, buildings, factions);
+        }
     }
 
     /// Tái tạo lưới từ danh sách đơn vị và công trình kèm thông tin phe phái
@@ -90,6 +118,8 @@ impl SpatialGrid {
                 is_threat,
             });
         }
+        self.indexed_unit_count = units.len();
+        self.indexed_building_count = buildings.len();
     }
 
     /// Tái tạo lưới từ danh sách đơn vị và công trình (Tương thích ngược 2 phe Player & Enemy)
